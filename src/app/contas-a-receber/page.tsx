@@ -14,6 +14,7 @@ import { CashReceivableHistory } from '@/components/ui/CashReceivableHistory'
 import { ReceiveModal } from '@/components/ui/ReceiveModal'
 import { SummaryCards } from '@/components/ui/SummaryCards'
 import { Plus, CheckCircle2, Pencil, Trash2, Clock, CircleDollarSign, History, ChevronDown, ChevronUp } from 'lucide-react'
+import { AppLayout } from '@/components/layout/AppLayout'
 
 function sortReceivables(data: CashReceivable[]): CashReceivable[] {
   return [...data].sort((a, b) => {
@@ -27,7 +28,7 @@ function hexToRowBg(hex: string): string {
   return hex || 'transparent'
 }
 
-export default function ContasAReceberPage() {
+function ContasAReceberPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
   const [items, setItems] = useState<CashReceivable[]>([])
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
@@ -392,3 +393,7 @@ export default function ContasAReceberPage() {
 }
 
 
+
+export default function ContasAReceberPage() {
+  return <AppLayout><ContasAReceberPageInner /></AppLayout>
+}

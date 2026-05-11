@@ -1,23 +1,26 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { AUTH_USER, AUTH_PASSWORD, createSession, saveSession, isAuthenticated } from '@/lib/auth'
 import { Spinner } from '@/components/ui'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { LogIn, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    if (isAuthenticated()) router.replace('/')
-  }, [router])
+    if (isAuthenticated()) {
+      window.location.href = '/'
+    } else {
+      setChecking(false)
+    }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,11 +29,19 @@ export default function LoginPage() {
     await new Promise(r => setTimeout(r, 600))
     if (user.trim() === AUTH_USER && pass === AUTH_PASSWORD) {
       saveSession(createSession())
-      router.replace('/')
+      window.location.href = '/'
     } else {
       setError('Usuário ou senha incorretos.')
       setLoading(false)
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-0)' }}>
+        <Spinner size={32} />
+      </div>
+    )
   }
 
   return (

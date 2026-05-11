@@ -1,5 +1,6 @@
 'use client'
 
+import { AppLayout } from '@/components/layout/AppLayout'
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { billsToPayApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
@@ -33,7 +34,7 @@ function sortBills(data: BillToPay[]): BillToPay[] {
   ]
 }
 
-export default function ContasAPagarPage() {
+function ContasAPagarPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
   const [bills, setBills] = useState<BillToPay[]>([])
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
@@ -404,4 +405,8 @@ export default function ContasAPagarPage() {
       )}
     </div>
   )
+}
+
+export default function ContasAPagarPage() {
+  return <AppLayout><ContasAPagarPageInner /></AppLayout>
 }

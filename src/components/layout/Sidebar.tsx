@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
-import { useRouter } from 'next/navigation'
 
 const nav = [
   { href: '/',                 label: 'Dashboard',        icon: LayoutDashboard },
@@ -22,11 +21,9 @@ const nav = [
 export function Sidebar() {
   const path = usePathname()
   const [open, setOpen] = useState(false)
-  const router = useRouter()
-
   function logout() {
     clearSession()
-    router.push('/login')
+    window.location.href = '/login/'
   }
 
   // Fecha ao trocar de rota

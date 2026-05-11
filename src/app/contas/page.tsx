@@ -5,8 +5,9 @@ import { accountsApi } from '@/lib/api'
 import type { Account } from '@/types'
 import { PageHeader, Spinner, Empty } from '@/components/ui'
 import { CreditCard, Building2, CheckCircle2, XCircle } from 'lucide-react'
+import { AppLayout } from '@/components/layout/AppLayout'
 
-export default function ContasPage() {
+function ContasPageInner() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -128,4 +129,8 @@ function AccountCard({ account: a }: { account: Account }) {
       </div>
     </div>
   )
+}
+
+export default function ContasPage() {
+  return <AppLayout><ContasPageInner /></AppLayout>
 }

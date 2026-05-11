@@ -1,9 +1,9 @@
 'use client'
 
-import { Sidebar } from '@/components/layout/Sidebar'
 import { AuthGuard } from '@/components/layout/AuthGuard'
+import { Sidebar } from '@/components/layout/Sidebar'
 
-export function LayoutShell({ children }: { children: React.ReactNode }) {
+export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
       <div className="min-h-screen">
