@@ -5,9 +5,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  CreditCard, TrendingUp, ChevronRight, Menu, X,
+  CreditCard, TrendingUp, ChevronRight, Menu, X, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { clearSession } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
 
 const nav = [
   { href: '/',                 label: 'Dashboard',        icon: LayoutDashboard },
@@ -20,6 +22,12 @@ const nav = [
 export function Sidebar() {
   const path = usePathname()
   const [open, setOpen] = useState(false)
+  const router = useRouter()
+
+  function logout() {
+    clearSession()
+    router.push('/login')
+  }
 
   // Fecha ao trocar de rota
   useEffect(() => { setOpen(false) }, [path])
@@ -72,8 +80,14 @@ export function Sidebar() {
           </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5"><NavLinks /></nav>
-        <div className="px-6 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
+        <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
+          <button onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-[var(--red-dim)]"
+            style={{ color: 'var(--text-3)' }}>
+            <LogOut size={16} />
+            <span>Sair</span>
+          </button>
+          <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
         </div>
       </aside>
 
@@ -125,8 +139,14 @@ export function Sidebar() {
           </button>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto"><NavLinks /></nav>
-        <div className="px-6 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
+        <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
+          <button onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-[var(--red-dim)]"
+            style={{ color: 'var(--text-3)' }}>
+            <LogOut size={16} />
+            <span>Sair</span>
+          </button>
+          <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
         </div>
       </div>
     </>

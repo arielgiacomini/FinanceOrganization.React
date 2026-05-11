@@ -23,14 +23,19 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', overflowY: 'auto' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className={cn('w-full rounded-2xl animate-slide-up mx-2 sm:mx-0', widths[size])}
-        style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)' }}
+        className={cn('w-full rounded-2xl animate-slide-up mx-2 sm:mx-0 flex flex-col', widths[size])}
+        style={{
+          background: 'var(--bg-2)',
+          border: '1px solid var(--border-2)',
+          maxHeight: 'calc(100dvh - 32px)',
+        }}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border-1)' }}>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b flex-shrink-0"
+          style={{ borderColor: 'var(--border-1)' }}>
           <h2 className="font-semibold text-base" style={{ color: 'var(--text-1)' }}>{title}</h2>
           <button
             onClick={onClose}
@@ -40,7 +45,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             <X size={16} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto">{children}</div>
       </div>
     </div>
   )

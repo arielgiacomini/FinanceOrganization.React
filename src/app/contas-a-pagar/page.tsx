@@ -19,11 +19,17 @@ import {
 } from 'lucide-react'
 
 function sortBills(data: BillToPay[]): BillToPay[] {
-  const byDue = (a: BillToPay, b: BillToPay) =>
-    new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+  const byDueThenPurchase = (a: BillToPay, b: BillToPay) => {
+    const dueDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    if (dueDiff !== 0) return dueDiff
+    // Secundário: data de compra DESC (mais recente primeiro)
+    const pa = a.purchaseDate ? new Date(a.purchaseDate).getTime() : 0
+    const pb = b.purchaseDate ? new Date(b.purchaseDate).getTime() : 0
+    return pb - pa
+  }
   return [
-    ...data.filter((b) => !b.hasPay).sort(byDue),
-    ...data.filter((b) => b.hasPay).sort(byDue),
+    ...data.filter((b) => !b.hasPay).sort(byDueThenPurchase),
+    ...data.filter((b) => b.hasPay).sort(byDueThenPurchase),
   ]
 }
 
@@ -145,9 +151,121 @@ export default function ContasAPagarPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Desktop: tabela | Mobile: cards */}
+
+      {/* Cards mobile */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        {loading ? (
+          <div className="flex justify-center py-12"><Spinner size={28} /></div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-3)' }}>Nenhum registro encontrado.</div>
+        ) : filtered.map((b) => {
+          const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
+          const hex = acc?.colors?.backgroundColorHexadecimal
+          const toRgb = (h: string) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
+          const rowBg = hex
+            ? `rgba(${toRgb(hex).join(',')},${b.hasPay ? 0.07 : 0.15})`
+            : b.hasPay ? 'rgba(34,197,94,0.06)' : 'var(--bg-2)'
+          const cardBorder = hex
+            ? `rgba(${toRgb(hex).join(',')},0.5)`
+            : b.hasPay ? 'rgba(34,197,94,0.3)' : 'var(--border-1)'
+          const leftBar = hex ?? (b.hasPay ? '#22c55e' : 'var(--border-2)')
+
+          return (
+            <div key={b.id} className="rounded-xl overflow-hidden"
+              style={{ background: rowBg, border: `1px solid ${cardBorder}`, borderLeft: `3px solid ${leftBar}` }}>
+              {/* Linha 1: Nome + Valor + Status */}
+              <div className="flex items-start justify-between px-4 pt-3 pb-2">
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="font-medium text-sm truncate" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--text-1)' }}>
+                    {b.name}
+                  </p>
+                  {showDetails && b.additionalMessage && (
+                    <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="font-mono font-semibold text-sm" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--red)' }}>
+                    {formatCurrency(b.value, b.country)}
+                  </span>
+                  {b.hasPay
+                    ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span>
+                    : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}
+                </div>
+              </div>
+
+              {/* Linha 2: Conta + País + Vencimento */}
+              <div className="flex items-center gap-3 px-4 pb-2 flex-wrap">
+                {acc && hex ? (
+                  <span className="inline-flex items-center gap-1 text-xs"
+                    style={{ color: 'var(--text-2)' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block' }} />
+                    {b.account}
+                  </span>
+                ) : b.account ? (
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>{b.account}</span>
+                ) : null}
+                {b.country && (
+                  <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                    {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={12} /> : <FlagBrasil size={12} />}
+                    {normalizeCountry(b.country)}
+                  </span>
+                )}
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  Venc. {formatDate(b.dueDate)}
+                </span>
+                {b.purchaseDate && (
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                    Compra {formatDate(b.purchaseDate)}
+                  </span>
+                )}
+                {b.hasPay && b.payDay && (
+                  <span className="text-xs" style={{ color: 'var(--green-400)' }}>
+                    Pago {formatDate(b.payDay)}
+                  </span>
+                )}
+              </div>
+
+              {/* Linha 3: Ações */}
+              <div className="flex items-center gap-1 px-3 pb-3 border-t pt-2"
+                style={{ borderColor: 'var(--border-1)' }}>
+                {!b.hasPay && (
+                  <button type="button" title="Pagar"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                    style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}
+                    onClick={() => setPayTarget(b)}>
+                    <CircleDollarSign size={14} /> Pagar
+                  </button>
+                )}
+                <button type="button" title="Histórico"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}
+                  onClick={() => setHistoryTarget(b)}>
+                  <History size={14} /> Histórico
+                </button>
+                <button type="button" title="Editar"
+                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}
+                  onClick={() => setEditTarget(b)}>
+                  <Pencil size={15} />
+                </button>
+                <button type="button" title="Excluir"
+                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                  onClick={() => setDeleteTarget(b)}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Tabela desktop */}
+      <div className="hidden sm:block">
+            {/* Table */}
       <Table
-        headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Pago em', 'Status', 'Ações']}
+        headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
       >
@@ -215,6 +333,7 @@ export default function ContasAPagarPage() {
                 </span>
               </Td>
               <Td className="text-xs">{formatDate(b.dueDate)}</Td>
+              <Td className="text-xs">{formatDate(b.purchaseDate)}</Td>
               <Td className="text-xs">{formatDate(b.payDay)}</Td>
               <Td>
                 {b.hasPay
@@ -248,6 +367,7 @@ export default function ContasAPagarPage() {
           )
         })}
       </Table>
+      </div>
 
       {/* Modals */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Nova Conta a Pagar" size="lg">
