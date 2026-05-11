@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  /* Brand greens */
+  --green-400: #4ade80;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --green-dim: rgba(34, 197, 94, 0.12);
+  --green-border: rgba(34, 197, 94, 0.25);
+
+  /* Surfaces (dark) */
+  --bg-0:   #0a0a0a;
+  --bg-1:   #111111;
+  --bg-2:   #161616;
+  --bg-3:   #1e1e1e;
+  --bg-4:   #262626;
+  --bg-5:   #303030;
+
+  /* Text */
+  --text-1: #f5f5f5;
+  --text-2: #a3a3a3;
+  --text-3: #6b6b6b;
+
+  /* Borders */
+  --border-1: rgba(255,255,255,0.07);
+  --border-2: rgba(255,255,255,0.12);
+  --border-3: rgba(255,255,255,0.18);
+
+  /* Semantic */
+  --red:    #f87171;
+  --red-dim: rgba(248, 113, 113, 0.12);
+  --amber:  #fbbf24;
+  --amber-dim: rgba(251, 191, 36, 0.12);
+  --blue:   #60a5fa;
+  --blue-dim: rgba(96, 165, 250, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-0);
+  color: var(--text-1);
+  min-height: 100vh;
+}
+
+/* Table rows: background applied directly on each <td> via TRow component */
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-5); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--green-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection */
+::selection {
+  background: var(--green-dim);
+  color: var(--green-400);
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border bg-[var(--bg-2)] border-[var(--border-1)];
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg
+           bg-[var(--green-500)] text-black font-medium text-sm
+           hover:bg-[var(--green-400)] transition-colors duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg
+           border border-[var(--border-2)] text-[var(--text-2)] text-sm font-medium
+           hover:border-[var(--border-3)] hover:text-[var(--text-1)]
+           transition-colors duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg
+           bg-[var(--red-dim)] text-[var(--red)] border border-[var(--red-dim)] text-sm font-medium
+           hover:bg-[rgba(248,113,113,0.2)] transition-colors duration-150;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 rounded-lg bg-[var(--bg-3)] border border-[var(--border-1)]
+           text-[var(--text-1)] text-sm placeholder:text-[var(--text-3)]
+           focus:outline-none focus:border-[var(--green-border)]
+           transition-colors duration-150;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-[var(--text-2)] mb-1.5;
+  }
+
+  .badge-paid {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+           bg-[var(--green-dim)] text-[var(--green-400)] text-xs font-medium;
+  }
+
+  .badge-pending {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+           bg-[var(--amber-dim)] text-[var(--amber)] text-xs font-medium;
+  }
+
+  .badge-overdue {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+           bg-[var(--red-dim)] text-[var(--red)] text-xs font-medium;
+  }
+}
