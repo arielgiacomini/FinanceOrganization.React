@@ -141,7 +141,118 @@ export default function ContasAReceberPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Desktop: tabela | Mobile: cards */}
+
+      {/* Cards mobile */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        {loading ? (
+          <div className="flex justify-center py-12"><Spinner size={28} /></div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-3)' }}>Nenhum registro encontrado.</div>
+        ) : filtered.map((r) => {
+          const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
+          const hex = acc?.colors?.backgroundColorHexadecimal
+          const toRgb = (h: string) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
+          const rowBg = hex
+            ? `rgba(${toRgb(hex).join(',')},${r.hasReceived ? 0.07 : 0.15})`
+            : r.hasReceived ? 'rgba(34,197,94,0.06)' : 'var(--bg-2)'
+          const cardBorder = hex
+            ? `rgba(${toRgb(hex).join(',')},0.5)`
+            : r.hasReceived ? 'rgba(34,197,94,0.3)' : 'var(--border-1)'
+          const leftBar = hex ?? (r.hasReceived ? '#22c55e' : 'var(--border-2)')
+
+          return (
+            <div key={r.id} className="rounded-xl overflow-hidden"
+              style={{ background: rowBg, border: `1px solid ${cardBorder}`, borderLeft: `3px solid ${leftBar}` }}>
+              {/* Linha 1: Nome + Valor + Status */}
+              <div className="flex items-start justify-between px-4 pt-3 pb-2">
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="font-medium text-sm truncate" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--text-1)' }}>
+                    {r.name}
+                  </p>
+                  {showDetails && r.additionalMessage && (
+                    <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-3)' }}>{r.additionalMessage}</p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="font-mono font-semibold text-sm" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--green-400)' }}>
+                    {formatCurrency(r.value, r.country)}
+                  </span>
+                  {r.manipulatedValue !== r.value && (
+                    <span className="font-mono text-xs" style={{ color: 'var(--amber)' }}>
+                      saldo {formatCurrency(r.manipulatedValue, r.country)}
+                    </span>
+                  )}
+                  {r.hasReceived
+                    ? <span className="badge-paid"><CheckCircle2 size={10} />Recebido</span>
+                    : <span className="badge-pending"><Clock size={10} />Aguardando</span>}
+                </div>
+              </div>
+
+              {/* Linha 2: Conta + País + Vencimento */}
+              <div className="flex items-center gap-3 px-4 pb-2 flex-wrap">
+                {acc && hex ? (
+                  <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-2)' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block' }} />
+                    {r.account}
+                  </span>
+                ) : r.account ? (
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>{r.account}</span>
+                ) : null}
+                {r.country && (
+                  <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                    {normalizeCountry(r.country) === 'Espanha' ? <FlagEspanha size={12} /> : <FlagBrasil size={12} />}
+                    {normalizeCountry(r.country)}
+                  </span>
+                )}
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  Venc. {formatDate(r.dueDate)}
+                </span>
+                {r.hasReceived && r.dateReceived && (
+                  <span className="text-xs" style={{ color: 'var(--green-400)' }}>
+                    Recebido {formatDate(r.dateReceived)}
+                  </span>
+                )}
+              </div>
+
+              {/* Linha 3: Ações */}
+              <div className="flex items-center gap-1 px-3 pb-3 border-t pt-2"
+                style={{ borderColor: 'var(--border-1)' }}>
+                {!r.hasReceived && (
+                  <button type="button" title="Receber"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                    style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}
+                    onClick={() => setReceiveTarget(r)}>
+                    <CircleDollarSign size={14} /> Receber
+                  </button>
+                )}
+                <button type="button" title="Histórico"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}
+                  onClick={() => setHistoryTarget(r)}>
+                  <History size={14} /> Histórico
+                </button>
+                <button type="button" title="Editar"
+                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}
+                  onClick={() => setEditTarget(r)}>
+                  <Pencil size={15} />
+                </button>
+                <button type="button" title="Excluir"
+                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                  onClick={() => setDeleteTarget(r)}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Tabela desktop */}
+      <div className="hidden sm:block">
+            {/* Table */}
       <Table
         headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Saldo', 'Vencimento', 'Recebido em', 'Status', 'Ações']}
         loading={loading}
@@ -243,6 +354,7 @@ export default function ContasAReceberPage() {
           )
         })}
       </Table>
+      </div>
 
       {/* Modals */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Nova Conta a Receber" size="lg">

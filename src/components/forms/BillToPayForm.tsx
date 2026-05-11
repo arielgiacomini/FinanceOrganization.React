@@ -112,7 +112,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     <form onSubmit={submit} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-        <div className="col-span-2">
+        <div className="col-span-1 sm:col-span-2">
           <label className="label">Nome / Descrição *</label>
           <input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Conta de luz" required />
         </div>
@@ -210,7 +210,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           <input className="input" type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} />
         </div>
 
-        <div className="col-span-2">
+        <div className="col-span-1 sm:col-span-2">
           <label className="label">Observação</label>
           <textarea className="input resize-none" rows={2} value={form.additionalMessage} onChange={(e) => set('additionalMessage', e.target.value)} placeholder="Informações adicionais..." />
         </div>
