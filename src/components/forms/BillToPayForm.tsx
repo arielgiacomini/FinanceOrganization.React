@@ -15,6 +15,16 @@ interface BillToPayFormProps {
   onCancel: () => void
 }
 
+const DRAFT_KEY = 'finance_billtopay_draft'
+
+function saveDraft(form: Record<string, string>) {
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+}
+function loadDraft(): Record<string, string> | null {
+  try { const r = sessionStorage.getItem(DRAFT_KEY); return r ? JSON.parse(r) : null } catch { return null }
+}
+function clearDraft() { sessionStorage.removeItem(DRAFT_KEY) }
+
 const COUNTRIES = [
   { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
   { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
@@ -31,21 +41,25 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
   const [frequenceList] = useState(() => getFrequences())
   const [regTypeList] = useState(() => getRegistrationTypes())
 
+  const draft = !initial ? loadDraft() : null
   const [form, setForm] = useState({
-    name: initial?.name ?? '',
-    account: initial?.account ?? '',
-    category: initial?.category ?? '',
-    value: initial?.value?.toString() ?? '',
-    frequence: initial?.frequence ?? 'Mensal',
-    registrationType: initial?.registrationType ?? 'Compra Livre',
-    purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : '',
-    dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : '',
-    initialMonthYear: initial?.yearMonth ?? currentYearMonth(),
-    fynallyMonthYear: initial?.yearMonth ?? currentYearMonth(),
-    bestPayDay: '',
-    additionalMessage: initial?.additionalMessage ?? '',
-    country: initial?.country ?? 'Brasil',
+    name: initial?.name ?? draft?.name ?? '',
+    account: initial?.account ?? draft?.account ?? '',
+    category: initial?.category ?? draft?.category ?? '',
+    value: initial?.value?.toString() ?? draft?.value ?? '',
+    frequence: initial?.frequence ?? draft?.frequence ?? 'Mensal',
+    registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
+    purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : (draft?.purchaseDate ?? ''),
+    dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate ?? ''),
+    initialMonthYear: initial?.yearMonth ?? draft?.initialMonthYear ?? currentYearMonth(),
+    fynallyMonthYear: initial?.yearMonth ?? draft?.fynallyMonthYear ?? currentYearMonth(),
+    bestPayDay: draft?.bestPayDay ?? '',
+    additionalMessage: initial?.additionalMessage ?? draft?.additionalMessage ?? '',
+    country: initial?.country ?? draft?.country ?? 'Brasil',
   })
+  const hasDraft = !initial && !!draft
+  const [sameMonth, setSameMonth] = useState(true)       // Mês inicial = final
+  const [noFinalMonth, setNoFinalMonth] = useState(false) // Enviar null no final
 
   useEffect(() => {
     Promise.all([
@@ -62,7 +76,33 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
   }, [])
 
   function set(key: string, value: string) {
-    setForm((f) => ({ ...f, [key]: value }))
+    setForm((f) => {
+      const next = { ...f, [key]: value }
+      // Auto-fill bestPayDay quando purchaseDate é preenchida
+      if (key === 'purchaseDate' && value) {
+        const day = new Date(value + 'T12:00:00').getDate()
+        next.bestPayDay = String(day)
+      }
+      // Sync fynallyMonthYear com initialMonthYear quando sameMonth
+      if (key === 'initialMonthYear' && sameMonth) {
+        next.fynallyMonthYear = value
+      }
+      if (!initial) saveDraft(next)
+      return next
+    })
+  }
+
+  function handleClearDraft() {
+    clearDraft()
+    setForm({
+      name: '', account: '', category: '', value: '',
+      frequence: frequenceList[0] ?? 'Mensal',
+      registrationType: regTypeList[0] ?? 'Compra Livre',
+      purchaseDate: '', dueDate: '',
+      initialMonthYear: currentYearMonth(),
+      fynallyMonthYear: currentYearMonth(),
+      bestPayDay: '', additionalMessage: '', country: 'Brasil',
+    })
   }
 
   async function submit(e: React.FormEvent) {
@@ -100,7 +140,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           frequence: form.frequence,
           registrationType: form.registrationType,
           initialMonthYear: form.initialMonthYear,
-          fynallyMonthYear: form.fynallyMonthYear,
+          fynallyMonthYear: noFinalMonth ? null : (sameMonth ? form.initialMonthYear : form.fynallyMonthYear),
           purchaseDate: form.purchaseDate || null,
           bestPayDay: form.bestPayDay ? parseInt(form.bestPayDay) : null,
           additionalMessage: form.additionalMessage || null,
@@ -111,6 +151,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
         }
         await billsToPayApi.create(vm as never)
       }
+      if (!initial) clearDraft()
       onSuccess()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar')
@@ -185,8 +226,8 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           </div>
         ) : (
           <div>
-            <label className="label">Melhor dia para pagar</label>
-            <input className="input" type="number" min={1} max={31} value={form.bestPayDay} onChange={(e) => set('bestPayDay', e.target.value)} placeholder="Ex: 10" />
+            <label className="label">Data de Compra</label>
+            <input className="input" type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} />
           </div>
         )}
 
@@ -206,26 +247,71 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
               </select>
             </div>
 
-            <div>
-              <label className="label">Mês/Ano inicial</label>
-              <select className="input" value={form.initialMonthYear} onChange={(e) => set('initialMonthYear', e.target.value)}>
-                {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
+            <div className="col-span-1 sm:col-span-2 space-y-3">
+              {/* Mês/Ano inicial */}
+              <div>
+                <label className="label">Mês/Ano inicial</label>
+                <select className="input" value={form.initialMonthYear} onChange={(e) => set('initialMonthYear', e.target.value)}>
+                  {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
 
-            <div>
-              <label className="label">Mês/Ano final</label>
-              <select className="input" value={form.fynallyMonthYear} onChange={(e) => set('fynallyMonthYear', e.target.value)}>
-                {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              {/* Checkboxes */}
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={sameMonth} disabled={noFinalMonth}
+                    onChange={e => {
+                      setSameMonth(e.target.checked)
+                      if (e.target.checked) set('fynallyMonthYear', form.initialMonthYear)
+                    }}
+                    className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: noFinalMonth ? 'var(--text-3)' : 'var(--text-2)' }}>
+                    Mesmo Mês/Ano final
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={noFinalMonth}
+                    onChange={e => {
+                      setNoFinalMonth(e.target.checked)
+                      if (e.target.checked) setSameMonth(false)
+                      else setSameMonth(true)
+                    }}
+                    className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: 'var(--text-2)' }}>
+                    Sem Mês/Ano final (aberto)
+                  </span>
+                </label>
+              </div>
+
+              {/* Mês/Ano final — só quando não sameMonth e não noFinalMonth */}
+              {!sameMonth && !noFinalMonth && (
+                <div>
+                  <label className="label">Mês/Ano final</label>
+                  <select className="input" value={form.fynallyMonthYear} onChange={(e) => set('fynallyMonthYear', e.target.value)}>
+                    {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
+              {noFinalMonth && (
+                <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                  Mês/Ano final será enviado como aberto (null)
+                </p>
+              )}
             </div>
           </>
         )}
 
-        <div>
-          <label className="label">Data de Compra</label>
-          <input className="input" type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} />
-        </div>
+        {!isEdit && (
+          <div>
+            <label className="label flex items-center gap-1.5">
+              Melhor dia para pagar
+              {form.purchaseDate && form.bestPayDay && (
+                <span className="text-xs" style={{ color: 'var(--green-400)' }}>auto ✓</span>
+              )}
+            </label>
+            <input className="input" type="number" min={1} max={31} value={form.bestPayDay} onChange={(e) => set('bestPayDay', e.target.value)} placeholder="Preenchido pela data de compra" />
+          </div>
+        )}
 
         <div className="col-span-1 sm:col-span-2">
           <label className="label">Observação</label>
@@ -239,12 +325,23 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
         </p>
       )}
 
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="flex items-center justify-between pt-2">
+        <div>
+          {hasDraft && (
+            <button type="button" onClick={handleClearDraft}
+              className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-[var(--red-dim)]"
+              style={{ color: 'var(--text-3)' }}>
+              🗑 Limpar rascunho
+            </button>
+          )}
+        </div>
+        <div className="flex gap-3">
         <button type="button" className="btn-secondary" onClick={onCancel}>Cancelar</button>
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? <Spinner size={16} /> : null}
           {isEdit ? 'Salvar alterações' : 'Cadastrar'}
         </button>
+        </div>
       </div>
     </form>
   )

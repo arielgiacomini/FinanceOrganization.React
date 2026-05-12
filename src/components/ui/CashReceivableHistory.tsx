@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatYearMonth, FREQUENCES, REGISTRATION_T
 import type { CashReceivable, Account, EditCashReceivableViewModel } from '@/types'
 import { Td, TRow, Spinner, Empty, Modal } from '@/components/ui'
 import { CashReceivableForm } from '@/components/forms/CashReceivableForm'
+import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { ReceiveModal } from '@/components/ui/ReceiveModal'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
@@ -158,14 +159,14 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
             Valor
             {diff('value') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
           </label>
-          <input className="input" type="text" inputMode="decimal" value={form.value} onChange={e => set('value', e.target.value)} />
+          <CurrencyInput value={form.value} country={form.country} onChange={v => set('value', v)} />
         </div>
         <div>
           <label className="label flex items-center gap-1.5">
             Saldo (Valor Manipulado)
             {diff('manipulatedValue') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
           </label>
-          <input className="input" type="text" inputMode="decimal" value={form.manipulatedValue} onChange={e => set('manipulatedValue', e.target.value)} />
+          <CurrencyInput value={form.manipulatedValue} country={form.country} onChange={v => set('manipulatedValue', v)} />
         </div>
         <div>
           <label className="label flex items-center gap-1.5">
