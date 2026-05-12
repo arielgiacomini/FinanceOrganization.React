@@ -15,6 +15,16 @@ interface CashReceivableFormProps {
   onCancel: () => void
 }
 
+const DRAFT_KEY = 'finance_cashreceivable_draft'
+
+function saveDraft(form: Record<string, string | boolean>) {
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+}
+function loadDraft(): Record<string, string | boolean> | null {
+  try { const r = sessionStorage.getItem(DRAFT_KEY); return r ? JSON.parse(r) : null } catch { return null }
+}
+function clearDraft() { sessionStorage.removeItem(DRAFT_KEY) }
+
 const COUNTRIES = [
   { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
   { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
@@ -39,24 +49,28 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
   const [frequenceList] = useState(() => getFrequences())
   const [regTypeList] = useState(() => getRegistrationTypes())
 
+  const draft = !initial ? loadDraft() : null
   const [form, setForm] = useState({
-    name:              initial?.name ?? '',
-    account:           initial?.account ?? '',
-    category:          initial?.category ?? '',
-    value:             initial?.value?.toString() ?? '',
-    manipulatedValue:  initial?.manipulatedValue?.toString() ?? '',
-    frequence:         initial?.frequence ?? 'Mensal',
-    registrationType:  initial?.registrationType ?? 'Compra Livre',
-    agreementDate:     initial?.agreementDate ? initial.agreementDate.slice(0, 10) : '',
-    dueDate:           initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : '',
-    dateReceived:      initial?.dateReceived ? initial.dateReceived.slice(0, 10) : '',
-    hasReceived:       initial?.hasReceived ?? false,
-    initialMonthYear:  initial?.yearMonth ?? currentYearMonth(),
-    fynallyMonthYear:  initial?.yearMonth ?? currentYearMonth(),
-    bestReceivingDay:  '',
-    additionalMessage: initial?.additionalMessage ?? '',
-    country:           initial?.country ?? 'Brasil',
+    name:              initial?.name ?? draft?.name as string ?? '',
+    account:           initial?.account ?? draft?.account as string ?? '',
+    category:          initial?.category ?? draft?.category as string ?? '',
+    value:             initial?.value?.toString() ?? draft?.value as string ?? '',
+    manipulatedValue:  initial?.manipulatedValue?.toString() ?? draft?.manipulatedValue as string ?? '',
+    frequence:         initial?.frequence ?? draft?.frequence as string ?? 'Mensal',
+    registrationType:  initial?.registrationType ?? draft?.registrationType as string ?? 'Compra Livre',
+    agreementDate:     initial?.agreementDate ? initial.agreementDate.slice(0, 10) : (draft?.agreementDate as string ?? ''),
+    dueDate:           initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate as string ?? ''),
+    dateReceived:      initial?.dateReceived ? initial.dateReceived.slice(0, 10) : (draft?.dateReceived as string ?? ''),
+    hasReceived:       initial?.hasReceived ?? (draft?.hasReceived as boolean ?? false),
+    initialMonthYear:  initial?.yearMonth ?? draft?.initialMonthYear as string ?? currentYearMonth(),
+    fynallyMonthYear:  initial?.yearMonth ?? draft?.fynallyMonthYear as string ?? currentYearMonth(),
+    bestReceivingDay:  draft?.bestReceivingDay as string ?? '',
+    additionalMessage: initial?.additionalMessage ?? draft?.additionalMessage as string ?? '',
+    country:           initial?.country ?? draft?.country as string ?? 'Brasil',
   })
+  const hasDraft = !initial && !!draft
+  const [sameMonth, setSameMonth] = useState(true)
+  const [noFinalMonth, setNoFinalMonth] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -73,7 +87,25 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
   }, [])
 
   function set(key: string, value: string | boolean) {
-    setForm((f) => ({ ...f, [key]: value }))
+    setForm((f) => {
+      const next = { ...f, [key]: value }
+      if (key === 'initialMonthYear' && sameMonth) {
+        next.fynallyMonthYear = value as string
+      }
+      if (!initial) saveDraft(next)
+      return next
+    })
+  }
+
+  function handleClearDraft() {
+    clearDraft()
+    setForm({
+      name: '', account: '', category: '', value: '', manipulatedValue: '',
+      frequence: 'Mensal', registrationType: 'Compra Livre',
+      agreementDate: '', dueDate: '', dateReceived: '', hasReceived: false,
+      initialMonthYear: currentYearMonth(), fynallyMonthYear: currentYearMonth(),
+      bestReceivingDay: '', additionalMessage: '', country: 'Brasil',
+    })
   }
 
   async function submit(e: React.FormEvent) {
@@ -117,7 +149,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           registrationType: form.registrationType,
           agreementDate: form.agreementDate || null,
           initialMonthYear: form.initialMonthYear,
-          fynallyMonthYear: form.fynallyMonthYear,
+          fynallyMonthYear: noFinalMonth ? null : (sameMonth ? form.initialMonthYear : form.fynallyMonthYear),
           bestReceivingDay: parseInt(form.bestReceivingDay) || 1,
           additionalMessage: form.additionalMessage || null,
           accountType: 'Conta a Receber',
@@ -190,8 +222,8 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           </div>
         ) : (
           <div>
-            <label className="label">Melhor dia para receber</label>
-            <input className="input" type="number" min={1} max={31} value={form.bestReceivingDay} onChange={(e) => set('bestReceivingDay', e.target.value)} placeholder="Ex: 5" />
+            <label className="label">Data de Vencimento</label>
+            <input className="input" type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
           </div>
         )}
 
@@ -232,17 +264,51 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         {/* Mês/Ano — só criação */}
         {!isEdit && (
           <>
-            <div>
-              <label className="label">Mês/Ano inicial</label>
-              <select className="input" value={form.initialMonthYear} onChange={(e) => set('initialMonthYear', e.target.value)}>
-                {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Mês/Ano final</label>
-              <select className="input" value={form.fynallyMonthYear} onChange={(e) => set('fynallyMonthYear', e.target.value)}>
-                {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+            <div className="col-span-1 sm:col-span-2 space-y-3">
+              <div>
+                <label className="label">Mês/Ano inicial</label>
+                <select className="input" value={form.initialMonthYear} onChange={(e) => set('initialMonthYear', e.target.value)}>
+                  {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={sameMonth} disabled={noFinalMonth}
+                    onChange={e => {
+                      setSameMonth(e.target.checked)
+                      if (e.target.checked) set('fynallyMonthYear', form.initialMonthYear)
+                    }}
+                    className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: noFinalMonth ? 'var(--text-3)' : 'var(--text-2)' }}>
+                    Mesmo Mês/Ano final
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={noFinalMonth}
+                    onChange={e => {
+                      setNoFinalMonth(e.target.checked)
+                      if (e.target.checked) setSameMonth(false)
+                      else setSameMonth(true)
+                    }}
+                    className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: 'var(--text-2)' }}>
+                    Sem Mês/Ano final (aberto)
+                  </span>
+                </label>
+              </div>
+              {!sameMonth && !noFinalMonth && (
+                <div>
+                  <label className="label">Mês/Ano final</label>
+                  <select className="input" value={form.fynallyMonthYear} onChange={(e) => set('fynallyMonthYear', e.target.value)}>
+                    {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
+              {noFinalMonth && (
+                <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                  Mês/Ano final será enviado como aberto (null)
+                </p>
+              )}
             </div>
           </>
         )}
@@ -263,11 +329,13 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           <input className="input" type="date" value={form.agreementDate} onChange={(e) => set('agreementDate', e.target.value)} />
         </div>
 
-        {/* Data de Vencimento */}
-        <div>
-          <label className="label">Data de Vencimento</label>
-          <input className="input" type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
-        </div>
+        {/* Melhor dia para receber */}
+        {!isEdit && (
+          <div>
+            <label className="label">Melhor dia para receber</label>
+            <input className="input" type="number" min={1} max={31} value={form.bestReceivingDay} onChange={(e) => set('bestReceivingDay', e.target.value)} placeholder="Ex: 5" />
+          </div>
+        )}
 
         {/* Recebido — só edição */}
         {isEdit && (
@@ -318,12 +386,23 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         </p>
       )}
 
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="flex items-center justify-between pt-2">
+        <div>
+          {hasDraft && (
+            <button type="button" onClick={handleClearDraft}
+              className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-[var(--red-dim)]"
+              style={{ color: 'var(--text-3)' }}>
+              🗑 Limpar rascunho
+            </button>
+          )}
+        </div>
+        <div className="flex gap-3">
         <button type="button" className="btn-secondary" onClick={onCancel}>Cancelar</button>
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? <Spinner size={16} /> : null}
           {isEdit ? 'Salvar alterações' : 'Cadastrar'}
         </button>
+        </div>
       </div>
     </form>
   )

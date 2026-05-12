@@ -5,17 +5,16 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  CreditCard, TrendingUp, ChevronRight, Menu, X, LogOut, Settings,
+  CreditCard, ChevronRight, Menu, X, LogOut, Settings, Wallet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
+  { href: '/carteira',           label: 'Carteira',         icon: Wallet          },
   { href: '/contas-a-pagar',     label: 'Contas a Pagar',   icon: ArrowUpCircle   },
   { href: '/contas-a-receber',   label: 'Contas a Receber', icon: ArrowDownCircle },
-  { href: '/contas',             label: 'Contas Bancárias', icon: CreditCard      },
-  { href: '/analise',            label: 'Análise',          icon: TrendingUp      },
   { href: '/configuracoes',      label: 'Configurações',    icon: Settings        },
 ]
 
@@ -39,7 +38,7 @@ export function Sidebar() {
   const NavLinks = () => (
     <>
       {nav.map(({ href, label, icon: Icon }) => {
-        const active = href === '/' ? path === '/' : path.startsWith(href)
+        const active = href === '/' ? path === '/' || path === '' : path === href || path === href + '/'
         return (
           <Link
             key={href}

@@ -16,7 +16,7 @@ import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { SummaryCards } from '@/components/ui/SummaryCards'
 import {
   Plus, CheckCircle2, Pencil, Trash2,
-  ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign,
+  ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
 } from 'lucide-react'
 
 function sortBills(data: BillToPay[]): BillToPay[] {
@@ -41,6 +41,7 @@ function ContasAPagarPageInner() {
   const [loading, setLoading] = useState(true)
   const [showDetails, setShowDetails] = useState(false)
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
+  const [accountFilter, setAccountFilter] = useState<string>('Todos')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
@@ -84,10 +85,16 @@ function ContasAPagarPageInner() {
 
   // Filtragem local por país
   const filtered = useMemo(() => {
-    if (countryFilter === 'Todos') return bills
-    const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
-    return bills.filter((b) => getCountry(b.country) === countryFilter)
-  }, [bills, countryFilter])
+    let result = bills
+    if (countryFilter !== 'Todos') {
+      const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
+      result = result.filter(b => getCountry(b.country) === countryFilter)
+    }
+    if (accountFilter !== 'Todos') {
+      result = result.filter(b => b.account === accountFilter)
+    }
+    return result
+  }, [bills, countryFilter, accountFilter])
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -100,6 +107,39 @@ function ContasAPagarPageInner() {
   const espanhaBills = byCountry('Espanha')
   const summaryBrasil  = { total: sumValues(brasilBills),  positive: sumValues(brasilBills.filter(b => b.hasPay)),  pending: sumValues(brasilBills.filter(b => !b.hasPay))  }
   const summaryEspanha = { total: sumValues(espanhaBills), positive: sumValues(espanhaBills.filter(b => b.hasPay)), pending: sumValues(espanhaBills.filter(b => !b.hasPay)) }
+
+  // Contas únicas para filtro rápido
+  const uniqueAccounts = useMemo(() => {
+    const names = [...new Set(bills.map(b => b.account).filter(Boolean) as string[])]
+    return names.sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [bills])
+
+  // Soma por conta (baseado nos dados filtrados por país)
+  const accountSummary = useMemo(() => {
+    const source = countryFilter === 'Todos' ? bills : filtered
+    const map: Record<string, { total: number; pending: number; hex?: string; isCreditCard?: boolean; countries: Set<string> }> = {}
+    for (const b of source) {
+      const key = b.account ?? '—'
+      if (!map[key]) {
+        const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
+        map[key] = { total: 0, pending: 0, hex: acc?.colors?.backgroundColorHexadecimal, isCreditCard: acc?.isCreditCard, countries: new Set() }
+      }
+      map[key].total += b.value
+      if (!b.hasPay) map[key].pending += b.value
+      if (b.country) map[key].countries.add(b.country.trim())
+    }
+    return Object.entries(map).sort((a, b) => b[1].total - a[1].total)
+  }, [bills, filtered, countryFilter, accountMap])
+
+  // Contas de cartão de crédito (isCreditCard=true no accountMap)
+  const creditCardTotal = useMemo(() => {
+    return bills
+      .filter(b => {
+        const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
+        return acc?.isCreditCard && !b.hasPay
+      })
+      .reduce((s, b) => s + b.value, 0)
+  }, [bills, accountMap])
 
 
   async function handleDelete() {
@@ -136,20 +176,110 @@ function ContasAPagarPageInner() {
         espanha={summaryEspanha}
         labels={{ total: 'Total do mês', positive: 'Pago', pending: 'Pendente' }}
       />
+      {/* Resumo por conta */}
+      {accountSummary.length > 0 && (
+        <div className="rounded-xl overflow-hidden"
+          style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+          {accountSummary.map(([name, data], idx) => {
+            // Se todos os registros daquela conta são do mesmo país, usa a moeda desse país
+            const onlySpain = data.countries.size === 1 && data.countries.has('Espanha')
+            const curr = onlySpain ? 'Espanha' : 'Brasil'
+            return (
+              <div key={name}
+                className="flex items-center justify-between px-4 py-2.5"
+                style={{
+                  borderTop: idx > 0 ? '1px solid var(--border-1)' : undefined,
+                }}>
+                {/* Esquerda: bolinha + ícone + nome */}
+                <div className="flex items-center gap-2 min-w-0">
+                  {data.hex
+                    ? <span style={{ width: 7, height: 7, borderRadius: '50%', background: data.hex, display: 'inline-block', flexShrink: 0 }} />
+                    : <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--border-2)', display: 'inline-block', flexShrink: 0 }} />
+                  }
+                  {data.isCreditCard && <CreditCard size={11} style={{ color: 'var(--text-3)', flexShrink: 0 }} />}
+                  <span className="text-xs truncate" style={{ color: 'var(--text-3)' }}>{name}</span>
+                </div>
+                {/* Direita: total + pendente */}
+                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                  {data.pending > 0 && data.pending !== data.total && (
+                    <span className="text-xs font-mono hidden sm:inline" style={{ color: 'var(--text-3)' }}>
+                      {formatCurrency(data.pending, curr)} pend.
+                    </span>
+                  )}
+                  <span className="text-xs font-mono font-semibold"
+                    style={{ color: data.isCreditCard ? 'var(--amber)' : 'var(--text-2)' }}>
+                    {formatCurrency(data.total, curr)}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Filters bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
-        <div className="flex items-center gap-2">
-          <button
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
-            onClick={() => setShowDetails((v) => !v)}
-          >
-            {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
-            {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
-          </button>
-          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+          <div className="flex items-center gap-2">
+            <button
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+              onClick={() => setShowDetails((v) => !v)}
+            >
+              {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
+              {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+            </button>
+            <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+          </div>
         </div>
+
+        {/* Quick account filter */}
+        {uniqueAccounts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAccountFilter('Todos')}
+              className="text-xs px-3 py-1 rounded-full border transition-colors"
+              style={{
+                background: accountFilter === 'Todos' ? 'var(--bg-5)' : 'transparent',
+                border: `1px solid ${accountFilter === 'Todos' ? 'var(--border-3)' : 'var(--border-1)'}`,
+                color: accountFilter === 'Todos' ? 'var(--text-1)' : 'var(--text-3)',
+              }}
+            >
+              Todas
+            </button>
+            {uniqueAccounts.map(acc => {
+              const accData = accountMap[acc.trim().toLowerCase()]
+              const hex = accData?.colors?.backgroundColorHexadecimal
+              const active = accountFilter === acc
+              const accBills = filtered.filter(b => b.account === acc)
+              const accTotal = accBills.reduce((s, b) => s + b.value, 0)
+              const onlySpain = accBills.length > 0 && accBills.every(b => b.country?.trim() === 'Espanha')
+              const accCurr = onlySpain ? 'Espanha' : 'Brasil'
+              return (
+                <button
+                  key={acc}
+                  type="button"
+                  onClick={() => setAccountFilter(active ? 'Todos' : acc)}
+                  className="text-xs px-3 py-1 rounded-full border transition-colors flex items-center gap-1.5"
+                  style={{
+                    background: active ? (hex ? `${hex}22` : 'var(--bg-5)') : 'transparent',
+                    border: `1px solid ${active ? (hex ?? 'var(--border-3)') : 'var(--border-1)'}`,
+                    color: active ? (hex ?? 'var(--text-1)') : 'var(--text-3)',
+                  }}
+                >
+                  {hex && <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />}
+                  {acc}
+                  {active && (
+                    <span className="font-mono ml-0.5">
+                      {formatCurrency(accTotal, accCurr)}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Desktop: tabela | Mobile: cards */}

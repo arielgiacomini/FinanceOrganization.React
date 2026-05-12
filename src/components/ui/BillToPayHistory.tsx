@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatYearMonth, FREQUENCES, REGISTRATION_T
 import type { BillToPay, Account, EditBillToPayViewModel } from '@/types'
 import { Td, TRow, Spinner, Empty, Modal } from '@/components/ui'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
+import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { PayBillModal } from '@/components/ui/PayBillModal'
@@ -212,13 +213,16 @@ function BulkEditForm({ selected, onSuccess, onCancel }: BulkEditFormProps) {
         {/* ── Editáveis ── */}
         <div>
           <label className="label flex items-center gap-1.5">
-            Valor (R$)
+            Valor
             {hasMultipleValues.value && (
               <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>
             )}
           </label>
-          <input className="input" type="text" inputMode="decimal"
-            value={form.value} onChange={e => set('value', e.target.value)} />
+          <CurrencyInput
+            value={form.value}
+            country={form.country}
+            onChange={v => set('value', v)}
+          />
         </div>
 
         <div>

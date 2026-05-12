@@ -8,7 +8,8 @@ import {
   saveFrequences, saveRegistrationTypes,
   DEFAULT_FREQUENCES, DEFAULT_REGISTRATION_TYPES,
 } from '@/lib/utils'
-import { Plus, Trash2, GripVertical, RotateCcw, Save } from 'lucide-react'
+import { Plus, Trash2, GripVertical, RotateCcw, Save, CreditCard, ChevronRight } from 'lucide-react'
+import Link from 'next/link'
 
 interface EditableListProps {
   title: string
@@ -151,6 +152,23 @@ function ConfiguracoesInner() {
       >
         As opções são salvas localmente no seu navegador e aplicadas em todos os formulários de cadastro e edição.
       </div>
+
+      {/* Contas Bancárias */}
+      <Link href="/contas"
+        className="card px-5 py-4 flex items-center justify-between transition-colors hover:bg-[var(--bg-3)] cursor-pointer"
+        style={{ textDecoration: 'none' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--bg-4)', color: 'var(--text-2)' }}>
+            <CreditCard size={16} />
+          </div>
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Contas Bancárias</p>
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>Visualize suas contas e cartões cadastrados na API</p>
+          </div>
+        </div>
+        <ChevronRight size={16} style={{ color: 'var(--text-3)' }} />
+      </Link>
 
       <EditableList
         title="Frequências"
