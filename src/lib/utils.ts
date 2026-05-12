@@ -93,5 +93,36 @@ export function cn(...classes: (string | undefined | false | null)[]): string {
   return classes.filter(Boolean).join(' ')
 }
 
-export const FREQUENCES = ['Mensal', 'Anual', 'Única', 'Quinzenal', 'Semanal']
-export const REGISTRATION_TYPES = ['Compra Livre', 'Conta Fixa']
+export const DEFAULT_FREQUENCES = ['Livre', 'Mensal', 'Mensal:Recorrente', 'Apenas desta vez']
+export const DEFAULT_REGISTRATION_TYPES = ['Compra Livre', 'Conta/Fatura Fixa']
+
+const FREQ_KEY = 'finance_frequences'
+const REG_KEY  = 'finance_registration_types'
+
+export function getFrequences(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_FREQUENCES
+  try {
+    const v = localStorage.getItem(FREQ_KEY)
+    return v ? JSON.parse(v) : DEFAULT_FREQUENCES
+  } catch { return DEFAULT_FREQUENCES }
+}
+
+export function getRegistrationTypes(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_REGISTRATION_TYPES
+  try {
+    const v = localStorage.getItem(REG_KEY)
+    return v ? JSON.parse(v) : DEFAULT_REGISTRATION_TYPES
+  } catch { return DEFAULT_REGISTRATION_TYPES }
+}
+
+export function saveFrequences(list: string[]) {
+  localStorage.setItem(FREQ_KEY, JSON.stringify(list))
+}
+
+export function saveRegistrationTypes(list: string[]) {
+  localStorage.setItem(REG_KEY, JSON.stringify(list))
+}
+
+// Manter retrocompatibilidade
+export const FREQUENCES = DEFAULT_FREQUENCES
+export const REGISTRATION_TYPES = DEFAULT_REGISTRATION_TYPES

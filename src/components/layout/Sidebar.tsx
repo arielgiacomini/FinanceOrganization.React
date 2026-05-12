@@ -5,17 +5,18 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  CreditCard, TrendingUp, ChevronRight, Menu, X, LogOut,
+  CreditCard, TrendingUp, ChevronRight, Menu, X, LogOut, Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 
 const nav = [
-  { href: '/',                 label: 'Dashboard',        icon: LayoutDashboard },
-  { href: '/contas-a-pagar',   label: 'Contas a Pagar',   icon: ArrowUpCircle   },
-  { href: '/contas-a-receber', label: 'Contas a Receber', icon: ArrowDownCircle },
-  { href: '/contas',           label: 'Contas Bancárias', icon: CreditCard      },
-  { href: '/analise',          label: 'Análise',          icon: TrendingUp      },
+  { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
+  { href: '/contas-a-pagar',     label: 'Contas a Pagar',   icon: ArrowUpCircle   },
+  { href: '/contas-a-receber',   label: 'Contas a Receber', icon: ArrowDownCircle },
+  { href: '/contas',             label: 'Contas Bancárias', icon: CreditCard      },
+  { href: '/analise',            label: 'Análise',          icon: TrendingUp      },
+  { href: '/configuracoes',      label: 'Configurações',    icon: Settings        },
 ]
 
 export function Sidebar() {
