@@ -7,8 +7,9 @@ import type { MonthlyAverage } from '@/types'
 import { PageHeader, Spinner, Empty } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { AppLayout } from '@/components/layout/AppLayout'
 
-export default function AnalisePage() {
+function AnalisePageInner() {
   const [ym, setYm] = useState(currentYearMonth())
   const [data, setData] = useState<MonthlyAverage[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,4 +92,8 @@ export default function AnalisePage() {
       )}
     </div>
   )
+}
+
+export default function AnalisePage() {
+  return <AppLayout><AnalisePageInner /></AppLayout>
 }

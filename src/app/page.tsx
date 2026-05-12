@@ -9,6 +9,7 @@ import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
 import { ArrowUpCircle, ArrowDownCircle, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
+import { AppLayout } from '@/components/layout/AppLayout'
 
 function StatMini({ label, value, color }: { label: string; value: string; color: string }) {
   return (
@@ -152,7 +153,7 @@ function CountryBlock({ flag, country, bills, receivables, currency }: CountryBl
   )
 }
 
-export default function DashboardPage() {
+function DashboardPageInner() {
   const ym = currentYearMonth()
   const [bills, setBills] = useState<BillToPay[]>([])
   const [receivables, setReceivables] = useState<CashReceivable[]>([])
@@ -236,4 +237,8 @@ export default function DashboardPage() {
       />
     </div>
   )
+}
+
+export default function DashboardPage() {
+  return <AppLayout><DashboardPageInner /></AppLayout>
 }
