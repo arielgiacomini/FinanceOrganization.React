@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { cashReceivableApi, accountsApi, categoriesApi } from '@/lib/api'
-import { FREQUENCES, REGISTRATION_TYPES, generateYearMonthOptions, currentYearMonth, formatCurrency } from '@/lib/utils'
+import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth, formatCurrency } from '@/lib/utils'
 import type { CashReceivable, Account } from '@/types'
 import { Spinner } from '@/components/ui'
+import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 
 interface CashReceivableFormProps {
@@ -34,6 +36,8 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [frequenceList] = useState(() => getFrequences())
+  const [regTypeList] = useState(() => getRegistrationTypes())
 
   const [form, setForm] = useState({
     name:              initial?.name ?? '',
@@ -59,7 +63,11 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
       accountsApi.searchAll(),
       categoriesApi.search({ accountType: 'Conta a Receber', enable: true }),
     ]).then(([accRes, cats]) => {
-      setAccounts(accRes.data ?? [])
+      setAccounts(
+        (accRes.data ?? [])
+          .filter(a => a.enable)
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+      )
       setCategories(cats ?? [])
     }).catch(() => {})
   }, [])
@@ -99,6 +107,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         }
         await cashReceivableApi.edit(vm as never)
       } else {
+        const now = new Date().toISOString()
         const vm = {
           name: form.name,
           account: form.account,
@@ -106,13 +115,15 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           value: parseFloat(form.value.replace(',', '.')) || 0,
           frequence: form.frequence,
           registrationType: form.registrationType,
-          agreementDate: form.agreementDate || undefined,
+          agreementDate: form.agreementDate || null,
           initialMonthYear: form.initialMonthYear,
           fynallyMonthYear: form.fynallyMonthYear,
           bestReceivingDay: parseInt(form.bestReceivingDay) || 1,
-          additionalMessage: form.additionalMessage || undefined,
+          additionalMessage: form.additionalMessage || null,
           accountType: 'Conta a Receber',
           country: form.country,
+          creationDate: now,
+          lastChangeDate: null,
         }
         await cashReceivableApi.create(vm as never)
       }
@@ -146,16 +157,22 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         {/* Categoria */}
         <div>
           <label className="label">Categoria</label>
-          <select className="input" value={form.category} onChange={(e) => set('category', e.target.value)}>
-            <option value="">Selecione...</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <SearchableSelect
+            value={form.category}
+            options={categories}
+            onChange={(v) => set('category', v)}
+          />
         </div>
 
         {/* Valor */}
         <div>
           <label className="label">Valor *</label>
-          <input className="input" type="text" inputMode="decimal" value={form.value} onChange={(e) => set('value', e.target.value)} placeholder="0,00" required />
+          <CurrencyInput
+            value={form.value}
+            country={form.country}
+            onChange={(v) => set('value', v)}
+            required
+          />
         </div>
 
         {/* Valor Manipulado — só na edição */}
@@ -165,7 +182,11 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
               Saldo (Valor Manipulado)
               <span className="ml-1.5 text-xs" style={{ color: 'var(--text-3)' }}>— saldo disponível</span>
             </label>
-            <input className="input" type="text" inputMode="decimal" value={form.manipulatedValue} onChange={(e) => set('manipulatedValue', e.target.value)} placeholder="0,00" />
+            <CurrencyInput
+              value={form.manipulatedValue}
+              country={form.country}
+              onChange={(v) => set('manipulatedValue', v)}
+            />
           </div>
         ) : (
           <div>
@@ -196,7 +217,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         <div>
           <label className="label">Frequência</label>
           <select className="input" value={form.frequence} onChange={(e) => set('frequence', e.target.value)}>
-            {FREQUENCES.map((f) => <option key={f} value={f}>{f}</option>)}
+            {frequenceList.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
         </div>
 
@@ -204,7 +225,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         <div>
           <label className="label">Tipo de Registro</label>
           <select className="input" value={form.registrationType} onChange={(e) => set('registrationType', e.target.value)}>
-            {REGISTRATION_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
+            {regTypeList.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
 

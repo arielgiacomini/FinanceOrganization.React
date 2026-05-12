@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { billsToPayApi, accountsApi, categoriesApi } from '@/lib/api'
-import { FREQUENCES, REGISTRATION_TYPES, generateYearMonthOptions, currentYearMonth } from '@/lib/utils'
+import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth } from '@/lib/utils'
 import type { BillToPay, Account } from '@/types'
 import { Spinner } from '@/components/ui'
+import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 
 interface BillToPayFormProps {
@@ -26,6 +28,8 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [frequenceList] = useState(() => getFrequences())
+  const [regTypeList] = useState(() => getRegistrationTypes())
 
   const [form, setForm] = useState({
     name: initial?.name ?? '',
@@ -48,7 +52,11 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
       accountsApi.searchAll(),
       categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }),
     ]).then(([accRes, cats]) => {
-      setAccounts(accRes.data ?? [])
+      setAccounts(
+        (accRes.data ?? [])
+          .filter(a => a.enable)
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+      )
       setCategories(cats ?? [])
     }).catch(() => {})
   }, [])
@@ -83,6 +91,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
         }
         await billsToPayApi.edit(vm as never)
       } else {
+        const now = new Date().toISOString()
         const vm = {
           name: form.name,
           account: form.account,
@@ -92,11 +101,13 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           registrationType: form.registrationType,
           initialMonthYear: form.initialMonthYear,
           fynallyMonthYear: form.fynallyMonthYear,
-          purchaseDate: form.purchaseDate || undefined,
-          bestPayDay: form.bestPayDay ? parseInt(form.bestPayDay) : undefined,
-          additionalMessage: form.additionalMessage || undefined,
+          purchaseDate: form.purchaseDate || null,
+          bestPayDay: form.bestPayDay ? parseInt(form.bestPayDay) : null,
+          additionalMessage: form.additionalMessage || null,
           accountType: 'Conta a Pagar',
           country: form.country,
+          creationDate: now,
+          lastChangeDate: null,
         }
         await billsToPayApi.create(vm as never)
       }
@@ -127,15 +138,21 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
 
         <div>
           <label className="label">Categoria</label>
-          <select className="input" value={form.category} onChange={(e) => set('category', e.target.value)}>
-            <option value="">Selecione...</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <SearchableSelect
+            value={form.category}
+            options={categories}
+            onChange={(v) => set('category', v)}
+          />
         </div>
 
         <div>
-          <label className="label">Valor (R$) *</label>
-          <input className="input" type="text" inputMode="decimal" value={form.value} onChange={(e) => set('value', e.target.value)} placeholder="0,00" required />
+          <label className="label">Valor *</label>
+          <CurrencyInput
+            value={form.value}
+            country={form.country}
+            onChange={(v) => set('value', v)}
+            required
+          />
         </div>
 
         {/* País */}
@@ -178,14 +195,14 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
             <div>
               <label className="label">Frequência</label>
               <select className="input" value={form.frequence} onChange={(e) => set('frequence', e.target.value)}>
-                {FREQUENCES.map((f) => <option key={f} value={f}>{f}</option>)}
+                {frequenceList.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
 
             <div>
               <label className="label">Tipo de Registro</label>
               <select className="input" value={form.registrationType} onChange={(e) => set('registrationType', e.target.value)}>
-                {REGISTRATION_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {regTypeList.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
 
