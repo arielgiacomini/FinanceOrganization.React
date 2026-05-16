@@ -10,6 +10,7 @@ import { normalizeCountry } from '@/components/ui/CountryTabs'
 import { ArrowUpCircle, ArrowDownCircle, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { FinanceChart } from '@/components/ui/FinanceChart'
 
 function StatMini({ label, value, color }: { label: string; value: string; color: string }) {
   return (
@@ -217,6 +218,9 @@ function DashboardPageInner() {
           color="var(--text-2)"
         />
       </div>
+
+      {/* Gráfico de Evolução Financeira */}
+      <FinanceChart monthsRange={12} />
 
       {/* Brasil */}
       <CountryBlock

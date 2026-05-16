@@ -5,6 +5,7 @@ import { cashReceivableApi, accountsApi, categoriesApi } from '@/lib/api'
 import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth, formatCurrency } from '@/lib/utils'
 import type { CashReceivable, Account } from '@/types'
 import { Spinner } from '@/components/ui'
+import { Plus, Minus, RefreshCw } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
@@ -69,6 +70,11 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
     country:           initial?.country ?? draft?.country as string ?? 'Brasil',
   })
   const hasDraft = !initial && !!draft
+  const [adjustOpen, setAdjustOpen] = useState(false)
+  const [adjustOp, setAdjustOp]     = useState<'add' | 'sub'>('sub')
+  const [adjustAmount, setAdjustAmount] = useState('')
+  const [adjustValue, setAdjustValue] = useState(true)
+  const [adjustManip, setAdjustManip] = useState(true)
   const [sameMonth, setSameMonth] = useState(true)
   const [noFinalMonth, setNoFinalMonth] = useState(false)
 
@@ -95,6 +101,22 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
       if (!initial) saveDraft(next)
       return next
     })
+  }
+
+  function applyAdjust() {
+    const amount = parseFloat(adjustAmount.replace(',', '.')) || 0
+    if (amount <= 0 || (!adjustValue && !adjustManip)) return
+    const currentValue = parseFloat(form.value.replace(',', '.')) || 0
+    const currentManip = parseFloat(form.manipulatedValue.replace(',', '.')) || 0
+    const delta = adjustOp === 'add' ? amount : -amount
+    if (adjustValue) {
+      set('value', (currentValue + delta).toFixed(2))
+    }
+    if (adjustManip) {
+      set('manipulatedValue', (currentManip + delta).toFixed(2))
+    }
+    setAdjustOpen(false)
+    setAdjustAmount('')
   }
 
   function handleClearDraft() {
@@ -197,14 +219,146 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         </div>
 
         {/* Valor */}
-        <div>
-          <label className="label">Valor *</label>
+        <div className={isEdit && adjustOpen ? "col-span-1 sm:col-span-2" : ""}>
+          <label className="label flex items-center justify-between">
+            <span>Valor *</span>
+            {isEdit && (
+              <button type="button"
+                onClick={() => { setAdjustOpen(v => !v); setAdjustAmount(''); setAdjustOp('sub') }}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md transition-colors"
+                style={{
+                  color: adjustOpen ? 'var(--green-400)' : 'var(--blue)',
+                  background: adjustOpen ? 'var(--green-dim)' : undefined,
+                }}>
+                <RefreshCw size={11} /> {adjustOpen ? 'Fechar reajuste' : 'Reajustar'}
+              </button>
+            )}
+          </label>
           <CurrencyInput
             value={form.value}
             country={form.country}
             onChange={(v) => set('value', v)}
             required
           />
+
+          {/* Painel de reajuste expansível */}
+          {isEdit && adjustOpen && (
+            <div className="mt-3 rounded-xl p-4 space-y-3 animate-slide-up"
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--blue-dim-border, rgba(96,165,250,0.3))' }}>
+              <div className="flex items-center gap-2">
+                <RefreshCw size={14} style={{ color: 'var(--blue)' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Reajustar valor</span>
+              </div>
+
+              {/* Operação */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Operação</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustOp('sub')}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
+                      style={{
+                        background: adjustOp === 'sub' ? 'var(--red-dim)' : 'var(--bg-2)',
+                        borderColor: adjustOp === 'sub' ? 'var(--red)' : 'var(--border-1)',
+                        color: adjustOp === 'sub' ? 'var(--red)' : 'var(--text-2)',
+                      }}>
+                      <Minus size={14} /> Subtrair
+                    </button>
+                    <button type="button" onClick={() => setAdjustOp('add')}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
+                      style={{
+                        background: adjustOp === 'add' ? 'var(--green-dim)' : 'var(--bg-2)',
+                        borderColor: adjustOp === 'add' ? 'var(--green-border)' : 'var(--border-1)',
+                        color: adjustOp === 'add' ? 'var(--green-400)' : 'var(--text-2)',
+                      }}>
+                      <Plus size={14} /> Somar
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="label">Valor do reajuste</label>
+                  <CurrencyInput
+                    value={adjustAmount}
+                    country={form.country}
+                    onChange={setAdjustAmount}
+                  />
+                </div>
+              </div>
+
+              {/* Onde aplicar */}
+              <div>
+                <label className="label">Aplicar em</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={adjustValue}
+                      onChange={e => setAdjustValue(e.target.checked)}
+                      className="w-4 h-4 rounded accent-green-500" />
+                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>Aplicar no Valor</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={adjustManip}
+                      onChange={e => setAdjustManip(e.target.checked)}
+                      className="w-4 h-4 rounded accent-green-500" />
+                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>Aplicar em Valor Manipulado</span>
+                  </label>
+                </div>
+                {!adjustValue && !adjustManip && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--red)' }}>Selecione ao menos um campo.</p>
+                )}
+              </div>
+
+              {/* Preview */}
+              {adjustAmount && parseFloat(adjustAmount.replace(',', '.')) > 0 && (adjustValue || adjustManip) && (
+                <div className="rounded-lg px-3 py-2.5 text-xs space-y-1.5"
+                  style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                  <div className="flex items-center justify-between font-medium"
+                    style={{ color: adjustOp === 'add' ? 'var(--green-400)' : 'var(--red)' }}>
+                    <span>{adjustOp === 'add' ? '+ Soma' : '− Subtração'}:</span>
+                    <span className="font-mono">{(parseFloat(adjustAmount.replace(',', '.')) || 0).toFixed(2)}</span>
+                  </div>
+                  {adjustValue && (
+                    <div className="flex items-center justify-between pt-1.5 border-t"
+                      style={{ borderColor: 'var(--border-1)' }}>
+                      <span style={{ color: 'var(--text-3)' }}>
+                        Aplicar no Valor: <span className="font-mono">{(parseFloat(form.value.replace(',', '.')) || 0).toFixed(2)}</span> →
+                      </span>
+                      <span className="font-mono font-bold" style={{ color: 'var(--text-1)' }}>
+                        {(
+                          (parseFloat(form.value.replace(',', '.')) || 0) +
+                          (adjustOp === 'add' ? 1 : -1) * (parseFloat(adjustAmount.replace(',', '.')) || 0)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {adjustManip && (
+                    <div className="flex items-center justify-between"
+                      style={{ borderTop: !adjustValue ? '1px solid var(--border-1)' : undefined, paddingTop: !adjustValue ? 6 : 0 }}>
+                      <span style={{ color: 'var(--text-3)' }}>
+                        Aplicar em Valor Manipulado: <span className="font-mono">{(parseFloat(form.manipulatedValue.replace(',', '.')) || 0).toFixed(2)}</span> →
+                      </span>
+                      <span className="font-mono font-bold" style={{ color: 'var(--text-1)' }}>
+                        {(
+                          (parseFloat(form.manipulatedValue.replace(',', '.')) || 0) +
+                          (adjustOp === 'add' ? 1 : -1) * (parseFloat(adjustAmount.replace(',', '.')) || 0)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }}
+                  onClick={() => setAdjustOpen(false)}>Cancelar</button>
+                <button type="button" className="btn-primary" style={{ fontSize: 12, padding: '6px 12px' }}
+                  onClick={applyAdjust}
+                  disabled={!adjustAmount || parseFloat(adjustAmount.replace(',', '.')) <= 0 || (!adjustValue && !adjustManip)}>
+                  Aplicar reajuste
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Valor Manipulado — só na edição */}
@@ -221,6 +375,14 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
             />
           </div>
         ) : (
+          <div>
+            <label className="label">Data de Vencimento</label>
+            <input className="input" type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+          </div>
+        )}
+
+        {/* Data de Vencimento — visível também no modo edição */}
+        {isEdit && (
           <div>
             <label className="label">Data de Vencimento</label>
             <input className="input" type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
@@ -385,7 +547,6 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           {error}
         </p>
       )}
-
       <div className="flex items-center justify-between pt-2">
         <div>
           {hasDraft && (
