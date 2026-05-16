@@ -12,9 +12,9 @@ import type { BillToPay, CashReceivable } from '@/types'
 interface ChartPoint {
   yearMonth: string
   label: string
-  despesaEspanha: number      // CasaES (gastos Espanha em €)
-  investAcumEspanha: number   // acumulado investimento Espanha em €
-  saldoBrasil: number          // ReceitaBR - GastosBR (R$)
+  despesaEspanha: number
+  investAcumEspanha: number
+  saldoBrasil: number
 }
 
 const MONTHS: Record<string, number> = {
@@ -43,8 +43,46 @@ function formatBrl(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 }
 
+function loadPlrName(): string {
+  try {
+    const raw = localStorage.getItem('finance_plr_config')
+    if (raw) return JSON.parse(raw).name ?? ''
+  } catch {}
+  return 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)'
+}
+
+function loadSaldoFinalYm(): string {
+  try {
+    const raw = localStorage.getItem('finance_plr_config')
+    if (raw) return JSON.parse(raw).saldoFinalYm ?? ''
+  } catch {}
+  return ''
+}
+
+function loadContasBancariasTotal(): number {
+  try {
+    const raw = localStorage.getItem('finance_wallet')
+    if (!raw) return 0
+    const wallet = JSON.parse(raw)
+    const group = wallet.groups?.find((g: any) =>
+      g.label?.trim().toLowerCase() === 'contas bancárias' ||
+      g.label?.trim().toLowerCase() === 'contas bancarias'
+    )
+    if (!group) return 0
+    return (group.boxes ?? [])
+      .filter((b: any) => b.currency === 'Brasil')
+      .reduce((s: number, b: any) => s + (parseFloat(b.value) || 0), 0)
+  } catch { return 0 }
+}
+
+function numToYm(n: number): string {
+  const year = Math.floor(n / 12)
+  const month = n % 12
+  const monthName = Object.keys(MONTHS).find(k => MONTHS[k] === month)!
+  return `${monthName}/${year}`
+}
+
 interface FinanceChartProps {
-  /** Quantos meses no passado e futuro mostrar */
   monthsRange?: number
 }
 
@@ -58,21 +96,48 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     async function load() {
       setLoading(true)
       try {
-        // Define janela: 3 meses atrás → +monthsRange à frente
+        const plrName = loadPlrName()
+
         const now = new Date()
         const curYm = now.getFullYear() * 12 + now.getMonth()
         const startYm = curYm - 3
         const endYm = curYm + monthsRange
 
-        // Busca todos os meses dentro da janela em paralelo
+        // ── Meses do gráfico ──────────────────────────────────────────────────
         const monthList: string[] = []
         for (let n = startYm; n <= endYm; n++) {
-          const year = Math.floor(n / 12)
-          const month = n % 12
-          const monthName = Object.keys(MONTHS).find(k => MONTHS[k] === month)!
-          monthList.push(`${monthName}/${year}`)
+          monthList.push(numToYm(n))
         }
 
+        // ── PLR: busca próximos 24 meses e soma manipulatedValue pelo nome ────
+        let plrTotal = 0
+        if (plrName) {
+          const plrMonths: string[] = []
+          for (let n = curYm; n <= curYm + 24; n++) {
+            plrMonths.push(numToYm(n))
+          }
+          const plrResults = await Promise.all(
+            plrMonths.map(ym =>
+              cashReceivableApi.search({ yearMonth: ym, showDetails: false })
+                .then(r => r.output?.data ?? [])
+                .catch(() => [] as CashReceivable[])
+            )
+          )
+          for (const recList of plrResults) {
+            for (const r of recList as CashReceivable[]) {
+              if (r.name?.trim() === plrName.trim()) {
+                plrTotal += r.manipulatedValue ?? 0
+              }
+            }
+          }
+        }
+
+        // ── SALDO FINAL = Total Contas Bancárias − PLR total ─────────────────
+        const contasBancariasTotal = loadContasBancariasTotal()
+        const saldoFinal = contasBancariasTotal - plrTotal
+        const saldoFinalYm = loadSaldoFinalYm()
+
+        // ── Dados mensais do gráfico ──────────────────────────────────────────
         const results = await Promise.all(
           monthList.map(async (ym) => {
             const [bills, rec] = await Promise.all([
@@ -89,35 +154,37 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
         if (cancelled) return
 
-        // Acumulado de investimento Espanha cresce mês a mês
-        // No Excel parece ser cumulativo de receitas Espanha - despesas Espanha
         let investAcum = 0
 
         const points: ChartPoint[] = results.map(({ ym, bills, rec }) => {
           const billsList = bills as BillToPay[]
           const recList = rec as CashReceivable[]
 
-          // Despesa Espanha = soma de todas as contas a pagar da Espanha no mês
+          // Despesa Espanha = todas as contas a pagar da Espanha (independente de hasPay)
           const despesaEspanha = billsList
             .filter(b => isEspanha(b.country))
             .reduce((s, b) => s + (b.value ?? 0), 0)
 
-          // Receita Espanha do mês (para acumular)
+          // Receita Espanha (para acumular investimento)
           const receitaEspanha = recList
             .filter(r => isEspanha(r.country))
             .reduce((s, r) => s + (r.value ?? 0), 0)
 
-          // Investimento Espanha acumula receita - despesa do mês
           investAcum += (receitaEspanha - despesaEspanha)
 
-          // Saldo Brasil = receitas BR - despesas BR
+          // Despesa Brasil = contas a pagar Brasil onde hasPay === false
           const despesaBR = billsList
-            .filter(b => !isEspanha(b.country))
+            .filter(b => !isEspanha(b.country) && !b.hasPay)
             .reduce((s, b) => s + (b.value ?? 0), 0)
+
+          // Receita Brasil = manipulatedValue dos recebíveis Brasil do mês
+          // + Saldo Final da Carteira APENAS no mês corrente (equivale ao J8 do Excel)
           const receitaBR = recList
             .filter(r => !isEspanha(r.country))
-            .reduce((s, r) => s + (r.value ?? 0), 0)
-          const saldoBrasil = receitaBR - despesaBR
+            .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+
+          const isCurrentMonth = saldoFinalYm ? ym === saldoFinalYm : false
+          const saldoBrasil = (receitaBR + (isCurrentMonth ? saldoFinal : 0)) - despesaBR
 
           return {
             yearMonth: ym,
@@ -146,7 +213,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     )
   }
 
-  // Custom tooltip
   function CustomTooltip({ active, payload, label }: any) {
     if (!active || !payload || !payload.length) return null
     return (
@@ -189,7 +255,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               stroke="var(--border-2)"
               interval="preserveStartEnd"
             />
-            {/* Eixo esquerdo: € */}
             <YAxis
               yAxisId="left"
               tick={{ fontSize: 10, fill: 'var(--text-3)' }}
@@ -197,7 +262,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toString()}
               label={{ value: '€', angle: 0, position: 'insideTopLeft', fill: 'var(--text-3)', fontSize: 11 }}
             />
-            {/* Eixo direito: R$ */}
             <YAxis
               yAxisId="right"
               orientation="right"
@@ -209,7 +273,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
 
-            {/* Área vermelha — Despesa Espanha */}
             <Area
               yAxisId="left"
               type="monotone"
@@ -220,8 +283,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               stroke="#dc2626"
               strokeWidth={1.5}
             />
-
-            {/* Linha azul — Acumulado Investimento Espanha */}
             <Line
               yAxisId="left"
               type="monotone"
@@ -232,8 +293,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               dot={false}
               activeDot={{ r: 4 }}
             />
-
-            {/* Linha verde — Saldo Brasil */}
             <Line
               yAxisId="right"
               type="monotone"

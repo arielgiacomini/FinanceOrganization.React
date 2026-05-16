@@ -34,6 +34,42 @@ interface WalletData {
 }
 
 const STORAGE_KEY = 'finance_wallet'
+const PLR_CONFIG_KEY = 'finance_plr_config'
+
+export function loadPlrConfig(): string {
+  try {
+    const raw = localStorage.getItem(PLR_CONFIG_KEY)
+    if (raw) return JSON.parse(raw).name ?? ''
+  } catch {}
+  return 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)'
+}
+
+export function loadSaldoFinalYm(): string {
+  try {
+    const raw = localStorage.getItem(PLR_CONFIG_KEY)
+    if (raw) return JSON.parse(raw).saldoFinalYm ?? ''
+  } catch {}
+  return ''
+}
+
+function savePlrConfig(name: string, saldoFinalYm: string) {
+  localStorage.setItem(PLR_CONFIG_KEY, JSON.stringify({ name, saldoFinalYm }))
+}
+
+// Retorna a soma de todas as caixinhas BRL do grupo "Contas Bancárias"
+export function loadContasBancariasTotal(): number {
+  try {
+    const wallet: WalletData = loadWallet()
+    const group = wallet.groups.find(g =>
+      g.label.trim().toLowerCase() === 'contas bancárias' ||
+      g.label.trim().toLowerCase() === 'contas bancarias'
+    )
+    if (!group) return 0
+    return group.boxes
+      .filter(b => b.currency === 'Brasil')
+      .reduce((s, b) => s + (parseFloat(b.value) || 0), 0)
+  } catch { return 0 }
+}
 
 const BOX_COLORS = [
   '#16a34a', '#2563eb', '#7c3aed', '#db2777',
@@ -283,13 +319,20 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
 
 function CarteiraInner() {
   const [wallet, setWallet] = useState<WalletData>({ groups: [] })
+  const [plrName, setPlrName] = useState('')
+  const [saldoFinalYm, setSaldoFinalYm] = useState('')
+  const [plrSaved, setPlrSaved] = useState(false)
   const [ym, setYm] = useState(currentYearMonth())
   const [pendingBills, setPendingBills] = useState(0)
   const [pendingReceivables, setPendingReceivables] = useState(0)
   const [loadingAPI, setLoadingAPI] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => { setWallet(loadWallet()) }, [])
+  useEffect(() => {
+    setWallet(loadWallet())
+    setPlrName(loadPlrConfig())
+    setSaldoFinalYm(loadSaldoFinalYm())
+  }, [])
 
   const fetchAPI = useCallback(async () => {
     setLoadingAPI(true)
@@ -407,6 +450,54 @@ function CarteiraInner() {
           {formatCurrency(saldoFinal, 'Brasil')}
         </span>
         {loadingAPI && <Spinner size={14} />}
+      </div>
+
+      {/* Configurações do Gráfico */}
+      <div className="card overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b"
+          style={{ borderColor: 'var(--border-1)', background: 'var(--bg-3)' }}>
+          <TrendingUp size={14} style={{ color: 'var(--green-400)' }} />
+          <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+            Configurações do Gráfico
+          </span>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="label">Nome do PLR (empréstimo próximos meses)</label>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                Busca todos os recebíveis com esse nome nos próximos 24 meses e soma ao cálculo de receita do gráfico.
+              </p>
+              <input
+                className="input w-full"
+                value={plrName}
+                onChange={e => setPlrName(e.target.value)}
+                placeholder="Ex: PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)"
+              />
+            </div>
+            <div>
+              <label className="label">Mês/Ano do Saldo Final</label>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                Mês em que o Saldo Final da Carteira entra na Receita Brasil do gráfico.
+              </p>
+              <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                className="btn-primary px-4 flex items-center gap-2 w-full justify-center"
+                onClick={() => {
+                  savePlrConfig(plrName, saldoFinalYm)
+                  setPlrSaved(true)
+                  setTimeout(() => setPlrSaved(false), 2000)
+                }}
+              >
+                {plrSaved ? <Check size={14} /> : <Edit2 size={14} />}
+                {plrSaved ? 'Configurações salvas!' : 'Salvar configurações'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Groups */}
