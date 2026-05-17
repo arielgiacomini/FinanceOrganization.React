@@ -110,7 +110,14 @@ function ContasAPagarPageInner() {
 
   // Contas únicas para filtro rápido
   const uniqueAccounts = useMemo(() => {
-    const names = [...new Set(bills.map(b => b.account).filter(Boolean) as string[])]
+    const seen: Record<string, true> = {}
+    const names: string[] = []
+    for (const b of bills) {
+      if (b.account && !seen[b.account]) {
+        seen[b.account] = true
+        names.push(b.account)
+      }
+    }
     return names.sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [bills])
 

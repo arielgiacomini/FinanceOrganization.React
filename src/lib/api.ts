@@ -215,7 +215,7 @@ export interface WalletRegisterOutput {
 
 export const walletApi = {
   search: () =>
-    request<WalletSearchOutput>('/v1/wallet/search', 'GET'),
+    request<WalletSearchOutput>('/v1/wallet/search', 'POST', {}),
 
   register: (walletKey: string, walletValue: string, existingId?: string) =>
     request<WalletRegisterOutput>('/v1/wallet/register', 'POST', {

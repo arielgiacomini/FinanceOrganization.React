@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { billsToPayApi, cashReceivableApi } from '@/lib/api'
+import {
+  loadPlrName,
+  loadSaldoFinalYm,
+  loadValeCategoria,
+  loadNomeGrupoEspanha,
+  loadContasBancariasTotal,
+  loadContasBancariasEspanha,
+  loadGruposNomes,
+} from '@/lib/wallet'
 import { Spinner } from '@/components/ui'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
@@ -43,45 +52,9 @@ function formatBrl(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
 
-function loadPlrName(): string {
-  try {
-    const raw = localStorage.getItem('finance_plr_config')
-    if (raw) return JSON.parse(raw).name ?? ''
-  } catch {}
-  return 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)'
-}
 
-function loadSaldoFinalYm(): string {
-  try {
-    const raw = localStorage.getItem('finance_plr_config')
-    if (raw) return JSON.parse(raw).saldoFinalYm ?? ''
-  } catch {}
-  return ''
-}
 
-function loadValeCategoria(): string {
-  try {
-    const raw = localStorage.getItem('finance_plr_config')
-    if (raw) return JSON.parse(raw).valeCategoria ?? ''
-  } catch {}
-  return 'Vale Alimentação/Refeição'
-}
 
-function loadContasBancariasTotal(): number {
-  try {
-    const raw = localStorage.getItem('finance_wallet')
-    if (!raw) return 0
-    const wallet = JSON.parse(raw)
-    const group = wallet.groups?.find((g: any) =>
-      g.label?.trim().toLowerCase() === 'contas bancárias' ||
-      g.label?.trim().toLowerCase() === 'contas bancarias'
-    )
-    if (!group) return 0
-    return (group.boxes ?? [])
-      .filter((b: any) => b.currency === 'Brasil')
-      .reduce((s: number, b: any) => s + (parseFloat(b.value) || 0), 0)
-  } catch { return 0 }
-}
 
 function numToYm(n: number): string {
   const year = Math.floor(n / 12)
@@ -101,29 +74,6 @@ interface CalcSnapshot {
   nomeGrupoEspanha: string
   gruposEncontrados: string[]
   despesaEspanhaTotal: number
-}
-
-function loadNomeGrupoEspanha(): string {
-  try {
-    const raw = localStorage.getItem('finance_plr_config')
-    if (raw) return JSON.parse(raw).nomeGrupoEspanha ?? ''
-  } catch {}
-  return 'Conta Bancária Espanha'
-}
-
-function loadContasBancariasEspanha(): number {
-  try {
-    const raw = localStorage.getItem('finance_wallet')
-    if (!raw) return 0
-    const wallet = JSON.parse(raw)
-    const nome = loadNomeGrupoEspanha().trim().toLowerCase()
-    const group = wallet.groups?.find((g: any) =>
-      g.label?.trim().toLowerCase() === nome
-    )
-    if (!group) return 0
-    return (group.boxes ?? [])
-      .reduce((s: number, b: any) => s + (parseFloat(b.value) || 0), 0)
-  } catch { return 0 }
 }
 
 interface FinanceChartProps {
@@ -207,12 +157,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         const nomeGrupoEspanha = loadNomeGrupoEspanha()
         const contasBancariasEspanha = loadContasBancariasEspanha()
 
-        // Debug: captura nomes reais dos grupos salvos na Carteira
-        let gruposEncontrados: string[] = []
-        try {
-          const rawW = localStorage.getItem('finance_wallet')
-          if (rawW) gruposEncontrados = JSON.parse(rawW).groups?.map((g: any) => g.label ?? '') ?? []
-        } catch {}
+        // Nomes dos grupos da Carteira (para debug no painel)
+        const gruposEncontrados = loadGruposNomes()
 
         // Acumulado Espanha: começa com o saldo total do grupo e vai diminuindo conforme despesas
         let despesaEspanhaAcum = 0

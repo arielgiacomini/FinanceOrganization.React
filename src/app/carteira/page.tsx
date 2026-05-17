@@ -36,9 +36,9 @@ interface WalletData {
 }
 
 const STORAGE_KEY = 'finance_wallet'
-export function loadContasBancariasTotal(): number {
+function loadContasBancariasTotal(): number {
   try {
-    const wallet: WalletData = loadWallet()
+    const wallet: WalletData = loadWalletFromStorage()
     const group = wallet.groups.find(g =>
       g.label.trim().toLowerCase() === 'contas bancárias' ||
       g.label.trim().toLowerCase() === 'contas bancarias'
