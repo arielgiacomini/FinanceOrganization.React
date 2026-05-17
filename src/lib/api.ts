@@ -188,7 +188,44 @@ export const dateApi = {
     ),
 }
 
-// ─── Categories ───────────────────────────────────────────────────────────────
+// ─── Wallet ───────────────────────────────────────────────────────────────────
+
+export interface WalletRecord {
+  id: string
+  walletKey: string
+  walletValue: string
+  creationDate: string
+  lastChangeDate: string | null
+}
+
+export interface WalletSearchOutput {
+  output?: {
+    quantidade?: number
+    data?: WalletRecord[]
+    message?: string
+  }
+}
+
+export interface WalletRegisterOutput {
+  output?: {
+    message?: string
+    status?: number
+  }
+}
+
+export const walletApi = {
+  search: () =>
+    request<WalletSearchOutput>('/v1/wallet/search', 'GET'),
+
+  register: (walletKey: string, walletValue: string, existingId?: string) =>
+    request<WalletRegisterOutput>('/v1/wallet/register', 'POST', {
+      ...(existingId ? { id: existingId } : {}),
+      walletKey,
+      walletValue,
+      creationDate: new Date().toISOString(),
+    }),
+}
+
 
 export const categoriesApi = {
   search: (vm: SearchCategoryViewModel) =>

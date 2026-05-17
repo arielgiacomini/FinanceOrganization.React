@@ -1,6 +1,8 @@
 'use client'
 
 import { AppLayout } from '@/components/layout/AppLayout'
+import { walletApi } from '@/lib/api'
+import type { WalletRecord } from '@/lib/api'
 import { useState, useEffect, useCallback } from 'react'
 import { PageHeader, Spinner } from '@/components/ui'
 import { billsToPayApi, cashReceivableApi } from '@/lib/api'
@@ -34,29 +36,6 @@ interface WalletData {
 }
 
 const STORAGE_KEY = 'finance_wallet'
-const PLR_CONFIG_KEY = 'finance_plr_config'
-
-export function loadPlrConfig(): string {
-  try {
-    const raw = localStorage.getItem(PLR_CONFIG_KEY)
-    if (raw) return JSON.parse(raw).name ?? ''
-  } catch {}
-  return 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)'
-}
-
-export function loadSaldoFinalYm(): string {
-  try {
-    const raw = localStorage.getItem(PLR_CONFIG_KEY)
-    if (raw) return JSON.parse(raw).saldoFinalYm ?? ''
-  } catch {}
-  return ''
-}
-
-function savePlrConfig(name: string, saldoFinalYm: string) {
-  localStorage.setItem(PLR_CONFIG_KEY, JSON.stringify({ name, saldoFinalYm }))
-}
-
-// Retorna a soma de todas as caixinhas BRL do grupo "Contas Bancárias"
 export function loadContasBancariasTotal(): number {
   try {
     const wallet: WalletData = loadWallet()
@@ -78,7 +57,7 @@ const BOX_COLORS = [
 
 function genId() { return Math.random().toString(36).slice(2) }
 
-function loadWallet(): WalletData {
+function loadWalletFromStorage(): WalletData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw)
@@ -106,7 +85,7 @@ function loadWallet(): WalletData {
   }
 }
 
-function saveWallet(data: WalletData) {
+function saveWalletToStorage(data: WalletData) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
 }
 
@@ -319,19 +298,32 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
 
 function CarteiraInner() {
   const [wallet, setWallet] = useState<WalletData>({ groups: [] })
-  const [plrName, setPlrName] = useState('')
-  const [saldoFinalYm, setSaldoFinalYm] = useState('')
-  const [plrSaved, setPlrSaved] = useState(false)
   const [ym, setYm] = useState(currentYearMonth())
   const [pendingBills, setPendingBills] = useState(0)
   const [pendingReceivables, setPendingReceivables] = useState(0)
   const [loadingAPI, setLoadingAPI] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const [walletRecords, setWalletRecords] = useState<WalletRecord[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState('')
+
   useEffect(() => {
-    setWallet(loadWallet())
-    setPlrName(loadPlrConfig())
-    setSaldoFinalYm(loadSaldoFinalYm())
+    // Carrega localStorage imediatamente (sem travar UI)
+    setWallet(loadWalletFromStorage())
+    // Sincroniza com backend
+    walletApi.search().then(res => {
+      const records = res.output?.data ?? []
+      setWalletRecords(records)
+      const rec = records.find(r => r.walletKey === 'finance_wallet')
+      if (rec?.walletValue) {
+        try {
+          const parsed = JSON.parse(rec.walletValue)
+          setWallet(parsed)
+          localStorage.setItem(STORAGE_KEY, rec.walletValue)
+        } catch {}
+      }
+    }).catch(() => { /* usa localStorage como fallback */ })
   }, [])
 
   const fetchAPI = useCallback(async () => {
@@ -358,9 +350,16 @@ function CarteiraInner() {
 
   function updateWallet(next: WalletData) {
     setWallet(next)
-    saveWallet(next)
+    saveWalletToStorage(next)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
+    // Persiste no backend
+    const existing = walletRecords.find(r => r.walletKey === 'finance_wallet')
+    setSyncing(true)
+    setSyncError('')
+    walletApi.register('finance_wallet', JSON.stringify(next), existing?.id)
+      .then(() => setSyncing(false))
+      .catch(() => { setSyncing(false); setSyncError('Falha ao salvar no servidor') })
   }
 
   function updateGroup(id: string, updated: WalletGroup) {
@@ -403,7 +402,7 @@ function CarteiraInner() {
     <div className="space-y-6 animate-slide-up">
       <PageHeader
         title="Carteira"
-        subtitle="Saldos e projeção financeira"
+        subtitle={syncing ? '💾 Salvando no servidor...' : syncError ? `⚠ ${syncError}` : 'Saldos e projeção financeira'}
         action={
           <div className="flex items-center gap-2">
             {saved && <span className="text-xs" style={{ color: 'var(--green-400)' }}>✓ Salvo</span>}
@@ -450,54 +449,6 @@ function CarteiraInner() {
           {formatCurrency(saldoFinal, 'Brasil')}
         </span>
         {loadingAPI && <Spinner size={14} />}
-      </div>
-
-      {/* Configurações do Gráfico */}
-      <div className="card overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b"
-          style={{ borderColor: 'var(--border-1)', background: 'var(--bg-3)' }}>
-          <TrendingUp size={14} style={{ color: 'var(--green-400)' }} />
-          <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-            Configurações do Gráfico
-          </span>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="label">Nome do PLR (empréstimo próximos meses)</label>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-                Busca todos os recebíveis com esse nome nos próximos 24 meses e soma ao cálculo de receita do gráfico.
-              </p>
-              <input
-                className="input w-full"
-                value={plrName}
-                onChange={e => setPlrName(e.target.value)}
-                placeholder="Ex: PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)"
-              />
-            </div>
-            <div>
-              <label className="label">Mês/Ano do Saldo Final</label>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-                Mês em que o Saldo Final da Carteira entra na Receita Brasil do gráfico.
-              </p>
-              <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
-            </div>
-            <div className="flex items-end">
-              <button
-                type="button"
-                className="btn-primary px-4 flex items-center gap-2 w-full justify-center"
-                onClick={() => {
-                  savePlrConfig(plrName, saldoFinalYm)
-                  setPlrSaved(true)
-                  setTimeout(() => setPlrSaved(false), 2000)
-                }}
-              >
-                {plrSaved ? <Check size={14} /> : <Edit2 size={14} />}
-                {plrSaved ? 'Configurações salvas!' : 'Salvar configurações'}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Groups */}

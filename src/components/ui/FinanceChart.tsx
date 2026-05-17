@@ -37,10 +37,10 @@ function isEspanha(country?: string | null): boolean {
 }
 
 function formatEur(v: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
 function formatBrl(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
 
 function loadPlrName(): string {
@@ -57,6 +57,14 @@ function loadSaldoFinalYm(): string {
     if (raw) return JSON.parse(raw).saldoFinalYm ?? ''
   } catch {}
   return ''
+}
+
+function loadValeCategoria(): string {
+  try {
+    const raw = localStorage.getItem('finance_plr_config')
+    if (raw) return JSON.parse(raw).valeCategoria ?? ''
+  } catch {}
+  return 'Vale Alimentação/Refeição'
 }
 
 function loadContasBancariasTotal(): number {
@@ -82,6 +90,42 @@ function numToYm(n: number): string {
   return `${monthName}/${year}`
 }
 
+interface CalcSnapshot {
+  plrName: string
+  plrTotal: number
+  contasBancariasTotal: number
+  saldoFinal: number
+  saldoFinalYm: string
+  valeRefeicaoTotal: number
+  contasBancariasEspanha: number
+  nomeGrupoEspanha: string
+  gruposEncontrados: string[]
+  despesaEspanhaTotal: number
+}
+
+function loadNomeGrupoEspanha(): string {
+  try {
+    const raw = localStorage.getItem('finance_plr_config')
+    if (raw) return JSON.parse(raw).nomeGrupoEspanha ?? ''
+  } catch {}
+  return 'Conta Bancária Espanha'
+}
+
+function loadContasBancariasEspanha(): number {
+  try {
+    const raw = localStorage.getItem('finance_wallet')
+    if (!raw) return 0
+    const wallet = JSON.parse(raw)
+    const nome = loadNomeGrupoEspanha().trim().toLowerCase()
+    const group = wallet.groups?.find((g: any) =>
+      g.label?.trim().toLowerCase() === nome
+    )
+    if (!group) return 0
+    return (group.boxes ?? [])
+      .reduce((s: number, b: any) => s + (parseFloat(b.value) || 0), 0)
+  } catch { return 0 }
+}
+
 interface FinanceChartProps {
   monthsRange?: number
 }
@@ -89,6 +133,7 @@ interface FinanceChartProps {
 export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [data, setData] = useState<ChartPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [calc, setCalc] = useState<CalcSnapshot | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -100,8 +145,12 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
         const now = new Date()
         const curYm = now.getFullYear() * 12 + now.getMonth()
-        const startYm = curYm - 3
-        const endYm = curYm + monthsRange
+
+        // Ponto de início: saldoFinalYm configurado ou 3 meses atrás
+        const sfYmStr = loadSaldoFinalYm()
+        const startYm = sfYmStr ? ymToNum(sfYmStr) : curYm - 3
+        // Range: até 5 anos a frente do ponto de início
+        const endYm = startYm + 12 * 5
 
         // ── Meses do gráfico ──────────────────────────────────────────────────
         const monthList: string[] = []
@@ -136,6 +185,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         const contasBancariasTotal = loadContasBancariasTotal()
         const saldoFinal = contasBancariasTotal - plrTotal
         const saldoFinalYm = loadSaldoFinalYm()
+        const valeCategoria = loadValeCategoria()
 
         // ── Dados mensais do gráfico ──────────────────────────────────────────
         const results = await Promise.all(
@@ -154,23 +204,32 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
         if (cancelled) return
 
-        let investAcum = 0
+        const nomeGrupoEspanha = loadNomeGrupoEspanha()
+        const contasBancariasEspanha = loadContasBancariasEspanha()
+
+        // Debug: captura nomes reais dos grupos salvos na Carteira
+        let gruposEncontrados: string[] = []
+        try {
+          const rawW = localStorage.getItem('finance_wallet')
+          if (rawW) gruposEncontrados = JSON.parse(rawW).groups?.map((g: any) => g.label ?? '') ?? []
+        } catch {}
+
+        // Acumulado Espanha: começa com o saldo total do grupo e vai diminuindo conforme despesas
+        let despesaEspanhaAcum = 0
 
         const points: ChartPoint[] = results.map(({ ym, bills, rec }) => {
           const billsList = bills as BillToPay[]
           const recList = rec as CashReceivable[]
 
-          // Despesa Espanha = todas as contas a pagar da Espanha (independente de hasPay)
+          // Despesa Espanha = contas a pagar da Espanha não pagas
           const despesaEspanha = billsList
-            .filter(b => isEspanha(b.country))
+            .filter(b => isEspanha(b.country) && !b.hasPay)
             .reduce((s, b) => s + (b.value ?? 0), 0)
 
-          // Receita Espanha (para acumular investimento)
-          const receitaEspanha = recList
-            .filter(r => isEspanha(r.country))
-            .reduce((s, r) => s + (r.value ?? 0), 0)
+          despesaEspanhaAcum += despesaEspanha
 
-          investAcum += (receitaEspanha - despesaEspanha)
+          // Acumulado = saldo inicial da carteira Espanha − todas as despesas até este mês
+          const investAcumEspanha = contasBancariasEspanha - despesaEspanhaAcum
 
           // Despesa Brasil = contas a pagar Brasil onde hasPay === false
           const despesaBR = billsList
@@ -178,24 +237,50 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             .reduce((s, b) => s + (b.value ?? 0), 0)
 
           // Receita Brasil = manipulatedValue dos recebíveis Brasil do mês
-          // + Saldo Final da Carteira APENAS no mês corrente (equivale ao J8 do Excel)
+          // + Saldo Final da Carteira APENAS no mês configurado (equivale ao J8 do Excel)
+          // + Vale Alimentação/Refeição APENAS no mês configurado (categoria DSC_CATEGORIA = F8)
           const receitaBR = recList
             .filter(r => !isEspanha(r.country))
             .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
 
-          const isCurrentMonth = saldoFinalYm ? ym === saldoFinalYm : false
-          const saldoBrasil = (receitaBR + (isCurrentMonth ? saldoFinal : 0)) - despesaBR
+          const isConfiguredMonth = saldoFinalYm ? ym === saldoFinalYm : false
+
+          const valeRefeicaoBR = isConfiguredMonth
+            ? recList
+                .filter(r => !isEspanha(r.country) && r.category?.trim() === valeCategoria.trim())
+                .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+            : 0
+
+          const saldoBrasil = (receitaBR + (isConfiguredMonth ? saldoFinal : 0) + valeRefeicaoBR) - despesaBR
 
           return {
             yearMonth: ym,
             label: shortLabel(ym),
             despesaEspanha,
-            investAcumEspanha: investAcum,
+            investAcumEspanha,
             saldoBrasil,
           }
         })
 
+        // ── Snapshot para o painel de memória de cálculo ────────────────────
+        const configuredResult = results.find(r => r.ym === saldoFinalYm)
+        const valeRefeicaoTotal = configuredResult
+          ? (configuredResult.rec as CashReceivable[])
+              .filter(r => !isEspanha(r.country) && r.category?.trim() === valeCategoria.trim())
+              .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+          : 0
+        // Soma total das despesas Espanha em todos os meses carregados (para exibir no painel)
+        const despesaEspanhaTotal = results.reduce((s, { bills }) =>
+          s + (bills as BillToPay[])
+            .filter(b => isEspanha(b.country) && !b.hasPay)
+            .reduce((ss, b) => ss + (b.value ?? 0), 0), 0)
+        setCalc({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
+
         setData(points)
+
+        // Inicializa slicers: todos os meses, ano atual + próximo por padrão
+        setSelectedMonths(new Set(Object.values(MONTHS)))
+        setSelectedYears(new Set([now.getFullYear(), now.getFullYear() + 1]))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -205,6 +290,10 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     return () => { cancelled = true }
   }, [monthsRange])
 
+  const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
+  const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set())
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center" style={{ minHeight: 400 }}>
@@ -212,6 +301,41 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       </div>
     )
   }
+
+  // Anos disponíveis: do ano do saldoFinalYm configurado até +5 anos
+  const sfYmForYears = loadSaldoFinalYm()
+  const baseYear = sfYmForYears ? parseInt(sfYmForYears.split('/')[1]) : new Date().getFullYear()
+  const availableYears = Array.from({ length: 6 }, (_, i) => baseYear + i)
+  const MONTH_NAMES = Object.keys(MONTHS)
+  const availableMonths = Array.from({ length: 12 }, (_, i) => i)
+
+  function toggleYear(y: number) {
+    setSelectedYears(prev => {
+      const next = new Set(prev)
+      next.has(y) ? next.delete(y) : next.add(y)
+      return next.size === 0 ? prev : next // impede desselecionar tudo
+    })
+  }
+
+  function toggleMonth(m: number) {
+    setSelectedMonths(prev => {
+      const next = new Set(prev)
+      next.has(m) ? next.delete(m) : next.add(m)
+      return next.size === 0 ? prev : next
+    })
+  }
+
+  // Filtra pontos conforme slicers
+  const filteredData = (selectedYears.size === 0 && selectedMonths.size === 0)
+    ? data
+    : data.filter(d => {
+        const [mName, yStr] = d.yearMonth.split('/')
+        const y = parseInt(yStr)
+        const m = MONTHS[mName] ?? 0
+        const yearOk = selectedYears.size === 0 || selectedYears.has(y)
+        const monthOk = selectedMonths.size === 0 || selectedMonths.has(m)
+        return yearOk && monthOk
+      })
 
   function CustomTooltip({ active, payload, label }: any) {
     if (!active || !payload || !payload.length) return null
@@ -234,6 +358,55 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     )
   }
 
+  function toggleLine(key: string) {
+    setHiddenLines(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function CustomLabel({ x, y, value, dataKey }: any) {
+    if (!value || value === 0) return null
+    const isBrl = dataKey === 'saldoBrasil'
+    const label = isBrl ? `R$${value.toFixed(2)}` : `€${value.toFixed(2)}`
+    return (
+      <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={10} fill={value < 0 ? '#dc2626' : '#9ca3af'}>
+        {label}
+      </text>
+    )
+  }
+
+  const LINES = [
+    { key: 'despesaEspanha',    name: 'Despesa Espanha (€)',          color: '#dc2626' },
+    { key: 'investAcumEspanha', name: 'Acumulado Invest. Espanha (€)', color: '#3b82f6' },
+    { key: 'saldoBrasil',       name: 'Saldo Brasil (R$)',             color: '#16a34a' },
+  ]
+
+  function CustomLegend() {
+    return (
+      <div className="flex flex-wrap justify-center gap-3 pt-3">
+        {LINES.map(({ key, name, color }) => {
+          const hidden = !!hiddenLines[key]
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggleLine(key)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-opacity"
+              style={{
+                background: 'var(--bg-3)',
+                border: `1px solid ${hidden ? 'var(--border-1)' : color}`,
+                opacity: hidden ? 0.4 : 1,
+                cursor: 'pointer',
+                color: 'var(--text-2)',
+              }}
+            >
+              <span style={{ width: 10, height: 2, background: hidden ? 'var(--text-3)' : color, display: 'inline-block', borderRadius: 1 }} />
+              {name}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="card p-4 lg:p-5">
       <div className="mb-3">
@@ -247,7 +420,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer>
-          <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <ComposedChart data={filteredData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-1)" opacity={0.4} />
             <XAxis
               dataKey="label"
@@ -271,41 +444,252 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               label={{ value: 'R$', angle: 0, position: 'insideTopRight', fill: 'var(--text-3)', fontSize: 11 }}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
 
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="despesaEspanha"
-              name="Despesa Espanha (€)"
-              fill="#dc2626"
-              fillOpacity={0.4}
-              stroke="#dc2626"
-              strokeWidth={1.5}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="investAcumEspanha"
-              name="Acumulado Invest. Espanha (€)"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="saldoBrasil"
-              name="Saldo Brasil (R$)"
-              stroke="#16a34a"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
+            {!hiddenLines['despesaEspanha'] && (
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="despesaEspanha"
+                name="Despesa Espanha (€)"
+                fill="#dc2626"
+                fillOpacity={0.4}
+                stroke="#dc2626"
+                strokeWidth={1.5}
+                label={<CustomLabel dataKey="despesaEspanha" />}
+              />
+            )}
+            {!hiddenLines['investAcumEspanha'] && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="investAcumEspanha"
+                name="Acumulado Invest. Espanha (€)"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                label={<CustomLabel dataKey="investAcumEspanha" />}
+              />
+            )}
+            {!hiddenLines['saldoBrasil'] && (
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="saldoBrasil"
+                name="Saldo Brasil (R$)"
+                stroke="#16a34a"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                label={<CustomLabel dataKey="saldoBrasil" />}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Slicers — Anos e Meses */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Anos */}
+        <div>
+          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Anos</p>
+          <div className="flex flex-wrap gap-1.5">
+            {availableYears.map(y => {
+              const active = selectedYears.has(y)
+              return (
+                <button key={y} type="button" onClick={() => toggleYear(y)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{
+                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                    color: active ? '#fff' : 'var(--text-2)',
+                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                  }}>
+                  {y}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        {/* Meses */}
+        <div>
+          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Meses</p>
+          <div className="flex flex-wrap gap-1.5">
+            {availableMonths.map(m => {
+              const active = selectedMonths.has(m)
+              const name = MONTH_NAMES[m]?.slice(0, 3) ?? ''
+              return (
+                <button key={m} type="button" onClick={() => toggleMonth(m)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{
+                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                    color: active ? '#fff' : 'var(--text-2)',
+                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                  }}>
+                  {name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <CustomLegend />
+      {/* Painel de memória de cálculo */}
+      {calc && (
+        <div className="mt-4 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
+          {/* Header */}
+          <div className="px-4 py-2.5 flex items-center gap-2"
+            style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border-1)' }}>
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+              🧮 Memória de Cálculo
+            </span>
+          </div>
+
+          <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
+
+            {/* ── Bloco A: Acumulado Investimento Espanha ── */}
+            <div className="space-y-2">
+              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                A. Acumulado Investimento Espanha (€)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>
+                    Saldo inicial
+                    {calc.nomeGrupoEspanha && (
+                      <span className="block mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
+                        grupo "{calc.nomeGrupoEspanha}"
+                      </span>
+                    )}
+                  </p>
+                  <p className="font-mono font-semibold mt-0.5" style={{ color: calc.contasBancariasEspanha === 0 ? 'var(--red)' : 'var(--text-1)' }}>
+                    {calc.contasBancariasEspanha === 0 ? '⚠ Grupo não encontrado' : formatEur(calc.contasBancariasEspanha)}
+                  </p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>Total despesas Espanha</p>
+                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
+                    − {formatEur(calc.despesaEspanhaTotal)}
+                  </p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>Saldo projetado (final do período)</p>
+                  <p className="font-mono font-bold mt-0.5" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
+                    = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
+                  </p>
+                </div>
+              </div>
+              {calc.contasBancariasEspanha === 0 && calc.gruposEncontrados.length > 0 && (
+                <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.3)' }}>
+                  <p className="font-semibold mb-1" style={{ color: 'var(--red)', fontSize: 10 }}>
+                    Grupos encontrados na Carteira (configure o nome exato em Carteira → Configurações do Gráfico):
+                  </p>
+                  {calc.gruposEncontrados.map((g, i) => (
+                    <p key={i} className="font-mono" style={{ color: 'var(--text-2)', fontSize: 10 }}>"{g}"</p>
+                  ))}
+                </div>
+              )}
+              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
+                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                <span style={{ color: '#3b82f6' }}>Acumulado Espanha (mês N)</span>
+                <span style={{ color: 'var(--text-3)' }}> = </span>
+                <span style={{ color: 'var(--text-1)' }}>Saldo inicial</span>
+                <span style={{ color: 'var(--text-3)' }}> − </span>
+                <span style={{ color: 'var(--red)' }}>Σ Despesa Espanha (meses 1…N)</span>
+                <br />
+                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  Saldo inicial = soma das caixinhas do grupo "{calc.nomeGrupoEspanha || 'Conta Bancária Espanha'}" na Carteira
+                </span>
+                <br />
+                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  Despesa Espanha = Σ value (contas a pagar com país = Espanha, não pagas)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-1)' }} />
+
+            {/* ── Bloco B: Saldo Brasil ── */}
+            <div className="space-y-2">
+              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                B. Saldo Brasil (R$)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>Total Contas Bancárias BR</p>
+                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
+                    {formatBrl(calc.contasBancariasTotal)}
+                  </p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>
+                    PLR — Empréstimo próximos meses
+                    {calc.plrName && (
+                      <span className="block truncate mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
+                        "{calc.plrName}"
+                      </span>
+                    )}
+                  </p>
+                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
+                    − {formatBrl(calc.plrTotal)}
+                  </p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(22,163,74,0.3)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>
+                    Saldo Final
+                    {calc.saldoFinalYm && (
+                      <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
+                    )}
+                  </p>
+                  <p className="font-mono font-bold mt-0.5" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                    = {formatBrl(calc.saldoFinal)}
+                  </p>
+                </div>
+              </div>
+              {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
+                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <p style={{ color: 'var(--text-3)' }}>
+                    Vale Alimentação/Refeição
+                    <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
+                  </p>
+                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--green-400)' }}>
+                    + {formatBrl(calc.valeRefeicaoTotal)}
+                  </p>
+                </div>
+              )}
+              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
+                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                <span style={{ color: 'var(--green-400)' }}>Saldo Brasil</span>
+                <span style={{ color: 'var(--text-3)' }}> = </span>
+                <span style={{ color: 'var(--blue)' }}>Receita BR</span>
+                <span style={{ color: 'var(--text-3)' }}> + </span>
+                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
+                  Saldo Final{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ' (mês não configurado)'}
+                </span>
+                <span style={{ color: 'var(--text-3)' }}> + </span>
+                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
+                  Vale Refeição{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ''}
+                </span>
+                <span style={{ color: 'var(--text-3)' }}> − </span>
+                <span style={{ color: 'var(--red)' }}>Despesa BR</span>
+                <br />
+                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  onde Receita BR = Σ manipulatedValue (recebíveis Brasil do mês)
+                </span>
+                <br />
+                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  onde Vale Refeição = Σ manipulatedValue (categoria configurada, mês configurado)
+                </span>
+                <br />
+                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  onde Despesa BR = Σ value (contas a pagar Brasil, não pagas)
+                </span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   )
 }

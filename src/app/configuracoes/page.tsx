@@ -8,7 +8,11 @@ import {
   saveFrequences, saveRegistrationTypes,
   DEFAULT_FREQUENCES, DEFAULT_REGISTRATION_TYPES,
 } from '@/lib/utils'
-import { Plus, Trash2, GripVertical, RotateCcw, Save, CreditCard, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, GripVertical, RotateCcw, Save, CreditCard, ChevronRight, TrendingUp, Edit2, Check } from 'lucide-react'
+import { walletApi } from '@/lib/api'
+import type { WalletRecord } from '@/lib/api'
+import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
+import { currentYearMonth } from '@/lib/utils'
 import Link from 'next/link'
 
 interface EditableListProps {
@@ -116,14 +120,58 @@ function EditableList({ title, subtitle, items, onChange, onReset }: EditableLis
   )
 }
 
+const PLR_CONFIG_KEY = 'finance_plr_config'
+
+function loadPlrConfig() {
+  try {
+    const raw = localStorage.getItem(PLR_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function savePlrConfigAll(data: Record<string, string>) {
+  localStorage.setItem(PLR_CONFIG_KEY, JSON.stringify(data))
+}
+
 function ConfiguracoesInner() {
   const [frequences, setFrequences] = useState<string[]>([])
   const [regTypes, setRegTypes] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
 
+  // Configurações do Gráfico
+  const [plrName, setPlrName] = useState('')
+  const [saldoFinalYm, setSaldoFinalYm] = useState('')
+  const [valeCategoria, setValeCategoria] = useState('')
+  const [nomeGrupoEspanha, setNomeGrupoEspanha] = useState('')
+  const [chartSaved, setChartSaved] = useState(false)
+  const [chartRecords, setChartRecords] = useState<WalletRecord[]>([])
+
   useEffect(() => {
     setFrequences(getFrequences())
     setRegTypes(getRegistrationTypes())
+    // Carrega do localStorage imediatamente
+    const c = loadPlrConfig()
+    setPlrName(c.name ?? 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)')
+    setSaldoFinalYm(c.saldoFinalYm ?? '')
+    setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
+    setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
+    // Sincroniza com backend
+    walletApi.search().then(res => {
+      const records = res.output?.data ?? []
+      setChartRecords(records)
+      const rec = records.find(r => r.walletKey === 'finance_plr_config')
+      if (rec?.walletValue) {
+        try {
+          const parsed = JSON.parse(rec.walletValue)
+          savePlrConfigAll(parsed)
+          setPlrName(parsed.name ?? '')
+          setSaldoFinalYm(parsed.saldoFinalYm ?? '')
+          setValeCategoria(parsed.valeCategoria ?? '')
+          setNomeGrupoEspanha(parsed.nomeGrupoEspanha ?? '')
+        } catch {}
+      }
+    }).catch(() => { /* usa localStorage como fallback */ })
   }, [])
 
   function save() {
@@ -169,6 +217,69 @@ function ConfiguracoesInner() {
         </div>
         <ChevronRight size={16} style={{ color: 'var(--text-3)' }} />
       </Link>
+
+      {/* Configurações do Gráfico */}
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
+          <div className="flex items-center gap-2">
+            <TrendingUp size={16} style={{ color: 'var(--green-400)' }} />
+            <div>
+              <h2 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>Configurações do Gráfico</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Parâmetros usados no gráfico de Evolução Financeira do Dashboard</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-primary px-3 flex items-center gap-2"
+            onClick={() => {
+              const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha }
+              savePlrConfigAll(data)
+              const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
+              walletApi.register('finance_plr_config', JSON.stringify(data), existing?.id)
+                .catch(() => {})
+              setChartSaved(true)
+              setTimeout(() => setChartSaved(false), 2000)
+            }}
+          >
+            {chartSaved ? <Check size={14} /> : <Edit2 size={14} />}
+            {chartSaved ? 'Salvo!' : 'Salvar'}
+          </button>
+        </div>
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="label">Nome do PLR (empréstimo próximos meses)</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Busca recebíveis com esse nome nos próximos 24 meses e soma à receita Brasil do gráfico.
+            </p>
+            <input className="input w-full" value={plrName} onChange={e => setPlrName(e.target.value)}
+              placeholder="Ex: PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)" />
+          </div>
+          <div>
+            <label className="label">Mês/Ano do Saldo Final</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Mês em que o Saldo Final da Carteira entra na Receita Brasil.
+            </p>
+            <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
+          </div>
+          <div>
+            <label className="label">Categoria do Vale Alimentação/Refeição</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Categoria somada na Receita Brasil do mês configurado.
+            </p>
+            <input className="input w-full" value={valeCategoria} onChange={e => setValeCategoria(e.target.value)}
+              placeholder="Ex: Vale Alimentação/Refeição" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Nome do grupo Conta Bancária Espanha</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Nome exato do grupo na Carteira para calcular o acumulado de investimento Espanha.
+            </p>
+            <input className="input w-full" value={nomeGrupoEspanha} onChange={e => setNomeGrupoEspanha(e.target.value)}
+              placeholder="Ex: Conta Bancária Espanha" />
+          </div>
+        </div>
+      </div>
 
       <EditableList
         title="Frequências"
