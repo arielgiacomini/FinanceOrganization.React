@@ -357,7 +357,10 @@ function CarteiraInner() {
     const existing = walletRecords.find(r => r.walletKey === 'finance_wallet')
     setSyncing(true)
     setSyncError('')
-    walletApi.register('finance_wallet', JSON.stringify(next), existing?.id)
+    const savePromise = existing
+      ? walletApi.edit(existing.id, 'finance_wallet', JSON.stringify(next), existing.creationDate)
+      : walletApi.register('finance_wallet', JSON.stringify(next))
+    savePromise
       .then(() => setSyncing(false))
       .catch(() => { setSyncing(false); setSyncError('Falha ao salvar no servidor') })
   }

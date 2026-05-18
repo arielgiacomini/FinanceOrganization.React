@@ -217,15 +217,22 @@ export const walletApi = {
   search: () =>
     request<WalletSearchOutput>('/v1/wallet/search', 'POST', {}),
 
-  register: (walletKey: string, walletValue: string, existingId?: string) => {
-    const id = existingId ?? crypto.randomUUID()
-    return request<WalletRegisterOutput>('/v1/wallet/register', 'POST', {
-      id,
+  register: (walletKey: string, walletValue: string) =>
+    request<WalletRegisterOutput>('/v1/wallet/register', 'POST', {
+      id: crypto.randomUUID(),
       walletKey,
       walletValue,
       creationDate: new Date().toISOString(),
-    })
-  },
+    }),
+
+  edit: (id: string, walletKey: string, walletValue: string, creationDate: string) =>
+    request<WalletRegisterOutput>('/v1/wallet/edit', 'PUT', {
+      id,
+      walletKey,
+      walletValue,
+      creationDate,
+      lastChangeDate: new Date().toISOString(),
+    }),
 }
 
 

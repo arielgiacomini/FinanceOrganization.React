@@ -236,8 +236,10 @@ function ConfiguracoesInner() {
               const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha }
               savePlrConfigAll(data)
               const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
-              walletApi.register('finance_plr_config', JSON.stringify(data), existing?.id)
-                .catch(() => {})
+              const savePromise = existing
+                ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
+                : walletApi.register('finance_plr_config', JSON.stringify(data))
+              savePromise.catch(() => {})
               setChartSaved(true)
               setTimeout(() => setChartSaved(false), 2000)
             }}
