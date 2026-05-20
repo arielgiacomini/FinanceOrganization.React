@@ -159,8 +159,8 @@ export const cashReceivableApi = {
     return (text ? normalizeResponse(JSON.parse(text)) : {}) as SearchCashReceivableOutput
   },
 
-  receive: (vm: { id: string; dateReceived: string; hasReceived: boolean; lastChangeDate: string; yearMonth?: string; account?: string }) =>
-    request<{ output?: unknown }>('/v1/cash-receivable/receive', 'PATCH', vm),
+  receive: (vm: { id: string; dateReceived: string }) =>
+    request<{ output?: { message?: string; status?: number } }>('/v1/cash-receivable/receive', 'PATCH', vm),
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
