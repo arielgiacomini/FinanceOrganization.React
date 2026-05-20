@@ -47,7 +47,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     account: initial?.account ?? draft?.account ?? '',
     category: initial?.category ?? draft?.category ?? '',
     value: initial?.value?.toString() ?? draft?.value ?? '',
-    frequence: initial?.frequence ?? draft?.frequence ?? 'Mensal',
+    frequence: initial?.frequence ?? draft?.frequence ?? 'Livre',
     registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
     purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : (draft?.purchaseDate ?? ''),
     dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate ?? ''),
@@ -96,7 +96,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     clearDraft()
     setForm({
       name: '', account: '', category: '', value: '',
-      frequence: frequenceList[0] ?? 'Mensal',
+      frequence: 'Livre',
       registrationType: regTypeList[0] ?? 'Compra Livre',
       purchaseDate: '', dueDate: '',
       initialMonthYear: currentYearMonth(),

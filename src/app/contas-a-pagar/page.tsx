@@ -12,6 +12,7 @@ import type { CountryFilter } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
 import { PayBillModal } from '@/components/ui/PayBillModal'
+import { BulkPayModal } from '@/components/ui/BulkPayModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { SummaryCards } from '@/components/ui/SummaryCards'
 import {
@@ -48,6 +49,7 @@ function ContasAPagarPageInner() {
   const [payTarget, setPayTarget] = useState<BillToPay | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
   const [historyTarget, setHistoryTarget] = useState<BillToPay | null>(null)
+  const [bulkPayOpen, setBulkPayOpen] = useState(false)
 
   const [deleting, setDeleting] = useState(false)
 
@@ -169,6 +171,9 @@ function ContasAPagarPageInner() {
         action={
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <YearMonthSelector value={ym} onChange={setYm} />
+            <button className="btn-secondary flex items-center gap-1.5" onClick={() => setBulkPayOpen(true)}>
+              <CreditCard size={15} /> Pagar em Massa
+            </button>
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>
               <Plus size={16} /> Nova conta
             </button>
@@ -519,6 +524,13 @@ function ContasAPagarPageInner() {
           bill={payTarget}
           onClose={() => setPayTarget(null)}
           onSuccess={() => { setPayTarget(null); load() }}
+        />
+      )}
+      {bulkPayOpen && (
+        <BulkPayModal
+          accountMap={accountMap}
+          onClose={() => setBulkPayOpen(false)}
+          onSuccess={() => { setBulkPayOpen(false); load() }}
         />
       )}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Excluir Conta" size="sm">

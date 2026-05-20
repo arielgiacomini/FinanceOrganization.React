@@ -122,7 +122,7 @@ export interface EditBillToPayViewModel {
 }
 
 export interface PayBillToPayViewModel {
-  id: string
+  id: string | null
   payDay?: string
   hasPay: boolean
   lastChangeDate: string

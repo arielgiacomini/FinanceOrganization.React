@@ -57,7 +57,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
     category:          initial?.category ?? draft?.category as string ?? '',
     value:             initial?.value?.toString() ?? draft?.value as string ?? '',
     manipulatedValue:  initial?.manipulatedValue?.toString() ?? draft?.manipulatedValue as string ?? '',
-    frequence:         initial?.frequence ?? draft?.frequence as string ?? 'Mensal',
+    frequence:         initial?.frequence ?? draft?.frequence as string ?? 'Livre',
     registrationType:  initial?.registrationType ?? draft?.registrationType as string ?? 'Compra Livre',
     agreementDate:     initial?.agreementDate ? initial.agreementDate.slice(0, 10) : (draft?.agreementDate as string ?? ''),
     dueDate:           initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate as string ?? ''),
@@ -123,7 +123,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
     clearDraft()
     setForm({
       name: '', account: '', category: '', value: '', manipulatedValue: '',
-      frequence: 'Mensal', registrationType: 'Compra Livre',
+      frequence: 'Livre', registrationType: 'Compra Livre',
       agreementDate: '', dueDate: '', dateReceived: '', hasReceived: false,
       initialMonthYear: currentYearMonth(), fynallyMonthYear: currentYearMonth(),
       bestReceivingDay: '', additionalMessage: '', country: 'Brasil',
