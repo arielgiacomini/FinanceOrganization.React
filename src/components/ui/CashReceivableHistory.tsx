@@ -218,16 +218,18 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
                   </button>
                 )}
               </label>
-              <CurrencyInput value={form.value} country={form.country} onChange={v => editValues && set('value', v)}
-                style={!editValues ? readonlyStyle : undefined} />
+              <div style={!editValues ? readonlyStyle : undefined} className={!editValues ? 'rounded-lg overflow-hidden pointer-events-none' : ''}>
+                <CurrencyInput value={form.value} country={form.country} onChange={v => { if (editValues) set('value', v) }} />
+              </div>
             </div>
             <div>
               <label className="label flex items-center gap-1.5">
                 Saldo (Valor Manipulado)
                 {diff('manipulatedValue') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
               </label>
-              <CurrencyInput value={form.manipulatedValue} country={form.country} onChange={v => editValues && set('manipulatedValue', v)}
-                style={!editValues ? readonlyStyle : undefined} />
+              <div style={!editValues ? readonlyStyle : undefined} className={!editValues ? 'rounded-lg overflow-hidden pointer-events-none' : ''}>
+                <CurrencyInput value={form.manipulatedValue} country={form.country} onChange={v => { if (editValues) set('manipulatedValue', v) }} />
+              </div>
             </div>
           </div>
         </div>

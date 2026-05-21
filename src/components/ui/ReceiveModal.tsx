@@ -25,10 +25,6 @@ export function ReceiveModal({ item, onClose, onSuccess }: ReceiveModalProps) {
       await cashReceivableApi.receive({
         id: item.id,
         dateReceived: receiveDay,
-        hasReceived: true,
-        lastChangeDate: new Date().toISOString(),
-        yearMonth: item.yearMonth,
-        account: item.account,
       })
       onSuccess()
     } catch (e: unknown) {

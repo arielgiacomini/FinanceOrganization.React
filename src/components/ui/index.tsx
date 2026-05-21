@@ -220,9 +220,10 @@ interface TRowProps {
   children: React.ReactNode
   bg?: string
   style?: React.CSSProperties
+  onClick?: () => void
 }
 
-export function TRow({ children, bg = 'var(--bg-2)', style }: TRowProps) {
+export function TRow({ children, bg = 'var(--bg-2)', style, onClick }: TRowProps) {
   const coloredChildren = React.Children.map(children, (child) => {
     if (!React.isValidElement(child)) return child
     const existing = (child.props as { style?: React.CSSProperties }).style ?? {}
@@ -231,7 +232,7 @@ export function TRow({ children, bg = 'var(--bg-2)', style }: TRowProps) {
     })
   })
   return (
-    <tr style={{ borderBottom: '1px solid var(--border-1)', ...style }}>
+    <tr onClick={onClick} style={{ borderBottom: '1px solid var(--border-1)', ...style }}>
       {coloredChildren}
     </tr>
   )
