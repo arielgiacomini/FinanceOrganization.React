@@ -18,6 +18,7 @@ import { SummaryCards } from '@/components/ui/SummaryCards'
 import {
   Plus, CheckCircle2, Pencil, Trash2,
   ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
+  Search, X,
 } from 'lucide-react'
 
 function sortBills(data: BillToPay[]): BillToPay[] {
@@ -43,6 +44,7 @@ function ContasAPagarPageInner() {
   const [showDetails, setShowDetails] = useState(false)
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
+  const [search, setSearch] = useState('')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
@@ -95,8 +97,16 @@ function ContasAPagarPageInner() {
     if (accountFilter !== 'Todos') {
       result = result.filter(b => b.account === accountFilter)
     }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter(b =>
+        b.name?.toLowerCase().includes(q) ||
+        b.additionalMessage?.toLowerCase().includes(q) ||
+        b.category?.toLowerCase().includes(q)
+      )
+    }
     return result
-  }, [bills, countryFilter, accountFilter])
+  }, [bills, countryFilter, accountFilter, search])
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -244,6 +254,58 @@ function ContasAPagarPageInner() {
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
           </div>
         </div>
+
+        {/* Search input */}
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-3)' }} />
+          <input
+            type="text"
+            className="input w-full pl-8 text-sm"
+            placeholder="Filtrar por nome, categoria ou observação..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-3)' }}
+              onClick={() => setSearch('')}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {search.trim() && (() => {
+          const brItems = filtered.filter(b => normalizeCountry(b.country) !== 'Espanha')
+          const esItems = filtered.filter(b => normalizeCountry(b.country) === 'Espanha')
+          const brTotal = brItems.reduce((s, b) => s + (b.value ?? 0), 0)
+          const esTotal = esItems.reduce((s, b) => s + (b.value ?? 0), 0)
+          const brPending = brItems.filter(b => !b.hasPay).reduce((s, b) => s + (b.value ?? 0), 0)
+          const esPending = esItems.filter(b => !b.hasPay).reduce((s, b) => s + (b.value ?? 0), 0)
+          const hasBoth = brItems.length > 0 && esItems.length > 0
+          return (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
+              <span><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{filtered.length}</span> {filtered.length === 1 ? 'item' : 'itens'}</span>
+              {brItems.length > 0 && (
+                <>
+                  <span style={{ color: 'var(--border-2)' }}>·</span>
+                  {hasBoth && <span style={{ color: 'var(--text-3)' }}>🇧🇷</span>}
+                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(brTotal, 'Brasil')}</span></span>
+                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(brPending, 'Brasil')}</span></span>
+                </>
+              )}
+              {esItems.length > 0 && (
+                <>
+                  <span style={{ color: 'var(--border-2)' }}>·</span>
+                  {hasBoth && <span style={{ color: 'var(--text-3)' }}>🇪🇸</span>}
+                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(esTotal, 'Espanha')}</span></span>
+                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(esPending, 'Espanha')}</span></span>
+                </>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Quick account filter */}
         {uniqueAccounts.length > 0 && (

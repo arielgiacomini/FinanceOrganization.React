@@ -13,7 +13,7 @@ import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import {
   X, CheckCircle2, AlertCircle, CircleDollarSign,
   TrendingUp, Calendar, Pencil, Trash2, ReceiptText,
-  SquareCheck, Square, Minus, PencilLine, ChevronDown, ChevronUp,
+  SquareCheck, Square, Minus, Plus, PencilLine, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react'
 
 interface CashReceivableHistoryProps {
@@ -66,21 +66,32 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
   onCancel: () => void
 }) {
   const first = selected[0]
+  const isSingle = selected.length === 1
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [adjustOpen, setAdjustOpen] = useState(false)
+  const [adjustOp, setAdjustOp]     = useState<'add' | 'sub'>('sub')
+  const [adjustAmount, setAdjustAmount] = useState('')
+  const [adjustValue, setAdjustValue] = useState(true)
+  const [adjustManip, setAdjustManip] = useState(true)
+  const [editValues, setEditValues] = useState(false)
 
   const [form, setForm] = useState({
-    name:             first?.name ?? '',
-    account:          first?.account ?? '',
-    frequence:        first?.frequence ?? '',
-    registrationType: first?.registrationType ?? '',
-    category:         first?.category ?? '',
-    value:            first?.value?.toString() ?? '',
-    manipulatedValue: first?.manipulatedValue?.toString() ?? '',
+    name:              first?.name ?? '',
+    account:           first?.account ?? '',
+    frequence:         first?.frequence ?? '',
+    registrationType:  first?.registrationType ?? '',
+    category:          first?.category ?? '',
+    value:             first?.value?.toString() ?? '',
+    manipulatedValue:  first?.manipulatedValue?.toString() ?? '',
     additionalMessage: first?.additionalMessage ?? '',
-    country:          first?.country ?? 'Brasil',
+    country:           first?.country ?? 'Brasil',
+    dueDate:           first?.dueDate ? String(first.dueDate).slice(0, 10) : '',
+    agreementDate:     first?.agreementDate ? String(first.agreementDate).slice(0, 10) : '',
+    dateReceived:      first?.dateReceived ? String(first.dateReceived).slice(0, 10) : '',
+    hasReceived:       first?.hasReceived ?? false,
   })
 
   useEffect(() => {
@@ -93,7 +104,17 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
     }).catch(() => {})
   }, [])
 
-  function set(key: string, val: string) { setForm(f => ({ ...f, [key]: val })) }
+  function set(key: string, val: string | boolean) { setForm(f => ({ ...f, [key]: val })) }
+
+  function applyAdjust() {
+    const amount = parseFloat(adjustAmount.replace(',', '.')) || 0
+    if (amount <= 0 || (!adjustValue && !adjustManip)) return
+    const delta = adjustOp === 'add' ? amount : -amount
+    if (adjustValue) set('value', String(Math.max(0, (parseFloat(form.value.replace(',', '.')) || 0) + delta)))
+    if (adjustManip) set('manipulatedValue', String(Math.max(0, (parseFloat(form.manipulatedValue.replace(',', '.')) || 0) + delta)))
+    setAdjustOpen(false)
+    setAdjustAmount('')
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -103,19 +124,21 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
       const basket: EditCashReceivableViewModel[] = selected.map(h => ({
         id: h.id,
         idCashReceivableRegistration: h.idCashReceivableRegistration,
-        name: form.name || h.name,
-        account: form.account || h.account,
-        frequence: form.frequence || h.frequence,
-        registrationType: form.registrationType || h.registrationType,
-        category: form.category || h.category,
-        value: parseFloat(form.value.replace(',', '.')) || h.value,
-        manipulatedValue: parseFloat(form.manipulatedValue.replace(',', '.')) || h.manipulatedValue,
-        yearMonth: h.yearMonth,
-        hasReceived: h.hasReceived,
-        dateReceived: h.dateReceived,
+        name:              form.name || h.name,
+        account:           form.account || h.account,
+        frequence:         form.frequence || h.frequence,
+        registrationType:  form.registrationType || h.registrationType,
+        category:          form.category || h.category,
+        value:             editValues ? (parseFloat(form.value.replace(',', '.')) || h.value) : h.value,
+        manipulatedValue:  editValues ? (parseFloat(form.manipulatedValue.replace(',', '.')) || h.manipulatedValue) : h.manipulatedValue,
+        yearMonth:         h.yearMonth,
+        hasReceived:       form.hasReceived,
+        dateReceived:      h.dateReceived,
+        dueDate:           h.dueDate,
+        agreementDate:     h.agreementDate,
         additionalMessage: form.additionalMessage,
-        lastChangeDate: new Date().toISOString(),
-        country: form.country,
+        lastChangeDate:    new Date().toISOString(),
+        country:           form.country,
         mustEditRegistrationAccount: true,
       }))
       await cashReceivableApi.editBasket(basket)
@@ -127,53 +150,31 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
     }
   }
 
-  const diff = (key: keyof CashReceivable) => new Set(selected.map(h => h[key])).size > 1
+  const diff = (key: keyof CashReceivable) => new Set(selected.map(h => String(h[key] ?? ''))).size > 1
 
   return (
     <form onSubmit={submit} className="space-y-5">
       <div className="rounded-lg px-4 py-3 text-xs" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.2)' }}>
         Editando <strong>{selected.length}</strong> registro(s).
       </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="label flex items-center gap-1.5">Nome <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
-          <input className="input" readOnly value={first?.name ?? ''} style={readonlyStyle} />
-        </div>
-        <div>
-          <label className="label flex items-center gap-1.5">Mês/Ano <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
-          <input className="input" readOnly value={selected.length === 1 ? (first?.yearMonth ?? '') : `${selected.length} meses`} style={readonlyStyle} />
-        </div>
-        <div>
-          <label className="label flex items-center gap-1.5">Status <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
-          <input className="input" readOnly value={selected.length === 1 ? (first?.hasReceived ? 'Recebido' : 'Aguardando') : '—'} style={readonlyStyle} />
-        </div>
-        <div className="col-span-2">
+        {/* Nome */}
+        <div className="sm:col-span-2">
           <label className="label flex items-center gap-1.5">
-            Nome
+            Nome / Descrição *
             {diff('name') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
           </label>
-          <input className="input" type="text" value={form.name} onChange={e => set('name', e.target.value)} />
+          <input className="input w-full" type="text" value={form.name} onChange={e => set('name', e.target.value)} />
         </div>
-        <div>
-          <label className="label flex items-center gap-1.5">
-            Valor
-            {diff('value') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
-          </label>
-          <CurrencyInput value={form.value} country={form.country} onChange={v => set('value', v)} />
-        </div>
-        <div>
-          <label className="label flex items-center gap-1.5">
-            Saldo (Valor Manipulado)
-            {diff('manipulatedValue') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
-          </label>
-          <CurrencyInput value={form.manipulatedValue} country={form.country} onChange={v => set('manipulatedValue', v)} />
-        </div>
+
+        {/* Conta + Categoria */}
         <div>
           <label className="label flex items-center gap-1.5">
             Conta
             {diff('account') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
           </label>
-          <select className="input" value={form.account} onChange={e => set('account', e.target.value)}>
+          <select className="input w-full" value={form.account} onChange={e => set('account', e.target.value)}>
             {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
           </select>
         </div>
@@ -182,14 +183,141 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
             Categoria
             {diff('category') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
           </label>
-          <select className="input" value={form.category} onChange={e => set('category', e.target.value)}>
+          <select className="input w-full" value={form.category} onChange={e => set('category', e.target.value)}>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+
+        {/* Valor + Saldo — toggle de edição */}
+        <div className="sm:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label mb-0">Valor e Saldo</span>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={editValues} onChange={e => { setEditValues(e.target.checked); if (!e.target.checked) setAdjustOpen(false) }}
+                className="w-4 h-4 rounded accent-green-500" />
+              <span className="text-xs" style={{ color: editValues ? 'var(--green-400)' : 'var(--text-3)' }}>
+                Editar valores
+              </span>
+            </label>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={adjustOpen ? "sm:col-span-2" : ""}>
+              <label className="label flex items-center gap-1.5">
+                Valor *
+                {diff('value') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
+                {editValues && (
+                  <button type="button"
+                    className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                    onClick={() => { setAdjustOpen(v => !v); setAdjustAmount(''); setAdjustOp('sub') }}
+                    style={{
+                      color: adjustOpen ? 'var(--green-400)' : 'var(--blue)',
+                      background: adjustOpen ? 'var(--green-dim)' : undefined,
+                      border: '1px solid ' + (adjustOpen ? 'var(--green-border)' : 'rgba(96,165,250,0.3)'),
+                    }}>
+                    <RefreshCw size={11} /> {adjustOpen ? 'Fechar reajuste' : 'Reajustar'}
+                  </button>
+                )}
+              </label>
+              <CurrencyInput value={form.value} country={form.country} onChange={v => editValues && set('value', v)}
+                style={!editValues ? readonlyStyle : undefined} />
+            </div>
+            <div>
+              <label className="label flex items-center gap-1.5">
+                Saldo (Valor Manipulado)
+                {diff('manipulatedValue') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
+              </label>
+              <CurrencyInput value={form.manipulatedValue} country={form.country} onChange={v => editValues && set('manipulatedValue', v)}
+                style={!editValues ? readonlyStyle : undefined} />
+            </div>
+          </div>
+        </div>
+
+        {/* Painel de reajuste */}
+        {adjustOpen && (
+          <div className="sm:col-span-2 rounded-xl p-4 space-y-3 animate-slide-up"
+            style={{ background: 'var(--bg-3)', border: '1px solid rgba(96,165,250,0.3)' }}>
+            <div className="flex items-center gap-2">
+              <RefreshCw size={14} style={{ color: 'var(--blue)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Reajustar valor</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Operação</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setAdjustOp('sub')}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
+                    style={{ background: adjustOp === 'sub' ? 'var(--red-dim)' : 'var(--bg-2)', borderColor: adjustOp === 'sub' ? 'var(--red)' : 'var(--border-1)', color: adjustOp === 'sub' ? 'var(--red)' : 'var(--text-2)' }}>
+                    <Minus size={14} /> Subtrair
+                  </button>
+                  <button type="button" onClick={() => setAdjustOp('add')}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
+                    style={{ background: adjustOp === 'add' ? 'var(--green-dim)' : 'var(--bg-2)', borderColor: adjustOp === 'add' ? 'var(--green-border)' : 'var(--border-1)', color: adjustOp === 'add' ? 'var(--green-400)' : 'var(--text-2)' }}>
+                    <Plus size={14} /> Somar
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="label">Valor do reajuste</label>
+                <CurrencyInput value={adjustAmount} country={form.country} onChange={setAdjustAmount} />
+              </div>
+            </div>
+            <div>
+              <label className="label">Aplicar em</label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={adjustValue} onChange={e => setAdjustValue(e.target.checked)} className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: 'var(--text-2)' }}>Aplicar no Valor</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={adjustManip} onChange={e => setAdjustManip(e.target.checked)} className="w-4 h-4 rounded accent-green-500" />
+                  <span className="text-xs" style={{ color: 'var(--text-2)' }}>Aplicar em Valor Manipulado</span>
+                </label>
+              </div>
+              {!adjustValue && !adjustManip && <p className="text-xs mt-1.5" style={{ color: 'var(--red)' }}>Selecione ao menos um campo.</p>}
+            </div>
+            {adjustAmount && parseFloat(adjustAmount.replace(',', '.')) > 0 && (adjustValue || adjustManip) && (
+              <div className="rounded-lg px-3 py-2.5 text-xs space-y-1.5" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                <div className="flex items-center justify-between font-medium" style={{ color: adjustOp === 'add' ? 'var(--green-400)' : 'var(--red)' }}>
+                  <span>{adjustOp === 'add' ? '+ Soma' : '− Subtração'}:</span>
+                  <span className="font-mono">{(parseFloat(adjustAmount.replace(',', '.')) || 0).toFixed(2)}</span>
+                </div>
+                {adjustValue && (
+                  <div className="flex items-center justify-between pt-1.5 border-t" style={{ borderColor: 'var(--border-1)' }}>
+                    <span style={{ color: 'var(--text-3)' }}>Aplicar no Valor: <span className="font-mono">{(parseFloat(form.value.replace(',', '.')) || 0).toFixed(2)}</span> →</span>
+                    <span className="font-mono font-bold" style={{ color: 'var(--text-1)' }}>
+                      {((parseFloat(form.value.replace(',', '.')) || 0) + (adjustOp === 'add' ? 1 : -1) * (parseFloat(adjustAmount.replace(',', '.')) || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {adjustManip && (
+                  <div className="flex items-center justify-between" style={{ borderTop: !adjustValue ? '1px solid var(--border-1)' : undefined, paddingTop: !adjustValue ? 6 : 0 }}>
+                    <span style={{ color: 'var(--text-3)' }}>Aplicar em Valor Manipulado: <span className="font-mono">{(parseFloat(form.manipulatedValue.replace(',', '.')) || 0).toFixed(2)}</span> →</span>
+                    <span className="font-mono font-bold" style={{ color: 'var(--text-1)' }}>
+                      {((parseFloat(form.manipulatedValue.replace(',', '.')) || 0) + (adjustOp === 'add' ? 1 : -1) * (parseFloat(adjustAmount.replace(',', '.')) || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => setAdjustOpen(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={applyAdjust}
+                disabled={!adjustAmount || parseFloat(adjustAmount.replace(',', '.')) <= 0 || (!adjustValue && !adjustManip)}>
+                Aplicar reajuste
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Data Vencimento + País */}
+        <div>
+          <label className="label flex items-center gap-1.5">Data de Vencimento <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
+          <input type="date" className="input w-full" value={form.dueDate} readOnly style={readonlyStyle} />
         </div>
         <div>
           <label className="label">País</label>
           <div className="flex gap-2">
-            {[{ value: 'Brasil', Flag: FlagBrasil }, { value: 'Espanha', Flag: FlagEspanha }].map(({ value, Flag }) => (
+            {([{ value: 'Brasil', Flag: FlagBrasil }, { value: 'Espanha', Flag: FlagEspanha }] as const).map(({ value, Flag }) => (
               <button key={value} type="button" onClick={() => set('country', value)}
                 className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
                 style={{
@@ -202,11 +330,62 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
             ))}
           </div>
         </div>
-        <div className="col-span-2">
+
+        {/* Frequência + Tipo de Registro */}
+        <div>
+          <label className="label flex items-center gap-1.5">
+            Frequência
+            {diff('frequence') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
+          </label>
+          <select className="input w-full" value={form.frequence} onChange={e => set('frequence', e.target.value)}>
+            {FREQUENCES.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label flex items-center gap-1.5">
+            Tipo de Registro
+            {diff('registrationType') && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>valores diferentes</span>}
+          </label>
+          <select className="input w-full" value={form.registrationType} onChange={e => set('registrationType', e.target.value)}>
+            {REGISTRATION_TYPES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
+        {/* Data de Acordo + Data de Recebimento */}
+        <div>
+          <label className="label flex items-center gap-1.5">Data de Acordo <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
+          <input type="date" className="input w-full" value={form.agreementDate} readOnly style={readonlyStyle} />
+        </div>
+        <div>
+          <label className="label flex items-center gap-1.5">Data de Recebimento <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>leitura</span></label>
+          <input type="date" className="input w-full" value={form.dateReceived} readOnly style={readonlyStyle} />
+        </div>
+
+        {/* Status */}
+        <div className="sm:col-span-2">
+          <label className="label">Status</label>
+          <div className="flex gap-2">
+            {([{ label: 'Aguardando', value: false }, { label: 'Recebido', value: true }] as const).map(({ label, value }) => (
+              <button key={label} type="button" onClick={() => set('hasReceived', value)}
+                className="flex-1 py-2 rounded-lg border text-sm font-medium transition-all"
+                style={{
+                  background: form.hasReceived === value ? (value ? 'var(--green-dim)' : 'rgba(245,158,11,0.1)') : 'var(--bg-3)',
+                  border: `1px solid ${form.hasReceived === value ? (value ? 'var(--green-border)' : 'rgba(245,158,11,0.4)') : 'var(--border-1)'}`,
+                  color: form.hasReceived === value ? (value ? 'var(--green-400)' : 'var(--amber)') : 'var(--text-2)',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Observação */}
+        <div className="sm:col-span-2">
           <label className="label">Observação</label>
-          <textarea className="input resize-none" rows={2} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
+          <textarea className="input w-full resize-none" rows={2} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
         </div>
       </div>
+
       {error && <p className="text-sm rounded-lg px-3 py-2" style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>{error}</p>}
       <div className="flex justify-end gap-3 pt-2">
         <button type="button" className="btn-secondary" onClick={onCancel}>Cancelar</button>
@@ -218,7 +397,6 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
     </form>
   )
 }
-
 
 
 // ─── Main Drawer ──────────────────────────────────────────────────────────────
