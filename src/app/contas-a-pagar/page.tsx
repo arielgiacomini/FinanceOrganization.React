@@ -290,7 +290,7 @@ function ContasAPagarPageInner() {
               {brItems.length > 0 && (
                 <>
                   <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <span style={{ color: 'var(--text-3)' }}>🇧🇷</span>}
+                  {hasBoth && <FlagBrasil size={14} />}
                   <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(brTotal, 'Brasil')}</span></span>
                   <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(brPending, 'Brasil')}</span></span>
                 </>
@@ -298,7 +298,7 @@ function ContasAPagarPageInner() {
               {esItems.length > 0 && (
                 <>
                   <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <span style={{ color: 'var(--text-3)' }}>🇪🇸</span>}
+                  {hasBoth && <FlagEspanha size={14} />}
                   <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(esTotal, 'Espanha')}</span></span>
                   <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(esPending, 'Espanha')}</span></span>
                 </>
