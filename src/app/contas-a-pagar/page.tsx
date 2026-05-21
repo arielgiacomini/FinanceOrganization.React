@@ -378,7 +378,8 @@ function ContasAPagarPageInner() {
 
           return (
             <div key={b.id} className="rounded-xl overflow-hidden"
-              style={{ background: rowBg, border: `1px solid ${cardBorder}`, borderLeft: `3px solid ${leftBar}` }}>
+              style={{ background: rowBg, border: `1px solid ${cardBorder}`, borderLeft: `3px solid ${leftBar}`, cursor: 'pointer' }}
+              onClick={() => setHistoryTarget(b)}>
               {/* Linha 1: Nome + Valor + Status */}
               <div className="flex items-start justify-between px-4 pt-3 pb-2">
                 <div className="flex-1 min-w-0 pr-3">
@@ -438,26 +439,26 @@ function ContasAPagarPageInner() {
                   <button type="button" title="Pagar"
                     className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
                     style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}
-                    onClick={() => setPayTarget(b)}>
+                    onClick={e => { e.stopPropagation(); setPayTarget(b) }}>
                     <CircleDollarSign size={14} /> Pagar
                   </button>
                 )}
                 <button type="button" title="Histórico"
                   className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
                   style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}
-                  onClick={() => setHistoryTarget(b)}>
+                  onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
                   <History size={14} /> Histórico
                 </button>
                 <button type="button" title="Editar"
                   className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
                   style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}
-                  onClick={() => setEditTarget(b)}>
+                  onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
                   <Pencil size={15} />
                 </button>
                 <button type="button" title="Excluir"
                   className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
                   style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
-                  onClick={() => setDeleteTarget(b)}>
+                  onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
                   <Trash2 size={15} />
                 </button>
               </div>
@@ -482,7 +483,7 @@ function ContasAPagarPageInner() {
           const country = normalizeCountry(b.country)
 
           return (
-            <TRow key={b.id} bg={rowBg}>
+            <TRow key={b.id} bg={rowBg} onClick={() => setHistoryTarget(b)} style={{ cursor: 'pointer' }}>
               {/* Barra colorida lateral */}
               <td style={{ width: 4, padding: 0 }}>
                 <div style={{ width: 4, minHeight: 44, height: '100%', background: borderColor, borderRadius: '2px 0 0 2px' }} />
@@ -552,18 +553,18 @@ function ContasAPagarPageInner() {
                       title="Marcar como pago"
                       className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]"
                       style={{ color: 'var(--green-400)' }}
-                      onClick={() => setPayTarget(b)}
+                      onClick={e => { e.stopPropagation(); setPayTarget(b) }}
                     >
                       <CircleDollarSign size={15} />
                     </button>
                   )}
-                  <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }} onClick={() => setHistoryTarget(b)}>
+                  <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }} onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
                     <History size={15} />
                   </button>
-                  <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }} onClick={() => setEditTarget(b)}>
+                  <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }} onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
                     <Pencil size={15} />
                   </button>
-                  <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }} onClick={() => setDeleteTarget(b)}>
+                  <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }} onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
                     <Trash2 size={15} />
                   </button>
                 </div>
