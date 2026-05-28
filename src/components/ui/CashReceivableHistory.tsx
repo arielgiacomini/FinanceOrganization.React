@@ -507,22 +507,55 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
 
         {/* Bulk bar */}
         {selected.size > 0 && (
-          <div className="flex items-center justify-between px-6 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
-            <span className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
-              <span style={{ color: 'var(--green-400)' }}>{selected.size}</span> registro(s) selecionado(s)
-            </span>
-            <div className="flex items-center gap-2">
-              <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => setSelected(new Set())}>Limpar</button>
-              <button type="button" onClick={() => setBulkEditOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.25)' }}>
-                <PencilLine size={14} /> Editar {selected.size}
-              </button>
-              <button type="button" onClick={() => setBulkDeleteOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(248,113,113,0.25)' }}>
-                <Trash2 size={14} /> Excluir {selected.size}
-              </button>
+          <div className="flex flex-col gap-2 px-6 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
+                  <span style={{ color: 'var(--green-400)' }}>{selected.size}</span> registro(s) selecionado(s)
+                </span>
+                {(() => {
+                  const brItems = selectedItems.filter(h => (h.country ?? '').trim().toLowerCase() !== 'espanha')
+                  const esItems = selectedItems.filter(h => (h.country ?? '').trim().toLowerCase() === 'espanha')
+                  const brTotal = brItems.reduce((s, h) => s + (h.manipulatedValue ?? h.value ?? 0), 0)
+                  const esTotal = esItems.reduce((s, h) => s + (h.manipulatedValue ?? h.value ?? 0), 0)
+                  const hasBoth = brItems.length > 0 && esItems.length > 0
+                  return (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                      <span style={{ color: 'var(--border-2)' }}>·</span>
+                      {brItems.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          {hasBoth && <FlagBrasil size={12} />}
+                          <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                            {formatCurrency(brTotal, 'Brasil')}
+                          </span>
+                        </span>
+                      )}
+                      {esItems.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          {hasBoth && <span style={{ color: 'var(--border-2)' }}>·</span>}
+                          {hasBoth && <FlagEspanha size={12} />}
+                          <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                            {formatCurrency(esTotal, 'Espanha')}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => setSelected(new Set())}>Limpar</button>
+                <button type="button" onClick={() => setBulkEditOpen(true)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.25)' }}>
+                  <PencilLine size={14} /> Editar {selected.size}
+                </button>
+                <button type="button" onClick={() => setBulkDeleteOpen(true)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(248,113,113,0.25)' }}>
+                  <Trash2 size={14} /> Excluir {selected.size}
+                </button>
+              </div>
             </div>
           </div>
         )}

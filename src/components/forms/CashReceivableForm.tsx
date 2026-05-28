@@ -106,8 +106,8 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
   function applyAdjust() {
     const amount = parseFloat(adjustAmount.replace(',', '.')) || 0
     if (amount <= 0 || (!adjustValue && !adjustManip)) return
-    const currentValue = parseFloat(form.value.replace(',', '.')) || 0
-    const currentManip = parseFloat(form.manipulatedValue.replace(',', '.')) || 0
+    const currentValue = !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : 0
+    const currentManip = !isNaN(parseFloat(form.manipulatedValue.replace(',', '.'))) ? parseFloat(form.manipulatedValue.replace(',', '.')) : 0
     const delta = adjustOp === 'add' ? amount : -amount
     if (adjustValue) {
       set('value', (currentValue + delta).toFixed(2))
@@ -149,8 +149,8 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           DueDate: safeDate(form.dueDate),
           YearMonth: form.initialMonthYear || initial!.yearMonth || '',
           Category: form.category || initial!.category || '',
-          Value: parseFloat(form.value.replace(',', '.')) || initial!.value,
-          ManipulatedValue: parseFloat(form.manipulatedValue.replace(',', '.')) || initial!.manipulatedValue || 0,
+          Value: !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : initial!.value,
+          ManipulatedValue: !isNaN(parseFloat(form.manipulatedValue.replace(',', '.'))) ? parseFloat(form.manipulatedValue.replace(',', '.')) : (initial!.manipulatedValue ?? 0),
           DateReceived: safeDate(form.dateReceived),
           HasReceived: form.hasReceived,
           AdditionalMessage: form.additionalMessage || null,
@@ -166,7 +166,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
           name: form.name,
           account: form.account,
           category: form.category,
-          value: parseFloat(form.value.replace(',', '.')) || 0,
+          value: !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : 0,
           frequence: form.frequence,
           registrationType: form.registrationType,
           agreementDate: form.agreementDate || null,
