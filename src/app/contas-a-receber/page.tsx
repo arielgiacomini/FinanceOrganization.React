@@ -9,6 +9,7 @@ import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CountryTabs, normalizeCountry } from '@/components/ui/CountryTabs'
 import type { CountryFilter } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CategoryFilter, matchesCategory } from '@/components/ui/CategoryFilter'
 import { CashReceivableForm } from '@/components/forms/CashReceivableForm'
 import { CashReceivableHistory } from '@/components/ui/CashReceivableHistory'
 import { ReceiveModal } from '@/components/ui/ReceiveModal'
@@ -42,6 +43,8 @@ function ContasAReceberPageInner() {
   const [historyTarget, setHistoryTarget] = useState<CashReceivable | null>(null)
   const [receiveTarget, setReceiveTarget] = useState<CashReceivable | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [catGroup, setCatGroup] = useState('')
+  const [catSub, setCatSub] = useState('')
 
   useEffect(() => {
     accountsApi.searchAll().then((res) => {
@@ -75,10 +78,16 @@ function ContasAReceberPageInner() {
   }, [items])
 
   const filtered = useMemo(() => {
-    if (countryFilter === 'Todos') return items
-    const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
-    return items.filter((r) => getCountry(r.country) === countryFilter)
-  }, [items, countryFilter])
+    let result = items
+    if (countryFilter !== 'Todos') {
+      const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
+      result = result.filter(r => getCountry(r.country) === countryFilter)
+    }
+    if (catGroup) {
+      result = result.filter(r => matchesCategory(r.category, catGroup, catSub))
+    }
+    return result
+  }, [items, countryFilter, catGroup, catSub])
 
   const byCountry = (country: string) => items.filter(r => normalizeCountry(r.country) === country)
   const sumValues = (arr: typeof items) => arr.reduce((s, r) => s + r.value, 0)
@@ -128,18 +137,57 @@ function ContasAReceberPageInner() {
       />
 
       {/* Country tabs + options */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
-        <div className="flex items-center gap-2">
-          <button
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
-            onClick={() => setShowDetails(v => !v)}
-          >
-            {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
-            {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
-          </button>
-          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+          <div className="flex items-center gap-2">
+            <button
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+              onClick={() => setShowDetails(v => !v)}
+            >
+              {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
+              {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+            </button>
+            <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+          </div>
         </div>
+        <CategoryFilter
+          categories={items.map(r => r.category ?? '').filter(Boolean)}
+          selectedGroup={catGroup}
+          selectedSub={catSub}
+          onGroupChange={setCatGroup}
+          onSubChange={setCatSub}
+        />
+        {catGroup && (() => {
+          const brItems = filtered.filter(r => normalizeCountry(r.country) !== 'Espanha')
+          const esItems = filtered.filter(r => normalizeCountry(r.country) === 'Espanha')
+          const brTotal = brItems.reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
+          const esTotal = esItems.reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
+          const brPending = brItems.filter(r => !r.hasReceived).reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
+          const esPending = esItems.filter(r => !r.hasReceived).reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
+          const hasBoth = brItems.length > 0 && esItems.length > 0
+          return (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
+              <span><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{filtered.length}</span> {filtered.length === 1 ? 'item' : 'itens'}</span>
+              {brItems.length > 0 && (
+                <>
+                  <span style={{ color: 'var(--border-2)' }}>·</span>
+                  {hasBoth && <FlagBrasil size={14} />}
+                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(brTotal, 'Brasil')}</span></span>
+                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(brPending, 'Brasil')}</span></span>
+                </>
+              )}
+              {esItems.length > 0 && (
+                <>
+                  <span style={{ color: 'var(--border-2)' }}>·</span>
+                  {hasBoth && <FlagEspanha size={14} />}
+                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(esTotal, 'Espanha')}</span></span>
+                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(esPending, 'Espanha')}</span></span>
+                </>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Desktop: tabela | Mobile: cards */}

@@ -10,6 +10,7 @@ import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CountryTabs, normalizeCountry } from '@/components/ui/CountryTabs'
 import type { CountryFilter } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CategoryFilter, matchesCategory } from '@/components/ui/CategoryFilter'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
 import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BulkPayModal } from '@/components/ui/BulkPayModal'
@@ -45,6 +46,8 @@ function ContasAPagarPageInner() {
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
   const [search, setSearch] = useState('')
+  const [catGroup, setCatGroup] = useState('')
+  const [catSub, setCatSub] = useState('')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
@@ -105,8 +108,11 @@ function ContasAPagarPageInner() {
         b.category?.toLowerCase().includes(q)
       )
     }
+    if (catGroup) {
+      result = result.filter(b => matchesCategory(b.category, catGroup, catSub))
+    }
     return result
-  }, [bills, countryFilter, accountFilter, search])
+  }, [bills, countryFilter, accountFilter, search, catGroup, catSub])
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -276,7 +282,16 @@ function ContasAPagarPageInner() {
             </button>
           )}
         </div>
-        {search.trim() && (() => {
+        {/* Category filter */}
+        <CategoryFilter
+          categories={bills.map(b => b.category ?? '').filter(Boolean)}
+          selectedGroup={catGroup}
+          selectedSub={catSub}
+          onGroupChange={setCatGroup}
+          onSubChange={setCatSub}
+        />
+
+        {(search.trim() || catGroup) && (() => {
           const brItems = filtered.filter(b => normalizeCountry(b.country) !== 'Espanha')
           const esItems = filtered.filter(b => normalizeCountry(b.country) === 'Espanha')
           const brTotal = brItems.reduce((s, b) => s + (b.value ?? 0), 0)
