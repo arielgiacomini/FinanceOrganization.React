@@ -188,6 +188,30 @@ export const dateApi = {
     ),
 }
 
+export interface MonthlyCashflowItem {
+  type: string
+  date: string
+  taxCountry: string
+  monthYear: string
+  quantity: number
+  value: number
+  manipulatedValue: number
+  hasPay: boolean | null
+  hasReceivable: boolean | null
+}
+
+export const dashboardApi = {
+  monthlyCashflow: (years: number[], months: number[], foodVoucher: string, loanNextMonths: string) => {
+    const params = new URLSearchParams({
+      years: years.join(','),
+      months: months.join(','),
+      foodVoucher,
+      loanNextMonths,
+    })
+    return request<MonthlyCashflowItem[]>(`/v1/dashboard/monthly-cashflow-billtopay-cashreceivable?${params.toString()}`, 'GET')
+  },
+}
+
 // ─── Wallet ───────────────────────────────────────────────────────────────────
 
 export interface WalletRecord {

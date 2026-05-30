@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { billsToPayApi, cashReceivableApi } from '@/lib/api'
+import { dashboardApi } from '@/lib/api'
+import type { MonthlyCashflowItem } from '@/lib/api'
 import {
   loadPlrName,
   loadSaldoFinalYm,
@@ -14,9 +15,8 @@ import {
 import { Spinner } from '@/components/ui'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import type { BillToPay, CashReceivable } from '@/types'
 
 interface ChartPoint {
   yearMonth: string
@@ -41,16 +41,16 @@ function shortLabel(ym: string): string {
   return `${m.slice(0, 3)}/${y.slice(2)}`
 }
 
-function isEspanha(country?: string | null): boolean {
-  return (country ?? '').trim().toLowerCase() === 'espanha'
-}
-
 function formatEur(v: number): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
 function formatBrl(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
+
+
+
+
 
 function numToYm(n: number): string {
   const year = Math.floor(n / 12)
@@ -88,12 +88,14 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       setLoading(true)
       try {
         const plrName = loadPlrName()
+        const valeCategoria = loadValeCategoria()
+        const saldoFinalYm = loadSaldoFinalYm()
 
         const now = new Date()
         const curYm = now.getFullYear() * 12 + now.getMonth()
 
         // Ponto de início: saldoFinalYm configurado ou 3 meses atrás
-        const sfYmStr = loadSaldoFinalYm()
+        const sfYmStr = saldoFinalYm
         const startYm = sfYmStr ? ymToNum(sfYmStr) : curYm - 3
         // Range: até 5 anos a frente do ponto de início
         const endYm = startYm + 12 * 5
@@ -104,93 +106,75 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           monthList.push(numToYm(n))
         }
 
-        // ── PLR: busca próximos 24 meses e soma manipulatedValue pelo nome ────
-        let plrTotal = 0
-        if (plrName) {
-          const plrMonths: string[] = []
-          for (let n = curYm; n <= curYm + 24; n++) {
-            plrMonths.push(numToYm(n))
-          }
-          const plrResults = await Promise.all(
-            plrMonths.map(ym =>
-              cashReceivableApi.search({ yearMonth: ym, showDetails: false })
-                .then(r => r.output?.data ?? [])
-                .catch(() => [] as CashReceivable[])
-            )
-          )
-          for (const recList of plrResults) {
-            for (const r of recList as CashReceivable[]) {
-              if (r.name?.trim() === plrName.trim()) {
-                plrTotal += r.manipulatedValue ?? 0
-              }
-            }
-          }
+        // Anos e meses únicos para o endpoint (produto cartesiano no backend)
+        const yearsSet = new Set<number>()
+        const monthsSet = new Set<number>()
+        for (let n = startYm; n <= endYm; n++) {
+          yearsSet.add(Math.floor(n / 12))
+          monthsSet.add((n % 12) + 1) // backend usa 1-12
         }
+        const years = Array.from(yearsSet).sort((a, b) => a - b)
+        const months = Array.from(monthsSet).sort((a, b) => a - b)
+
+        // ── Chamada única ao endpoint agregado ───────────────────────────────
+        const cashflow = await dashboardApi.monthlyCashflow(years, months, valeCategoria, plrName)
+          .catch(() => [] as MonthlyCashflowItem[])
+
+        if (cancelled) return
+
+        const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
+
+        // ── PLR total = soma de todos os "type 4" do range (manipulatedValue) ─
+        const plrTotal = cashflow
+          .filter(i => i.type?.startsWith('4'))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
 
         // ── SALDO FINAL = Total Contas Bancárias − PLR total ─────────────────
         const contasBancariasTotal = loadContasBancariasTotal()
         const saldoFinal = contasBancariasTotal - plrTotal
-        const saldoFinalYm = loadSaldoFinalYm()
-        const valeCategoria = loadValeCategoria()
-
-        // ── Dados mensais do gráfico ──────────────────────────────────────────
-        const results = await Promise.all(
-          monthList.map(async (ym) => {
-            const [bills, rec] = await Promise.all([
-              billsToPayApi.search({ yearMonth: ym, showDetails: false }),
-              cashReceivableApi.search({ yearMonth: ym, showDetails: false }),
-            ])
-            return {
-              ym,
-              bills: bills.output?.data ?? [],
-              rec: rec.output?.data ?? [],
-            }
-          })
-        )
-
-        if (cancelled) return
 
         const nomeGrupoEspanha = loadNomeGrupoEspanha()
         const contasBancariasEspanha = loadContasBancariasEspanha()
-
-        // Nomes dos grupos da Carteira (para debug no painel)
         const gruposEncontrados = loadGruposNomes()
 
-        // Acumulado Espanha: começa com o saldo total do grupo e vai diminuindo conforme despesas
+        // Agrupa os itens do cashflow por monthYear para cálculo rápido
+        const byMonth: Record<string, MonthlyCashflowItem[]> = {}
+        for (const item of cashflow) {
+          if (!byMonth[item.monthYear]) byMonth[item.monthYear] = []
+          byMonth[item.monthYear].push(item)
+        }
+
+        // Acumulado Espanha: começa com o saldo total do grupo e diminui conforme despesas
         let despesaEspanhaAcum = 0
 
-        const points: ChartPoint[] = results.map(({ ym, bills, rec }) => {
-          const billsList = bills as BillToPay[]
-          const recList = rec as CashReceivable[]
+        const points: ChartPoint[] = monthList.map((ym) => {
+          const items = byMonth[ym] ?? []
 
-          // Despesa Espanha = contas a pagar da Espanha não pagas
-          const despesaEspanha = billsList
-            .filter(b => isEspanha(b.country) && !b.hasPay)
-            .reduce((s, b) => s + (b.value ?? 0), 0)
+          // Despesa Espanha = type 1 + Espanha + hasPay=false
+          const despesaEspanha = items
+            .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
+            .reduce((s, i) => s + (i.value ?? 0), 0)
 
           despesaEspanhaAcum += despesaEspanha
-
-          // Acumulado = saldo inicial da carteira Espanha − todas as despesas até este mês
           const investAcumEspanha = contasBancariasEspanha - despesaEspanhaAcum
 
-          // Despesa Brasil = contas a pagar Brasil onde hasPay === false
-          const despesaBR = billsList
-            .filter(b => !isEspanha(b.country) && !b.hasPay)
-            .reduce((s, b) => s + (b.value ?? 0), 0)
+          // Despesa Brasil = type 1 + Brasil + hasPay=false
+          const despesaBR = items
+            .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry) && i.hasPay === false)
+            .reduce((s, i) => s + (i.value ?? 0), 0)
 
-          // Receita Brasil = manipulatedValue dos recebíveis Brasil do mês
-          // + Saldo Final da Carteira APENAS no mês configurado (equivale ao J8 do Excel)
-          // + Vale Alimentação/Refeição APENAS no mês configurado (categoria DSC_CATEGORIA = F8)
-          const receitaBR = recList
-            .filter(r => !isEspanha(r.country))
-            .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+          // Receita Brasil = type 2 + Brasil (manipulatedValue, todos hasReceivable)
+          const receitaBR = items
+            .filter(i => i.type?.startsWith('2') && !isEs(i.taxCountry))
+            .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
 
           const isConfiguredMonth = saldoFinalYm ? ym === saldoFinalYm : false
 
+          // Vale Refeição = type 3 (manipulatedValue), só no mês configurado
           const valeRefeicaoBR = isConfiguredMonth
-            ? recList
-                .filter(r => !isEspanha(r.country) && r.category?.trim() === valeCategoria.trim())
-                .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+            ? items
+                .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+                .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
             : 0
 
           const saldoBrasil = (receitaBR + (isConfiguredMonth ? saldoFinal : 0) + valeRefeicaoBR) - despesaBR
@@ -205,17 +189,15 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         })
 
         // ── Snapshot para o painel de memória de cálculo ────────────────────
-        const configuredResult = results.find(r => r.ym === saldoFinalYm)
-        const valeRefeicaoTotal = configuredResult
-          ? (configuredResult.rec as CashReceivable[])
-              .filter(r => !isEspanha(r.country) && r.category?.trim() === valeCategoria.trim())
-              .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
-          : 0
-        // Soma total das despesas Espanha em todos os meses carregados (para exibir no painel)
-        const despesaEspanhaTotal = results.reduce((s, { bills }) =>
-          s + (bills as BillToPay[])
-            .filter(b => isEspanha(b.country) && !b.hasPay)
-            .reduce((ss, b) => ss + (b.value ?? 0), 0), 0)
+        const configuredItems = byMonth[saldoFinalYm] ?? []
+        const valeRefeicaoTotal = configuredItems
+          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+
+        const despesaEspanhaTotal = cashflow
+          .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
+          .reduce((s, i) => s + (i.value ?? 0), 0)
+
         setCalc({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
 
         setData(points)
