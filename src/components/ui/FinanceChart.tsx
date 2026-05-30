@@ -52,10 +52,6 @@ function formatBrl(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
 
-
-
-
-
 function numToYm(n: number): string {
   const year = Math.floor(n / 12)
   const month = n % 12

@@ -19,7 +19,7 @@ import { SummaryCards } from '@/components/ui/SummaryCards'
 import {
   Plus, CheckCircle2, Pencil, Trash2,
   ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
-  Search, X,
+  Search, X, Square, SquareCheck,
 } from 'lucide-react'
 
 function sortBills(data: BillToPay[]): BillToPay[] {
@@ -55,6 +55,7 @@ function ContasAPagarPageInner() {
   const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
   const [historyTarget, setHistoryTarget] = useState<BillToPay | null>(null)
   const [bulkPayOpen, setBulkPayOpen] = useState(false)
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   const [deleting, setDeleting] = useState(false)
 
@@ -125,6 +126,23 @@ function ContasAPagarPageInner() {
   const espanhaBills = byCountry('Espanha')
   const summaryBrasil  = { total: sumValues(brasilBills),  positive: sumValues(brasilBills.filter(b => b.hasPay)),  pending: sumValues(brasilBills.filter(b => !b.hasPay))  }
   const summaryEspanha = { total: sumValues(espanhaBills), positive: sumValues(espanhaBills.filter(b => b.hasPay)), pending: sumValues(espanhaBills.filter(b => !b.hasPay)) }
+
+  // Selection helpers
+  const selectedItems = filtered.filter(b => !!selected[b.id])
+  const allSelected   = filtered.length > 0 && filtered.every(b => !!selected[b.id])
+
+  function toggleOne(id: string) {
+    setSelected(prev => { const n = { ...prev }; n[id] ? delete n[id] : (n[id] = true); return n })
+  }
+  function toggleAll() {
+    if (allSelected) {
+      setSelected({})
+    } else {
+      const next: Record<string, boolean> = {}
+      filtered.forEach(b => { next[b.id] = true })
+      setSelected(next)
+    }
+  }
 
   // Contas únicas para filtro rápido
   const uniqueAccounts = useMemo(() => {
@@ -242,6 +260,44 @@ function ContasAPagarPageInner() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Bulk selection bar */}
+      {Object.keys(selected).length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 rounded-xl" style={{ background: 'var(--bg-3)', border: '1px solid rgba(96,165,250,0.3)' }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+              <span style={{ color: 'var(--green-400)', fontWeight: 700 }}>{Object.keys(selected).length}</span> selecionado(s)
+            </span>
+            {(() => {
+              const brItems = selectedItems.filter(b => normalizeCountry(b.country) !== 'Espanha')
+              const esItems = selectedItems.filter(b => normalizeCountry(b.country) === 'Espanha')
+              const brTotal = brItems.reduce((s, b) => s + (b.value ?? 0), 0)
+              const esTotal = esItems.reduce((s, b) => s + (b.value ?? 0), 0)
+              const hasBoth = brItems.length > 0 && esItems.length > 0
+              return (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                  <span style={{ color: 'var(--border-2)' }}>·</span>
+                  {brItems.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      {hasBoth && <FlagBrasil size={12} />}
+                      <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(brTotal, 'Brasil')}</span>
+                    </span>
+                  )}
+                  {esItems.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      {hasBoth && <><span style={{ color: 'var(--border-2)' }}>·</span><FlagEspanha size={12} /></>}
+                      <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(esTotal, 'Espanha')}</span>
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+          <button type="button" className="text-xs px-3 py-1 rounded-lg" style={{ color: 'var(--text-3)', border: '1px solid var(--border-1)' }} onClick={() => setSelected({})}>
+            Limpar seleção
+          </button>
         </div>
       )}
 
@@ -392,18 +448,28 @@ function ContasAPagarPageInner() {
           const leftBar = hex ?? (b.hasPay ? '#22c55e' : 'var(--border-2)')
 
           return (
-            <div key={b.id} className="rounded-xl overflow-hidden"
-              style={{ background: rowBg, border: `1px solid ${cardBorder}`, borderLeft: `3px solid ${leftBar}`, cursor: 'pointer' }}
-              onClick={() => setHistoryTarget(b)}>
+            <div key={b.id} className="rounded-xl overflow-hidden transition-all"
+              style={{
+                background: !!selected[b.id] ? 'rgba(96,165,250,0.10)' : rowBg,
+                border: `1px solid ${!!selected[b.id] ? 'rgba(96,165,250,0.4)' : cardBorder}`,
+                borderLeft: `3px solid ${!!selected[b.id] ? 'var(--blue)' : leftBar}`,
+                cursor: 'pointer',
+              }}
+              onClick={() => toggleOne(b.id)}>
               {/* Linha 1: Nome + Valor + Status */}
               <div className="flex items-start justify-between px-4 pt-3 pb-2">
-                <div className="flex-1 min-w-0 pr-3">
-                  <p className="font-medium text-sm truncate" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--text-1)' }}>
-                    {b.name}
-                  </p>
-                  {showDetails && b.additionalMessage && (
-                    <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
-                  )}
+                <div className="flex items-start gap-2 flex-1 min-w-0 pr-3">
+                  <span style={{ color: !!selected[b.id] ? 'var(--blue)' : 'var(--text-3)', flexShrink: 0, marginTop: 2 }}>
+                    {!!selected[b.id] ? <SquareCheck size={14} /> : <Square size={14} />}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--text-1)' }}>
+                      {b.name}
+                    </p>
+                    {showDetails && b.additionalMessage && (
+                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <span className="font-mono font-semibold text-sm" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--red)' }}>
@@ -486,7 +552,7 @@ function ContasAPagarPageInner() {
       <div className="hidden sm:block">
             {/* Table */}
       <Table
-        headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
+        headers={['', '', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
       >
@@ -498,11 +564,20 @@ function ContasAPagarPageInner() {
           const country = normalizeCountry(b.country)
 
           return (
-            <TRow key={b.id} bg={rowBg} onClick={() => setHistoryTarget(b)} style={{ cursor: 'pointer' }}>
+            <TRow key={b.id}
+              bg={!!selected[b.id] ? 'rgba(96,165,250,0.10)' : rowBg}
+              onClick={() => toggleOne(b.id)}
+              style={{ cursor: 'pointer', outline: !!selected[b.id] ? '1px solid rgba(96,165,250,0.4)' : undefined }}>
               {/* Barra colorida lateral */}
               <td style={{ width: 4, padding: 0 }}>
-                <div style={{ width: 4, minHeight: 44, height: '100%', background: borderColor, borderRadius: '2px 0 0 2px' }} />
+                <div style={{ width: 4, minHeight: 44, height: '100%', background: !!selected[b.id] ? 'var(--blue)' : borderColor, borderRadius: '2px 0 0 2px' }} />
               </td>
+
+              <Td>
+                <button type="button" onClick={e => { e.stopPropagation(); toggleOne(b.id) }} style={{ color: !!selected[b.id] ? 'var(--blue)' : 'var(--text-3)' }}>
+                  {!!selected[b.id] ? <SquareCheck size={15} /> : <Square size={15} />}
+                </button>
+              </Td>
 
               <Td>
                 <div>
