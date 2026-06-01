@@ -538,7 +538,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         {/* Observação */}
         <div className="col-span-1 sm:col-span-2">
           <label className="label">Observação</label>
-          <textarea className="input resize-none" rows={2} value={form.additionalMessage} onChange={(e) => set('additionalMessage', e.target.value)} placeholder="Informações adicionais..." />
+          <textarea className="input resize-y" rows={4} style={{ minHeight: 96 }} value={form.additionalMessage} onChange={(e) => set('additionalMessage', e.target.value)} placeholder="Informações adicionais..." />
         </div>
       </div>
 

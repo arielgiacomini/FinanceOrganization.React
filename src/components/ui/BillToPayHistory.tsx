@@ -176,7 +176,7 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
         </div>
         <div className="col-span-2">
           <label className="label">Observação</label>
-          <textarea className="input resize-none w-full" rows={2} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
+          <textarea className="input resize-y w-full" rows={4} style={{ minHeight: 96 }} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
         </div>
       </div>
       {error && <p className="text-sm rounded-lg px-3 py-2" style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>{error}</p>}

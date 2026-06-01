@@ -384,7 +384,7 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
         {/* Observação */}
         <div className="sm:col-span-2">
           <label className="label">Observação</label>
-          <textarea className="input w-full resize-none" rows={2} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
+          <textarea className="input w-full resize-y" rows={4} style={{ minHeight: 96 }} value={form.additionalMessage} onChange={e => set('additionalMessage', e.target.value)} />
         </div>
       </div>
 
