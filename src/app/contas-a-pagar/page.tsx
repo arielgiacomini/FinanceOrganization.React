@@ -203,6 +203,11 @@ function ContasAPagarPageInner() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll */}
+      <div
+        className="sm:sticky z-30 space-y-4 sm:pb-3"
+        style={{ top: 0, background: 'var(--bg-1)', marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2 }}
+      >
       <PageHeader
         title="Contas a Pagar"
         subtitle={formatYearMonth(ym)}
@@ -419,6 +424,7 @@ function ContasAPagarPageInner() {
           </div>
         )}
       </div>
+      </div>{/* fim do cabeçalho sticky */}
 
       {/* Desktop: tabela | Mobile: cards */}
 
