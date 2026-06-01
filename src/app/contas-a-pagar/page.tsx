@@ -46,6 +46,7 @@ function ContasAPagarPageInner() {
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'Todos' | 'Pago' | 'Pendente'>('Todos')
   const [catGroup, setCatGroup] = useState('')
   const [catSub, setCatSub] = useState('')
 
@@ -112,8 +113,11 @@ function ContasAPagarPageInner() {
     if (catGroup) {
       result = result.filter(b => matchesCategory(b.category, catGroup, catSub))
     }
+    if (statusFilter !== 'Todos') {
+      result = result.filter(b => statusFilter === 'Pago' ? b.hasPay : !b.hasPay)
+    }
     return result
-  }, [bills, countryFilter, accountFilter, search, catGroup, catSub])
+  }, [bills, countryFilter, accountFilter, search, catGroup, catSub, statusFilter])
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -315,6 +319,27 @@ function ContasAPagarPageInner() {
             </button>
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
           </div>
+        </div>
+
+        {/* Status filter */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>Status:</span>
+          {(['Todos', 'Pendente', 'Pago'] as const).map(s => {
+            const active = statusFilter === s
+            const activeColor = s === 'Pago' ? 'var(--green-400)' : s === 'Pendente' ? 'var(--amber)' : 'var(--blue)'
+            const activeBg = s === 'Pago' ? 'var(--green-dim)' : s === 'Pendente' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
+            return (
+              <button key={s} type="button" onClick={() => setStatusFilter(s)}
+                className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+                style={{
+                  background: active ? activeBg : 'var(--bg-3)',
+                  color: active ? activeColor : 'var(--text-2)',
+                  border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                }}>
+                {s}
+              </button>
+            )
+          })}
         </div>
 
         {/* Search input */}

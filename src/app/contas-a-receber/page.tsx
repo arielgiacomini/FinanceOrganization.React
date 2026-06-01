@@ -43,6 +43,7 @@ function ContasAReceberPageInner() {
   const [historyTarget, setHistoryTarget] = useState<CashReceivable | null>(null)
   const [receiveTarget, setReceiveTarget] = useState<CashReceivable | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'Todos' | 'Recebido' | 'Não recebido'>('Todos')
   const [catGroup, setCatGroup] = useState('')
   const [catSub, setCatSub] = useState('')
 
@@ -86,8 +87,11 @@ function ContasAReceberPageInner() {
     if (catGroup) {
       result = result.filter(r => matchesCategory(r.category, catGroup, catSub))
     }
+    if (statusFilter !== 'Todos') {
+      result = result.filter(r => statusFilter === 'Recebido' ? r.hasReceived : !r.hasReceived)
+    }
     return result
-  }, [items, countryFilter, catGroup, catSub])
+  }, [items, countryFilter, catGroup, catSub, statusFilter])
 
   const byCountry = (country: string) => items.filter(r => normalizeCountry(r.country) === country)
   const sumValues = (arr: typeof items) => arr.reduce((s, r) => s + r.value, 0)
@@ -151,6 +155,27 @@ function ContasAReceberPageInner() {
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
           </div>
         </div>
+
+        {/* Status filter */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>Status:</span>
+          {(['Todos', 'Não recebido', 'Recebido'] as const).map(s => {
+            const active = statusFilter === s
+            const activeColor = s === 'Recebido' ? 'var(--green-400)' : s === 'Não recebido' ? 'var(--amber)' : 'var(--blue)'
+            const activeBg = s === 'Recebido' ? 'var(--green-dim)' : s === 'Não recebido' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
+            return (
+              <button key={s} type="button" onClick={() => setStatusFilter(s)}
+                className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+                style={{
+                  background: active ? activeBg : 'var(--bg-3)',
+                  color: active ? activeColor : 'var(--text-2)',
+                  border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                }}>
+                {s}
+              </button>
+            )
+          })}
+        </div>
         <CategoryFilter
           categories={items.map(r => r.category ?? '').filter(Boolean)}
           selectedGroup={catGroup}
@@ -161,11 +186,11 @@ function ContasAReceberPageInner() {
         {catGroup && (() => {
           const brItems = filtered.filter(r => normalizeCountry(r.country) !== 'Espanha')
           const esItems = filtered.filter(r => normalizeCountry(r.country) === 'Espanha')
-          const brTotal = brItems.reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
-          const esTotal = esItems.reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
-          const brPending = brItems.filter(r => !r.hasReceived).reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
-          const esPending = esItems.filter(r => !r.hasReceived).reduce((s, r) => s + (r.manipulatedValue ?? r.value ?? 0), 0)
-          const hasBoth = brItems.length > 0 && esItems.length > 0
+          const brValue   = brItems.reduce((s, r) => s + (r.value ?? 0), 0)
+          const esValue   = esItems.reduce((s, r) => s + (r.value ?? 0), 0)
+          const brSaldo   = brItems.reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+          const esSaldo   = esItems.reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+          const hasBoth   = brItems.length > 0 && esItems.length > 0
           return (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
               <span><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{filtered.length}</span> {filtered.length === 1 ? 'item' : 'itens'}</span>
@@ -173,16 +198,16 @@ function ContasAReceberPageInner() {
                 <>
                   <span style={{ color: 'var(--border-2)' }}>·</span>
                   {hasBoth && <FlagBrasil size={14} />}
-                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(brTotal, 'Brasil')}</span></span>
-                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(brPending, 'Brasil')}</span></span>
+                  <span>Valor: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(brValue, 'Brasil')}</span></span>
+                  <span>Saldo: <span className="font-mono font-semibold" style={{ color: 'var(--blue)' }}>{formatCurrency(brSaldo, 'Brasil')}</span></span>
                 </>
               )}
               {esItems.length > 0 && (
                 <>
                   <span style={{ color: 'var(--border-2)' }}>·</span>
                   {hasBoth && <FlagEspanha size={14} />}
-                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(esTotal, 'Espanha')}</span></span>
-                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(esPending, 'Espanha')}</span></span>
+                  <span>Valor: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(esValue, 'Espanha')}</span></span>
+                  <span>Saldo: <span className="font-mono font-semibold" style={{ color: 'var(--blue)' }}>{formatCurrency(esSaldo, 'Espanha')}</span></span>
                 </>
               )}
             </div>
