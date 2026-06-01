@@ -17,7 +17,7 @@ interface BillToPayFormProps {
 
 const DRAFT_KEY = 'finance_billtopay_draft'
 
-function saveDraft(form: Record<string, string>) {
+function saveDraft(form: Record<string, unknown>) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
 }
 function loadDraft(): Record<string, string> | null {
