@@ -56,6 +56,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     bestPayDay: draft?.bestPayDay ?? '',
     additionalMessage: initial?.additionalMessage ?? draft?.additionalMessage ?? '',
     country: initial?.country ?? draft?.country ?? 'Brasil',
+    hasPay: initial?.hasPay ?? false,
   })
   const hasDraft = !initial && !!draft
   const [sameMonth, setSameMonth] = useState(true)       // Mês inicial = final
@@ -101,7 +102,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
       purchaseDate: '', dueDate: '',
       initialMonthYear: currentYearMonth(),
       fynallyMonthYear: currentYearMonth(),
-      bestPayDay: '', additionalMessage: '', country: 'Brasil',
+      bestPayDay: '', additionalMessage: '', country: 'Brasil', hasPay: false,
     })
   }
 
@@ -121,10 +122,10 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           PurchaseDate: form.purchaseDate || initial!.purchaseDate || null,
           DueDate: form.dueDate || initial!.dueDate,
           YearMonth: form.initialMonthYear || initial!.yearMonth,
-          Frequence: initial!.frequence,
-          RegistrationType: initial!.registrationType,
+          Frequence: form.frequence || initial!.frequence,
+          RegistrationType: form.registrationType || initial!.registrationType,
           PayDay: initial!.payDay ?? null,
-          HasPay: initial!.hasPay,
+          HasPay: form.hasPay,
           LastChangeDate: new Date().toISOString(),
           AdditionalMessage: form.additionalMessage || null,
           Country: form.country,
@@ -229,6 +230,53 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
             <label className="label">Data de Compra</label>
             <input className="input" type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} />
           </div>
+        )}
+
+        {isEdit && (
+          <>
+            <div>
+              <label className="label">Data de Compra</label>
+              <input className="input" type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label">Mês/Ano</label>
+              <select className="input" value={form.initialMonthYear} onChange={(e) => set('initialMonthYear', e.target.value)}>
+                {ymOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Frequência</label>
+              <select className="input" value={form.frequence} onChange={(e) => set('frequence', e.target.value)}>
+                {frequenceList.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Tipo de Registro</label>
+              <select className="input" value={form.registrationType} onChange={(e) => set('registrationType', e.target.value)}>
+                {regTypeList.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+
+            <div className="col-span-1 sm:col-span-2">
+              <label className="label">Status</label>
+              <div className="flex gap-2">
+                {[{ label: 'Pendente', value: false }, { label: 'Pago', value: true }].map(({ label, value }) => (
+                  <button key={label} type="button" onClick={() => setForm(f => ({ ...f, hasPay: value }))}
+                    className="flex-1 py-2 rounded-lg border text-sm font-medium transition-all"
+                    style={{
+                      background: form.hasPay === value ? (value ? 'var(--green-dim)' : 'rgba(245,158,11,0.1)') : 'var(--bg-3)',
+                      border: `1px solid ${form.hasPay === value ? (value ? 'var(--green-border)' : 'rgba(245,158,11,0.4)') : 'var(--border-1)'}`,
+                      color: form.hasPay === value ? (value ? 'var(--green-400)' : 'var(--amber)') : 'var(--text-2)',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
         )}
 
         {!isEdit && (

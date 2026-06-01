@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { dashboardApi } from '@/lib/api'
+import { dashboardApi, walletApi } from '@/lib/api'
 import type { MonthlyCashflowItem } from '@/lib/api'
 import {
   loadPlrName,
@@ -87,6 +87,24 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     async function load() {
       setLoading(true)
       try {
+        // Sincroniza dados da Carteira do backend para o localStorage
+        // (garante que o gráfico tenha os valores mesmo no primeiro acesso,
+        // sem precisar abrir a tela Carteira antes)
+        try {
+          const res = await walletApi.search()
+          const records = res.output?.data ?? []
+          for (const rec of records) {
+            if (rec.walletKey === 'finance_wallet' && rec.walletValue) {
+              localStorage.setItem('finance_wallet', rec.walletValue)
+            }
+            if (rec.walletKey === 'finance_plr_config' && rec.walletValue) {
+              localStorage.setItem('finance_plr_config', rec.walletValue)
+            }
+          }
+        } catch { /* usa o que já houver no localStorage */ }
+
+        if (cancelled) return
+
         const plrName = loadPlrName()
         const valeCategoria = loadValeCategoria()
         const saldoFinalYm = loadSaldoFinalYm()
