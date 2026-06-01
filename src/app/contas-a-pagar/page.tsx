@@ -219,53 +219,21 @@ function ContasAPagarPageInner() {
         }
       />
 
-      {/* Summary */}
+      {/* Summary com resumo por conta embutido */}
       <SummaryCards
         countryFilter={countryFilter}
         brasil={summaryBrasil}
         espanha={summaryEspanha}
         labels={{ total: 'Total do mês', positive: 'Pago', pending: 'Pendente' }}
+        accountSummary={accountSummary.map(([name, data]) => ({
+          name,
+          total: data.total,
+          pending: data.pending,
+          hex: data.hex,
+          isCreditCard: data.isCreditCard,
+          currency: data.countries.size === 1 && data.countries.has('Espanha') ? 'Espanha' : 'Brasil',
+        }))}
       />
-      {/* Resumo por conta */}
-      {accountSummary.length > 0 && (
-        <div className="rounded-xl overflow-hidden"
-          style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
-          {accountSummary.map(([name, data], idx) => {
-            // Se todos os registros daquela conta são do mesmo país, usa a moeda desse país
-            const onlySpain = data.countries.size === 1 && data.countries.has('Espanha')
-            const curr = onlySpain ? 'Espanha' : 'Brasil'
-            return (
-              <div key={name}
-                className="flex items-center justify-between px-4 py-2.5"
-                style={{
-                  borderTop: idx > 0 ? '1px solid var(--border-1)' : undefined,
-                }}>
-                {/* Esquerda: bolinha + ícone + nome */}
-                <div className="flex items-center gap-2 min-w-0">
-                  {data.hex
-                    ? <span style={{ width: 7, height: 7, borderRadius: '50%', background: data.hex, display: 'inline-block', flexShrink: 0 }} />
-                    : <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--border-2)', display: 'inline-block', flexShrink: 0 }} />
-                  }
-                  {data.isCreditCard && <CreditCard size={11} style={{ color: 'var(--text-3)', flexShrink: 0 }} />}
-                  <span className="text-xs truncate" style={{ color: 'var(--text-3)' }}>{name}</span>
-                </div>
-                {/* Direita: total + pendente */}
-                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                  {data.pending > 0 && data.pending !== data.total && (
-                    <span className="text-xs font-mono hidden sm:inline" style={{ color: 'var(--text-3)' }}>
-                      {formatCurrency(data.pending, curr)} pend.
-                    </span>
-                  )}
-                  <span className="text-xs font-mono font-semibold"
-                    style={{ color: data.isCreditCard ? 'var(--amber)' : 'var(--text-2)' }}>
-                    {formatCurrency(data.total, curr)}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {/* Bulk selection bar */}
       {Object.keys(selected).length > 0 && (
@@ -308,7 +276,28 @@ function ContasAPagarPageInner() {
       {/* Filters bar */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+          <div className="flex flex-wrap items-center gap-2">
+            <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+            {/* Status filter ao lado dos países */}
+            <div className="flex items-center gap-1 ml-1 pl-2" style={{ borderLeft: '1px solid var(--border-1)' }}>
+              {(['Todos', 'Pendente', 'Pago'] as const).map(s => {
+                const active = statusFilter === s
+                const activeColor = s === 'Pago' ? 'var(--green-400)' : s === 'Pendente' ? 'var(--amber)' : 'var(--blue)'
+                const activeBg = s === 'Pago' ? 'var(--green-dim)' : s === 'Pendente' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
+                return (
+                  <button key={s} type="button" onClick={() => setStatusFilter(s)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    style={{
+                      background: active ? activeBg : 'var(--bg-3)',
+                      color: active ? activeColor : 'var(--text-2)',
+                      border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                    }}>
+                    {s}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
@@ -319,27 +308,6 @@ function ContasAPagarPageInner() {
             </button>
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
           </div>
-        </div>
-
-        {/* Status filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>Status:</span>
-          {(['Todos', 'Pendente', 'Pago'] as const).map(s => {
-            const active = statusFilter === s
-            const activeColor = s === 'Pago' ? 'var(--green-400)' : s === 'Pendente' ? 'var(--amber)' : 'var(--blue)'
-            const activeBg = s === 'Pago' ? 'var(--green-dim)' : s === 'Pendente' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
-            return (
-              <button key={s} type="button" onClick={() => setStatusFilter(s)}
-                className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-                style={{
-                  background: active ? activeBg : 'var(--bg-3)',
-                  color: active ? activeColor : 'var(--text-2)',
-                  border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
-                }}>
-                {s}
-              </button>
-            )
-          })}
         </div>
 
         {/* Search input */}

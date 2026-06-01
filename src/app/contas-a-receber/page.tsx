@@ -143,7 +143,28 @@ function ContasAReceberPageInner() {
       {/* Country tabs + options */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+          <div className="flex flex-wrap items-center gap-2">
+            <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
+            {/* Status filter ao lado dos países */}
+            <div className="flex items-center gap-1 ml-1 pl-2" style={{ borderLeft: '1px solid var(--border-1)' }}>
+              {(['Todos', 'Não recebido', 'Recebido'] as const).map(s => {
+                const active = statusFilter === s
+                const activeColor = s === 'Recebido' ? 'var(--green-400)' : s === 'Não recebido' ? 'var(--amber)' : 'var(--blue)'
+                const activeBg = s === 'Recebido' ? 'var(--green-dim)' : s === 'Não recebido' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
+                return (
+                  <button key={s} type="button" onClick={() => setStatusFilter(s)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    style={{
+                      background: active ? activeBg : 'var(--bg-3)',
+                      color: active ? activeColor : 'var(--text-2)',
+                      border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                    }}>
+                    {s}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
@@ -156,26 +177,6 @@ function ContasAReceberPageInner() {
           </div>
         </div>
 
-        {/* Status filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>Status:</span>
-          {(['Todos', 'Não recebido', 'Recebido'] as const).map(s => {
-            const active = statusFilter === s
-            const activeColor = s === 'Recebido' ? 'var(--green-400)' : s === 'Não recebido' ? 'var(--amber)' : 'var(--blue)'
-            const activeBg = s === 'Recebido' ? 'var(--green-dim)' : s === 'Não recebido' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
-            return (
-              <button key={s} type="button" onClick={() => setStatusFilter(s)}
-                className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-                style={{
-                  background: active ? activeBg : 'var(--bg-3)',
-                  color: active ? activeColor : 'var(--text-2)',
-                  border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
-                }}>
-                {s}
-              </button>
-            )
-          })}
-        </div>
         <CategoryFilter
           categories={items.map(r => r.category ?? '').filter(Boolean)}
           selectedGroup={catGroup}
