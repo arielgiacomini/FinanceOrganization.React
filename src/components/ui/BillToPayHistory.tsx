@@ -42,8 +42,6 @@ function isPastMonth(ym?: string): boolean { return ymToNum(ym) < currentYmNum()
 function sortByYearMonth(data: BillToPay[]): BillToPay[] {
   const cur = currentYmNum()
   const past    = data.filter(h => ymToNum(h.yearMonth) < cur)
-                      .sort((a, b) => ymToNum(b.yearMonth) - ymToNum(a.yearMonth))
-                      .slice(0, 3)
                       .sort((a, b) => ymToNum(a.yearMonth) - ymToNum(b.yearMonth))
   const current = data.filter(h => ymToNum(h.yearMonth) === cur)
   const future  = data.filter(h => ymToNum(h.yearMonth) > cur)
@@ -191,6 +189,13 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
   )
 }
 
+const STATUS_FILTERS = [
+  { key: 'all',    label: 'Todos'     },
+  { key: 'unpaid', label: 'Não pagos' },
+  { key: 'paid',   label: 'Pagos'     },
+] as const
+type StatusFilter = typeof STATUS_FILTERS[number]['key']
+
 export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHistoryProps) {
   const [history, setHistory] = useState<BillToPay[]>([])
   const [loading, setLoading] = useState(true)
@@ -203,6 +208,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting]     = useState(false)
   const [showDetails, setShowDetails]       = useState(false)
+  const [statusFilter, setStatusFilter]     = useState<StatusFilter>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -219,11 +225,21 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
   const totalPending = history.filter(h => !h.hasPay).reduce((s, h) => s + h.value, 0)
   const total        = history.reduce((s, h) => s + h.value, 0)
   const paidCount    = history.filter(h => h.hasPay).length
-  const allSelected  = history.length > 0 && selected.size === history.length
+  const pendingCount = history.length - paidCount
+
+  const visibleHistory = history.filter(h =>
+    statusFilter === 'all' ? true : statusFilter === 'paid' ? h.hasPay : !h.hasPay
+  )
+
+  const allSelected  = visibleHistory.length > 0 && visibleHistory.every(h => selected.has(h.id))
   const someSelected = selected.size > 0 && !allSelected
   const selectedItems = history.filter(h => selected.has(h.id))
 
-  function toggleAll() { setSelected(allSelected ? new Set() : new Set(history.map(h => h.id))) }
+  function changeFilter(key: StatusFilter) {
+    setStatusFilter(key)
+    setSelected(new Set())
+  }
+  function toggleAll() { setSelected(allSelected ? new Set() : new Set(visibleHistory.map(h => h.id))) }
   function toggleOne(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
@@ -386,8 +402,30 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
         )}
 
         {/* Options bar */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
-          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{history.length} registro(s)</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
+          <div className="flex items-center gap-3">
+            <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+              {statusFilter === 'all'
+                ? `${history.length} registro(s)`
+                : `${visibleHistory.length} de ${history.length} registro(s)`}
+            </span>
+            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+              {STATUS_FILTERS.map(({ key, label }) => {
+                const count = key === 'all' ? history.length : key === 'paid' ? paidCount : pendingCount
+                const active = statusFilter === key
+                return (
+                  <button key={key} type="button" onClick={() => changeFilter(key)}
+                    className="text-xs px-2.5 py-1 rounded-md font-medium transition-colors"
+                    style={{
+                      background: active ? 'var(--green-dim)' : 'transparent',
+                      color: active ? 'var(--green-400)' : 'var(--text-3)',
+                    }}>
+                    {label} <span style={{ opacity: 0.7 }}>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <button type="button"
             className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
             onClick={() => setShowDetails(v => !v)}>
@@ -402,11 +440,13 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
             <div className="flex justify-center items-center h-48"><Spinner size={28} /></div>
           ) : history.length === 0 ? (
             <Empty message="Nenhum histórico encontrado." />
+          ) : visibleHistory.length === 0 ? (
+            <Empty message="Nenhum registro neste filtro." />
           ) : (
             <>
               {/* ── Mobile cards ── */}
               <div className="sm:hidden flex flex-col gap-2 p-3">
-                {history.map(h => {
+                {visibleHistory.map(h => {
                   const isSelected = selected.has(h.id)
                   const isCurrent  = isCurrentMonth(h.yearMonth)
                   const isPast     = isPastMonth(h.yearMonth)
@@ -492,7 +532,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map(h => {
+                  {visibleHistory.map(h => {
                     const isSelected = selected.has(h.id)
                     const isCurrent  = isCurrentMonth(h.yearMonth)
                     const bg = isSelected ? 'rgba(96,165,250,0.10)' : isCurrent && !h.hasPay ? 'rgba(251,191,36,0.08)' : h.hasPay ? 'rgba(34,197,94,0.06)' : 'var(--bg-1)'
