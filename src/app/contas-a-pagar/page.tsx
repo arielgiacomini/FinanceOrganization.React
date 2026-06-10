@@ -1,7 +1,7 @@
 'use client'
 
 import { AppLayout } from '@/components/layout/AppLayout'
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { billsToPayApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
 import type { BillToPay, Account } from '@/types'
@@ -59,6 +59,20 @@ function ContasAPagarPageInner() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   const [deleting, setDeleting] = useState(false)
+
+  // Mede a altura do bloco de filtros sticky para fixar o cabeçalho da tabela logo abaixo dele
+  const filtersRef = useRef<HTMLDivElement>(null)
+  const [headerOffset, setHeaderOffset] = useState(0)
+  useEffect(() => {
+    const el = filtersRef.current
+    if (!el) return
+    const update = () => setHeaderOffset(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update)
+    return () => { ro.disconnect(); window.removeEventListener('resize', update) }
+  }, [])
 
   useEffect(() => {
     accountsApi.searchAll().then((res) => {
@@ -205,6 +219,7 @@ function ContasAPagarPageInner() {
     <div className="space-y-6 animate-slide-up">
       {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll */}
       <div
+        ref={filtersRef}
         className="sm:sticky z-30 space-y-4 sm:pb-3"
         style={{ top: 0, background: 'var(--bg-1)', marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2 }}
       >
@@ -554,6 +569,7 @@ function ContasAPagarPageInner() {
         headers={['', '', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
+        headerOffset={headerOffset}
       >
         {filtered.map((b) => {
           const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined

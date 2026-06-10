@@ -99,7 +99,7 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
         RegistrationType: form.registrationType || h.registrationType,
         AdditionalMessage: form.additionalMessage,
         Country: form.country,
-        Value: parseFloat(form.value.replace(',', '.')) || h.value,
+        Value: !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : h.value,
         DueDate: h.dueDate,
         YearMonth: h.yearMonth,
         HasPay: h.hasPay,
@@ -519,15 +519,15 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
 
               {/* ── Desktop table ── */}
               <table className="hidden sm:table w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
-                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                  <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
-                    <th className="px-4 py-3 w-10">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
+                    <th className="px-4 py-3 w-10 sm:sticky sm:top-0 sm:z-10" style={{ background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>
                       <button type="button" onClick={toggleAll} style={{ color: allSelected ? 'var(--green-400)' : someSelected ? 'var(--amber)' : 'var(--text-3)' }}>
                         {allSelected ? <SquareCheck size={16} /> : someSelected ? <Minus size={16} /> : <Square size={16} />}
                       </button>
                     </th>
                     {['Mês/Ano', 'País', 'Valor', 'Vencimento', 'Pago em', 'Status', 'Ações'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:top-0 sm:z-10" style={{ color: 'var(--text-3)', background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>

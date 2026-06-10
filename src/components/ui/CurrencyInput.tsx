@@ -91,6 +91,14 @@ export function CurrencyInput({ value, country, onChange, placeholder, required 
     }
   }
 
+  function toggleSign() {
+    const n = parseFloat(value)
+    if (isNaN(n)) return
+    const flipped = (n === 0 ? 0 : -n).toFixed(2)
+    setDisplay(formatCurrencyDisplay(flipped, country))
+    onChange(flipped)
+  }
+
   const numVal = parseFloat(value)
   const isNegative = !isNaN(numVal) && numVal < 0
 
@@ -105,7 +113,7 @@ export function CurrencyInput({ value, country, onChange, placeholder, required 
       </div>
       <input
         ref={inputRef}
-        className="input pl-9"
+        className="input pl-9 pr-12"
         type="text"
         inputMode="decimal"
         value={display}
@@ -123,6 +131,20 @@ export function CurrencyInput({ value, country, onChange, placeholder, required 
           color: isNegative ? 'var(--red)' : undefined,
         }}
       />
+      <button
+        type="button"
+        onClick={toggleSign}
+        title="Inverter sinal (positivo/negativo)"
+        aria-label="Inverter sinal"
+        className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-md text-xs font-bold transition-colors"
+        style={{
+          background: isNegative ? 'var(--red-dim)' : 'var(--bg-3)',
+          color: isNegative ? 'var(--red)' : 'var(--text-3)',
+          border: `1px solid ${isNegative ? 'rgba(220,38,38,0.4)' : 'var(--border-1)'}`,
+        }}
+      >
+        ±
+      </button>
     </div>
   )
 }

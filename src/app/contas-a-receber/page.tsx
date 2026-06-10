@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { cashReceivableApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
 import type { CashReceivable, Account } from '@/types'
@@ -19,6 +19,8 @@ import { AppLayout } from '@/components/layout/AppLayout'
 
 function sortReceivables(data: CashReceivable[]): CashReceivable[] {
   return [...data].sort((a, b) => {
+    // Em aberto primeiro; recebidos no fim (mantendo, dentro de cada grupo, a ordem de hoje)
+    if (!!a.hasReceived !== !!b.hasReceived) return a.hasReceived ? 1 : -1
     const dueDiff = new Date(a.dueDate ?? '').getTime() - new Date(b.dueDate ?? '').getTime()
     if (dueDiff !== 0) return dueDiff
     return (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR', { sensitivity: 'base' })
@@ -46,6 +48,20 @@ function ContasAReceberPageInner() {
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Recebido' | 'Não recebido'>('Todos')
   const [catGroup, setCatGroup] = useState('')
   const [catSub, setCatSub] = useState('')
+
+  // Mede a altura do bloco de filtros sticky para fixar o cabeçalho da tabela logo abaixo dele
+  const filtersRef = useRef<HTMLDivElement>(null)
+  const [headerOffset, setHeaderOffset] = useState(0)
+  useEffect(() => {
+    const el = filtersRef.current
+    if (!el) return
+    const update = () => setHeaderOffset(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update)
+    return () => { ro.disconnect(); window.removeEventListener('resize', update) }
+  }, [])
 
   useEffect(() => {
     accountsApi.searchAll().then((res) => {
@@ -121,6 +137,7 @@ function ContasAReceberPageInner() {
     <div className="space-y-6 animate-slide-up">
       {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll */}
       <div
+        ref={filtersRef}
         className="sm:sticky z-30 space-y-4 sm:pb-3"
         style={{ top: 0, background: 'var(--bg-1)', marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2 }}
       >
@@ -248,7 +265,7 @@ function ContasAReceberPageInner() {
               {/* Linha 1: Nome + Valor + Status */}
               <div className="flex items-start justify-between px-4 pt-3 pb-2">
                 <div className="flex-1 min-w-0 pr-3">
-                  <p className="font-medium text-sm truncate" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--text-1)' }}>
+                  <p className="font-medium text-sm truncate" style={{ color: 'var(--text-1)' }}>
                     {r.name}
                   </p>
                   {showDetails && r.additionalMessage && (
@@ -256,7 +273,7 @@ function ContasAReceberPageInner() {
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <span className="font-mono font-semibold text-sm" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--green-400)' }}>
+                  <span className="font-mono font-semibold text-sm" style={{ color: 'var(--green-400)' }}>
                     {formatCurrency(r.value, r.country)}
                   </span>
                   {r.manipulatedValue !== r.value && (
@@ -338,23 +355,24 @@ function ContasAReceberPageInner() {
         headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Saldo', 'Vencimento', 'Recebido em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
+        headerOffset={headerOffset}
       >
         {filtered.map((r) => {
           const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const rowBg = hex ? hexToRowBg(hex) : 'var(--bg-2)'
-          const borderColor = hex ? hex : 'transparent'
+          const borderColor = hex ? hex : (r.hasReceived ? '#22c55e' : 'transparent')
           const country = normalizeCountry(r.country)
 
           return (
-            <TRow key={r.id} bg={rowBg}>
+            <TRow key={r.id} bg={rowBg} style={r.hasReceived ? { background: 'rgba(34,197,94,0.13)' } : undefined}>
               <td style={{ width: 4, padding: 0 }}>
                 <div style={{ width: 4, minHeight: 44, height: '100%', background: borderColor, borderRadius: '2px 0 0 2px' }} />
               </td>
 
               <Td>
                 <div>
-                  <p className="font-medium" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--text-1)' }}>
+                  <p className="font-medium" style={{ color: 'var(--text-1)' }}>
                     {r.name}
                   </p>
                   {showDetails && r.additionalMessage && (
@@ -397,7 +415,7 @@ function ContasAReceberPageInner() {
 
               <Td className="text-xs">{r.category ?? '—'}</Td>
               <Td>
-                <span className="font-mono text-sm" style={{ color: r.hasReceived ? 'var(--text-3)' : 'var(--green-400)' }}>
+                <span className="font-mono text-sm" style={{ color: 'var(--green-400)' }}>
                   {formatCurrency(r.value, r.country)}
                 </span>
               </Td>
@@ -407,7 +425,7 @@ function ContasAReceberPageInner() {
                 </span>
               </Td>
               <Td className="text-xs">{formatDate(r.dueDate)}</Td>
-              <Td className="text-xs">{formatDate(r.dateReceived)}</Td>
+              <Td className="text-xs"><span style={{ color: r.hasReceived ? 'var(--green-400)' : 'inherit' }}>{formatDate(r.dateReceived)}</span></Td>
               <Td>
                 {r.hasReceived
                   ? <span className="badge-paid"><CheckCircle2 size={10} />Recebido</span>

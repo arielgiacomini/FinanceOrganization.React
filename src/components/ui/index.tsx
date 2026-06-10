@@ -150,23 +150,24 @@ interface TableProps {
   children: React.ReactNode
   loading?: boolean
   empty?: boolean
+  headerOffset?: number
 }
 
-export function Table({ headers, children, loading, empty }: TableProps) {
+export function Table({ headers, children, loading, empty, headerOffset = 0 }: TableProps) {
   return (
     <div
-      className="overflow-hidden rounded-xl"
+      className="overflow-hidden sm:overflow-visible rounded-xl"
       style={{ border: '1px solid var(--border-1)', background: 'var(--bg-2)' }}
     >
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto sm:overflow-x-visible">
         <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-2)' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
               {headers.map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-3 text-left text-xs font-medium"
-                  style={{ color: 'var(--text-3)' }}
+                  className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:z-20"
+                  style={{ color: 'var(--text-3)', background: 'var(--bg-2)', boxShadow: 'inset 0 -1px 0 var(--border-1)', top: headerOffset }}
                 >
                   {h}
                 </th>
