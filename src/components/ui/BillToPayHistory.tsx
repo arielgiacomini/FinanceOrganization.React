@@ -276,7 +276,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
 
       {/* Drawer: right on desktop, bottom sheet on mobile */}
       <div
-        className="fixed z-50 flex flex-col
+        className="history-drawer fixed z-50 flex flex-col
           bottom-0 left-0 right-0 rounded-t-2xl
           sm:bottom-auto sm:top-0 sm:left-auto sm:right-0 sm:h-screen sm:rounded-none"
         style={{
@@ -446,6 +446,13 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
             <>
               {/* ── Mobile cards ── */}
               <div className="sm:hidden flex flex-col gap-2 p-3">
+                {/* Selecionar todos */}
+                <button type="button" onClick={toggleAll}
+                  className="flex items-center gap-2 px-1 pb-1 text-xs font-medium"
+                  style={{ color: allSelected ? 'var(--green-400)' : someSelected ? 'var(--amber)' : 'var(--text-3)' }}>
+                  {allSelected ? <SquareCheck size={16} /> : someSelected ? <Minus size={16} /> : <Square size={16} />}
+                  Selecionar todos ({visibleHistory.length})
+                </button>
                 {visibleHistory.map(h => {
                   const isSelected = selected.has(h.id)
                   const isCurrent  = isCurrentMonth(h.yearMonth)

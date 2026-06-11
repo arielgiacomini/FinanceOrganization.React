@@ -482,39 +482,76 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
     <>
       <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
 
-      <div className="fixed top-0 right-0 h-screen z-50 flex flex-col"
-        style={{ width: 'min(960px, 100vw)', background: 'var(--bg-1)', borderLeft: '1px solid var(--border-2)', boxShadow: '-8px 0 32px rgba(0,0,0,0.4)', animation: 'slideInRight 0.25s ease-out' }}>
+      {/* Drawer: right on desktop, bottom sheet on mobile */}
+      <div
+        className="history-drawer fixed z-50 flex flex-col
+          bottom-0 left-0 right-0 rounded-t-2xl
+          sm:bottom-auto sm:top-0 sm:left-auto sm:right-0 sm:h-screen sm:rounded-none"
+        style={{
+          width: '100%',
+          maxHeight: '92dvh',
+          background: 'var(--bg-1)',
+          borderTop: '1px solid var(--border-2)',
+          boxShadow: '0 -8px 32px rgba(0,0,0,0.4)',
+          animation: 'slideInBottom 0.25s ease-out',
+        }}
+      >
+        <style>{`
+          @media (min-width: 640px) {
+            .history-drawer {
+              width: min(960px, 100vw) !important;
+              max-height: 100vh !important;
+              border-top: none !important;
+              border-left: 1px solid var(--border-2) !important;
+              box-shadow: -8px 0 32px rgba(0,0,0,0.4) !important;
+              animation: slideInRight 0.25s ease-out !important;
+            }
+          }
+          @keyframes slideInBottom {
+            from { transform: translateY(100%); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+          }
+          @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+          }
+        `}</style>
+
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-2)' }} />
+        </div>
 
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}>
-              <ReceiptText size={17} />
+        <div className="flex items-start justify-between px-4 sm:px-6 py-4 sm:py-5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)' }}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}>
+              <ReceiptText size={16} />
             </div>
-            <div>
-              <h2 className="font-semibold text-base" style={{ color: 'var(--text-1)' }}>{item.name}</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-sm sm:text-base truncate" style={{ color: 'var(--text-1)' }}>{item.name}</h2>
+              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
                 {item.account} · {item.category} · {item.frequence} · ID #{item.idCashReceivableRegistration}
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg transition-colors hover:bg-[var(--bg-3)] flex-shrink-0 ml-4" style={{ color: 'var(--text-3)' }}>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg transition-colors hover:bg-[var(--bg-3)] flex-shrink-0 ml-2" style={{ color: 'var(--text-3)' }}>
             <X size={18} />
           </button>
         </div>
 
-        {/* Stats */}
+        {/* Stats — 2 cols on mobile, 4 on desktop */}
         {!loading && (
-          <div className="grid grid-cols-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
             {[
               { icon: <Calendar size={13} />,     label: 'Parcelas',       value: `${receivedCount} / ${history.length} recebidas`, color: 'var(--text-2)'    },
               { icon: <TrendingUp size={13} />,   label: 'Total geral',    value: formatCurrency(total, item.country),               color: 'var(--text-1)'    },
               { icon: <CheckCircle2 size={13} />, label: 'Total recebido', value: formatCurrency(totalReceived, item.country),       color: 'var(--green-400)' },
               { icon: <AlertCircle size={13} />,  label: 'Pendente',       value: formatCurrency(totalPending, item.country),        color: 'var(--amber)'     },
             ].map(({ icon, label, value, color }) => (
-              <div key={label} className="px-6 py-4">
+              <div key={label} className="px-4 sm:px-6 py-3 sm:py-4">
                 <div className="flex items-center gap-1.5 mb-1" style={{ color: 'var(--text-3)' }}>{icon}<span className="text-xs">{label}</span></div>
-                <p className="text-base font-semibold" style={{ color }}>{value}</p>
+                <p className="text-sm sm:text-base font-semibold truncate" style={{ color }}>{value}</p>
               </div>
             ))}
           </div>
@@ -522,11 +559,11 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
 
         {/* Bulk bar */}
         {selected.size > 0 && (
-          <div className="flex flex-col gap-2 px-6 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
+          <div className="flex flex-col gap-2 px-4 sm:px-6 py-2 sm:py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
-                  <span style={{ color: 'var(--green-400)' }}>{selected.size}</span> registro(s) selecionado(s)
+                <span className="text-xs sm:text-sm font-medium" style={{ color: 'var(--text-2)' }}>
+                  <span style={{ color: 'var(--green-400)' }}>{selected.size}</span> selecionado(s)
                 </span>
                 {(() => {
                   const brItems = selectedItems.filter(h => (h.country ?? '').trim().toLowerCase() !== 'espanha')
@@ -559,16 +596,16 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
                 })()}
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => setSelected(new Set())}>Limpar</button>
+                <button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => setSelected(new Set())}>Limpar</button>
                 <button type="button" onClick={() => setBulkEditOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                   style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.25)' }}>
-                  <PencilLine size={14} /> Editar {selected.size}
+                  <PencilLine size={13} /> Editar {selected.size}
                 </button>
                 <button type="button" onClick={() => setBulkDeleteOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                   style={{ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(248,113,113,0.25)' }}>
-                  <Trash2 size={14} /> Excluir {selected.size}
+                  <Trash2 size={13} /> Excluir {selected.size}
                 </button>
               </div>
             </div>
@@ -576,7 +613,7 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
         )}
 
         {/* Options bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
           <div className="flex items-center gap-3">
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>
               {statusFilter === 'all'
@@ -617,7 +654,97 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
           ) : visibleHistory.length === 0 ? (
             <Empty message="Nenhum registro neste filtro." />
           ) : (
-            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
+            <>
+              {/* ── Mobile cards ── */}
+              <div className="sm:hidden flex flex-col gap-2 p-3">
+                {/* Selecionar todos */}
+                <button type="button" onClick={toggleAll}
+                  className="flex items-center gap-2 px-1 pb-1 text-xs font-medium"
+                  style={{ color: allSelected ? 'var(--green-400)' : someSelected ? 'var(--amber)' : 'var(--text-3)' }}>
+                  {allSelected ? <SquareCheck size={16} /> : someSelected ? <Minus size={16} /> : <Square size={16} />}
+                  Selecionar todos ({visibleHistory.length})
+                </button>
+                {visibleHistory.map(h => {
+                  const isSelected = selected.has(h.id)
+                  const isCurrent  = isCurrentMonth(h.yearMonth)
+                  const isPast     = isPastMonth(h.yearMonth)
+                  return (
+                    <div key={h.id}
+                      className="rounded-xl overflow-hidden"
+                      style={{
+                        background: isSelected ? 'rgba(96,165,250,0.10)' : isCurrent && !h.hasReceived ? 'rgba(251,191,36,0.08)' : h.hasReceived ? 'rgba(34,197,94,0.06)' : 'var(--bg-2)',
+                        border: `1px solid ${isSelected ? 'rgba(96,165,250,0.4)' : isCurrent ? 'rgba(251,191,36,0.3)' : h.hasReceived ? 'rgba(34,197,94,0.2)' : 'var(--border-1)'}`,
+                      }}>
+                      {/* Linha 1: checkbox + mês + status */}
+                      <div className="flex items-center gap-3 px-3 pt-3 pb-2">
+                        <button type="button" onClick={() => toggleOne(h.id)} style={{ color: isSelected ? 'var(--blue)' : 'var(--text-3)', flexShrink: 0 }}>
+                          {isSelected ? <SquareCheck size={16} /> : <Square size={16} />}
+                        </button>
+                        <div className="flex-1 flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold" style={{ color: isCurrent ? 'var(--amber)' : isPast ? 'var(--text-3)' : 'var(--text-1)' }}>
+                            {formatYearMonth(h.yearMonth)}
+                          </span>
+                          {isCurrent && <span className="text-xs px-1.5 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(251,191,36,0.15)', color: 'var(--amber)' }}>Atual</span>}
+                          {isPast && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>Passado</span>}
+                        </div>
+                        {h.hasReceived
+                          ? <span className="badge-paid"><CheckCircle2 size={10} />Recebido</span>
+                          : <span className="badge-pending"><AlertCircle size={10} />Aguardando</span>}
+                      </div>
+                      {/* Linha 2: valor + saldo */}
+                      <div className="flex items-center gap-3 px-3 pb-1.5 flex-wrap">
+                        <span className="font-mono text-sm font-bold" style={{ color: h.hasReceived ? 'var(--text-3)' : 'var(--green-400)' }}>
+                          {formatCurrency(h.value, h.country)}
+                        </span>
+                        {h.manipulatedValue !== h.value && (
+                          <span className="font-mono text-xs" style={{ color: h.manipulatedValue < h.value ? 'var(--amber)' : 'var(--text-3)' }}>
+                            Saldo {formatCurrency(h.manipulatedValue, h.country)}
+                          </span>
+                        )}
+                        {h.country && (
+                          <span className="ml-auto flex items-center gap-1">
+                            {normalizeCountry(h.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
+                          </span>
+                        )}
+                      </div>
+                      {/* Linha 3: datas */}
+                      <div className="flex items-center gap-3 px-3 pb-2 flex-wrap">
+                        <span className="text-xs" style={{ color: 'var(--text-3)' }}>Venc. {formatDate(h.dueDate)}</span>
+                        {h.hasReceived && h.dateReceived && <span className="text-xs" style={{ color: 'var(--green-400)' }}>Recebido {formatDate(h.dateReceived)}</span>}
+                      </div>
+                      {showDetails && h.additionalMessage && (
+                        <p className="text-xs px-3 pb-2" style={{ color: 'var(--text-3)' }}>{h.additionalMessage}</p>
+                      )}
+                      {/* Linha 4: ações */}
+                      <div className="flex items-center gap-2 px-3 pb-3 pt-1 border-t" style={{ borderColor: 'var(--border-1)' }}>
+                        {!h.hasReceived && (
+                          <button type="button"
+                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium"
+                            style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}
+                            onClick={() => setReceiveTarget(h)}>
+                            <CircleDollarSign size={13} /> Receber
+                          </button>
+                        )}
+                        <button type="button"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium"
+                          style={{ background: 'var(--bg-3)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
+                          onClick={() => setEditTarget(h)}>
+                          <Pencil size={13} /> Editar
+                        </button>
+                        <button type="button"
+                          className="flex items-center justify-center p-1.5 rounded-lg"
+                          style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
+                          onClick={() => setDeleteTarget(h)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* ── Desktop table ── */}
+              <table className="hidden sm:table w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
                   <th className="px-4 py-3 w-10 sm:sticky sm:top-0 sm:z-10" style={{ background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>
@@ -691,6 +818,7 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
       </div>
