@@ -443,89 +443,8 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
           ) : visibleHistory.length === 0 ? (
             <Empty message="Nenhum registro neste filtro." />
           ) : (
-            <>
-              {/* ── Mobile cards ── */}
-              <div className="sm:hidden flex flex-col gap-2 p-3">
-                {/* Selecionar todos */}
-                <button type="button" onClick={toggleAll}
-                  className="flex items-center gap-2 px-1 pb-1 text-xs font-medium"
-                  style={{ color: allSelected ? 'var(--green-400)' : someSelected ? 'var(--amber)' : 'var(--text-3)' }}>
-                  {allSelected ? <SquareCheck size={16} /> : someSelected ? <Minus size={16} /> : <Square size={16} />}
-                  Selecionar todos ({visibleHistory.length})
-                </button>
-                {visibleHistory.map(h => {
-                  const isSelected = selected.has(h.id)
-                  const isCurrent  = isCurrentMonth(h.yearMonth)
-                  const isPast     = isPastMonth(h.yearMonth)
-                  return (
-                    <div key={h.id}
-                      className="rounded-xl overflow-hidden"
-                      style={{
-                        background: isSelected ? 'rgba(96,165,250,0.10)' : isCurrent && !h.hasPay ? 'rgba(251,191,36,0.08)' : h.hasPay ? 'rgba(34,197,94,0.06)' : 'var(--bg-2)',
-                        border: `1px solid ${isSelected ? 'rgba(96,165,250,0.4)' : isCurrent ? 'rgba(251,191,36,0.3)' : h.hasPay ? 'rgba(34,197,94,0.2)' : 'var(--border-1)'}`,
-                      }}>
-                      {/* Row 1: checkbox + mês + status */}
-                      <div className="flex items-center gap-3 px-3 pt-3 pb-2">
-                        <button type="button" onClick={() => toggleOne(h.id)} style={{ color: isSelected ? 'var(--blue)' : 'var(--text-3)', flexShrink: 0 }}>
-                          {isSelected ? <SquareCheck size={16} /> : <Square size={16} />}
-                        </button>
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-semibold" style={{ color: isCurrent ? 'var(--amber)' : isPast ? 'var(--text-3)' : 'var(--text-1)' }}>
-                            {formatYearMonth(h.yearMonth)}
-                          </span>
-                          {isCurrent && <span className="text-xs px-1.5 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(251,191,36,0.15)', color: 'var(--amber)' }}>Atual</span>}
-                          {isPast && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}>Passado</span>}
-                        </div>
-                        {h.hasPay
-                          ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span>
-                          : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}
-                      </div>
-                      {/* Row 2: valor + datas */}
-                      <div className="flex items-center gap-3 px-3 pb-2">
-                        <span className="font-mono text-sm font-bold" style={{ color: h.hasPay ? 'var(--text-3)' : 'var(--red)' }}>
-                          {formatCurrency(h.value, h.country)}
-                        </span>
-                        <span className="text-xs" style={{ color: 'var(--text-3)' }}>Venc. {formatDate(h.dueDate)}</span>
-                        {h.hasPay && h.payDay && <span className="text-xs" style={{ color: 'var(--green-400)' }}>Pago {formatDate(h.payDay)}</span>}
-                        {h.country && (
-                          <span className="ml-auto flex items-center gap-1">
-                            {normalizeCountry(h.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
-                          </span>
-                        )}
-                      </div>
-                      {showDetails && h.additionalMessage && (
-                        <p className="text-xs px-3 pb-2" style={{ color: 'var(--text-3)' }}>{h.additionalMessage}</p>
-                      )}
-                      {/* Row 3: ações */}
-                      <div className="flex items-center gap-2 px-3 pb-3 pt-1 border-t" style={{ borderColor: 'var(--border-1)' }}>
-                        {!h.hasPay && (
-                          <button type="button"
-                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium"
-                            style={{ background: 'var(--green-dim)', color: 'var(--green-400)' }}
-                            onClick={() => setPayTarget(h)}>
-                            <CircleDollarSign size={13} /> Pagar
-                          </button>
-                        )}
-                        <button type="button"
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium"
-                          style={{ background: 'var(--bg-3)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
-                          onClick={() => setEditTarget(h)}>
-                          <Pencil size={13} /> Editar
-                        </button>
-                        <button type="button"
-                          className="flex items-center justify-center p-1.5 rounded-lg"
-                          style={{ background: 'var(--red-dim)', color: 'var(--red)' }}
-                          onClick={() => setDeleteTarget(h)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* ── Desktop table ── */}
-              <table className="hidden sm:table w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
                     <th className="px-4 py-3 w-10 sm:sticky sm:top-0 sm:z-10" style={{ background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>
@@ -592,7 +511,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                   })}
                 </tbody>
               </table>
-            </>
+            </div>
           )}
         </div>
       </div>
