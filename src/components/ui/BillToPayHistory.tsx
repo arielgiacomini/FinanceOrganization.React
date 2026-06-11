@@ -569,7 +569,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
       </Modal>
 
       {/* Registros relacionados (Compra Livre da mesma categoria) */}
-      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
+      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="lg">
         {relatedTarget && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">

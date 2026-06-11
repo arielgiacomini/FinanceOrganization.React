@@ -50,6 +50,9 @@ export interface BillToPay {
   hasPay: boolean
   additionalMessage?: string
   country?: Country
+  detailsQuantity?: number
+  detailsAmount?: number
+  details?: BillToPay[]
   creationDate: string
   lastChangeDate?: string
 }
