@@ -209,6 +209,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
   const [bulkDeleting, setBulkDeleting]     = useState(false)
   const [showDetails, setShowDetails]       = useState(false)
   const [statusFilter, setStatusFilter]     = useState<StatusFilter>('all')
+  const [relatedTarget, setRelatedTarget]   = useState<BillToPay | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -452,7 +453,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                         {allSelected ? <SquareCheck size={16} /> : someSelected ? <Minus size={16} /> : <Square size={16} />}
                       </button>
                     </th>
-                    {['Mês/Ano', 'País', 'Valor', 'Vencimento', 'Pago em', 'Status', 'Ações'].map(h => (
+                    {['Mês/Ano', 'País', 'Valor', 'Qtd Compras', 'Vencimento', 'Pago em', 'Status', 'Ações'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:top-0 sm:z-10" style={{ color: 'var(--text-3)', background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>{h}</th>
                     ))}
                   </tr>
@@ -488,6 +489,16 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                           ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                         </Td>
                         <Td><span className="font-mono text-xs font-semibold" style={{ color: h.hasPay ? 'var(--text-3)' : 'var(--red)' }}>{formatCurrency(h.value, h.country)}</span></Td>
+                        <Td>
+                          {h.detailsQuantity ? (
+                            <button type="button" onClick={() => setRelatedTarget(h)}
+                              title="Ver registros relacionados"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors"
+                              style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}>
+                              <ReceiptText size={11} /> {h.detailsQuantity}
+                            </button>
+                          ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                        </Td>
                         <Td className="text-xs">{formatDate(h.dueDate)}</Td>
                         <Td className="text-xs">{formatDate(h.payDay)}</Td>
                         <Td>{h.hasPay ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span> : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}</Td>
@@ -555,6 +566,60 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Registros relacionados (Compra Livre da mesma categoria) */}
+      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
+        {relatedTarget && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{relatedTarget.name}</span>
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>· {relatedTarget.category} · {formatYearMonth(relatedTarget.yearMonth)}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 rounded-lg px-4 py-3" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Qtd. registros</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{relatedTarget.detailsQuantity}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor realizado</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--green-400)' }}>{formatCurrency(relatedTarget.detailsAmount ?? 0, relatedTarget.country)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor restante</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: relatedTarget.hasPay ? 'var(--text-3)' : 'var(--red)' }}>{formatCurrency(relatedTarget.value, relatedTarget.country)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor total</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>{formatCurrency(relatedTarget.value + (relatedTarget.detailsAmount ?? 0), relatedTarget.country)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border-1)' }}>
+              <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
+                    {['Conta', 'Descrição', 'Categoria', 'Valor', 'Data de Compra', 'Status', 'Mensagem'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-3)', background: 'var(--bg-3)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(relatedTarget.details ?? []).map(d => (
+                    <TRow key={d.id}>
+                      <Td className="text-xs">{d.account ?? '—'}</Td>
+                      <Td className="text-xs"><span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{d.name ?? '—'}</span></Td>
+                      <Td className="text-xs">{d.category ?? '—'}</Td>
+                      <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(d.value, d.country)}</span></Td>
+                      <Td className="text-xs">{formatDate(d.purchaseDate)}</Td>
+                      <Td>{d.hasPay ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span> : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}</Td>
+                      <Td className="text-xs"><span style={{ color: 'var(--text-3)' }}>{d.additionalMessage ?? '—'}</span></Td>
+                    </TRow>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )
