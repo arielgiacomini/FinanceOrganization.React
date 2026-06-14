@@ -462,9 +462,18 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                   {visibleHistory.map(h => {
                     const isSelected = selected.has(h.id)
                     const isCurrent  = isCurrentMonth(h.yearMonth)
-                    const bg = isSelected ? 'rgba(96,165,250,0.10)' : isCurrent && !h.hasPay ? 'rgba(251,191,36,0.08)' : h.hasPay ? 'rgba(34,197,94,0.06)' : 'var(--bg-1)'
+                    const isPaid     = h.hasPay
+                    const bg = isSelected
+                      ? 'rgba(96,165,250,0.10)'
+                      : isPaid
+                        ? 'transparent'
+                        : isCurrent
+                          ? 'rgba(251,191,36,0.08)'
+                          : 'var(--bg-1)'
                     return (
-                      <TRow key={h.id} bg={bg}>
+                      <TRow key={h.id} bg={bg} style={isPaid ? {
+                        background: 'linear-gradient(90deg, var(--green-400) 0, var(--green-400) 4px, rgba(34,197,94,0.15) 4px)',
+                      } : undefined}>
                         <Td>
                           <button type="button" onClick={() => toggleOne(h.id)} style={{ color: isSelected ? 'var(--blue)' : 'var(--text-3)' }}>
                             {isSelected ? <SquareCheck size={15} /> : <Square size={15} />}
@@ -488,7 +497,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                             </div>
                           ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                         </Td>
-                        <Td><span className="font-mono text-xs font-semibold" style={{ color: h.hasPay ? 'var(--text-3)' : 'var(--red)' }}>{formatCurrency(h.value, h.country)}</span></Td>
+                        <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(h.value, h.country)}</span></Td>
                         <Td>
                           {h.detailsQuantity ? (
                             <button type="button" onClick={() => setRelatedTarget(h)}
@@ -500,7 +509,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                           ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                         </Td>
                         <Td className="text-xs">{formatDate(h.dueDate)}</Td>
-                        <Td className="text-xs">{formatDate(h.payDay)}</Td>
+                        <Td className="text-xs"><span style={{ color: isPaid ? 'var(--green-400)' : 'inherit' }}>{formatDate(h.payDay)}</span></Td>
                         <Td>{h.hasPay ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span> : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}</Td>
                         <Td>
                           <div className="flex items-center gap-1">
@@ -569,7 +578,7 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
       </Modal>
 
       {/* Registros relacionados (Compra Livre da mesma categoria) */}
-      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="lg">
+      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
         {relatedTarget && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">

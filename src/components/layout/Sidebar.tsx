@@ -10,6 +10,9 @@ import {
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 
+/** Versão da aplicação — deve ser incrementada a cada entrega. */
+export const APP_VERSION = 'v186'
+
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
   { href: '/carteira',           label: 'Carteira',         icon: Wallet          },
@@ -83,6 +86,7 @@ export function Sidebar() {
             style={{ color: 'var(--text-3)' }}>
             <LogOut size={16} />
             <span>Sair</span>
+            <span className="ml-auto text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-3)', color: 'var(--text-3)', border: '1px solid var(--border-1)' }}>{APP_VERSION}</span>
           </button>
           <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
         </div>
@@ -142,6 +146,7 @@ export function Sidebar() {
             style={{ color: 'var(--text-3)' }}>
             <LogOut size={16} />
             <span>Sair</span>
+            <span className="ml-auto text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-3)', color: 'var(--text-3)', border: '1px solid var(--border-1)' }}>{APP_VERSION}</span>
           </button>
           <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
         </div>
