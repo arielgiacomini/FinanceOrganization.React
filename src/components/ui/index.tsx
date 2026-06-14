@@ -11,13 +11,13 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   if (!open) return null
 
-  const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
+  const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-6xl' }
   // Mobile: sempre full width com margem
 
   return (
