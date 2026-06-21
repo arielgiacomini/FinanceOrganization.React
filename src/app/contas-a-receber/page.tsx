@@ -352,7 +352,7 @@ function ContasAReceberPageInner() {
       <div className="hidden sm:block">
             {/* Table */}
       <Table
-        headers={['', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Saldo', 'Vencimento', 'Recebido em', 'Status', 'Ações']}
+        headers={['Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Saldo', 'Vencimento', 'Recebido em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
         headerOffset={headerOffset}
@@ -360,15 +360,11 @@ function ContasAReceberPageInner() {
         {filtered.map((r) => {
           const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
-          const rowBg = hex ? hexToRowBg(hex) : 'var(--bg-2)'
-          const borderColor = hex ? hex : (r.hasReceived ? '#22c55e' : 'transparent')
+          const bg = r.hasReceived ? '#1b2e1d' : 'var(--bg-2)'
           const country = normalizeCountry(r.country)
 
           return (
-            <TRow key={r.id} bg={rowBg} style={r.hasReceived ? { background: 'rgba(34,197,94,0.13)' } : undefined}>
-              <td style={{ width: 4, padding: 0 }}>
-                <div style={{ width: 4, minHeight: 44, height: '100%', background: borderColor, borderRadius: '2px 0 0 2px' }} />
-              </td>
+            <TRow key={r.id} bg={bg}>
 
               <Td>
                 <div>

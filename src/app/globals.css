@@ -60,7 +60,10 @@ body {
   min-height: 100vh;
 }
 
-/* Table rows: background applied directly on each <td> via TRow component */
+/* Table rows: background via CSS custom property set on <tr> by TRow component */
+td {
+  background-color: var(--row-bg, transparent);
+}
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

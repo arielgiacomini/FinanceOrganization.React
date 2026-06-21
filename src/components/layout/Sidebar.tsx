@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 
 /** Versão da aplicação — deve ser incrementada a cada entrega. */
-export const APP_VERSION = 'v186'
+export const APP_VERSION = 'v209'
 
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
