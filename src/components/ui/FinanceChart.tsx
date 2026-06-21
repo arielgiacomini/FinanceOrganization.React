@@ -20,7 +20,7 @@ import { Modal, Spinner } from '@/components/ui'
 import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer,
+  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 
 interface ChartPoint {
@@ -538,6 +538,30 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     }
   }, [calcBase, data])
 
+  // Detecta o primeiro mês em que o Acumulado Invest. Espanha fica negativo
+  // Conta meses a partir do pico (último ponto antes de começar a descer)
+  const espanhaZeroPin = useMemo(() => {
+    const negIdx = filteredData.findIndex(d => d.investAcumEspanha < 0)
+    if (negIdx < 0) return null
+    const negPoint = filteredData[negIdx]
+
+    // Encontra o pico: último ponto estável antes de começar a descer
+    let peakIdx = 0
+    for (let i = 1; i < filteredData.length; i++) {
+      if (filteredData[i].investAcumEspanha >= filteredData[peakIdx].investAcumEspanha) {
+        peakIdx = i
+      } else {
+        break
+      }
+    }
+
+    const peakNum = ymToNum(filteredData[peakIdx].yearMonth)
+    const negNum = ymToNum(negPoint.yearMonth)
+    const meses = Math.max(0, negNum - peakNum)
+
+    return { label: negPoint.label, meses }
+  }, [filteredData])
+
   // Anos ativos no modo custom (derivado de selectedYearMonths) — hook antes de early return
   const activeYears = useMemo(() => {
     const years = new Set<number>()
@@ -769,6 +793,25 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 dot={false}
                 activeDot={{ r: 4 }}
                 label={<CustomLabel dataKey="saldoBrasil" />}
+              />
+            )}
+
+            {/* Linha vertical + label no topo: primeiro mês negativo Espanha */}
+            {espanhaZeroPin && !hiddenLines['investAcumEspanha'] && (
+              <ReferenceLine
+                yAxisId="left"
+                x={espanhaZeroPin.label}
+                stroke="#dc2626"
+                strokeDasharray="6 3"
+                strokeOpacity={0.5}
+                label={{
+                  value: `${espanhaZeroPin.meses} ${espanhaZeroPin.meses === 1 ? 'mês' : 'meses'}`,
+                  position: 'insideTopRight',
+                  fill: '#dc2626',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  offset: 4,
+                }}
               />
             )}
           </ComposedChart>
