@@ -73,3 +73,42 @@ export function loadValeCategoria(): string {
 export function loadNomeGrupoEspanha(): string {
   return readPlrConfig().nomeGrupoEspanha ?? 'Conta Bancária Espanha'
 }
+
+export function loadNomeGrupoInvestimento(): string {
+  return readPlrConfig().nomeGrupoInvestimento ?? 'Investimentos'
+}
+
+export function loadInvestimentoAnosProjecao(): number {
+  const v = parseInt(readPlrConfig().investimentoAnosProjecao)
+  return !isNaN(v) && v > 0 ? v : 5
+}
+
+export function loadInvestimentoTotal(): { brl: number; eur: number } {
+  try {
+    const wallet = readWallet()
+    const nome = loadNomeGrupoInvestimento().trim().toLowerCase()
+    const group = wallet.groups.find(g => g.label.trim().toLowerCase() === nome)
+    if (!group) return { brl: 0, eur: 0 }
+    const brl = group.boxes
+      .filter(b => b.currency === 'Brasil')
+      .reduce((s, b) => s + (parseFloat(b.value) || 0), 0)
+    const eur = group.boxes
+      .filter(b => b.currency === 'Espanha')
+      .reduce((s, b) => s + (parseFloat(b.value) || 0), 0)
+    return { brl, eur }
+  } catch { return { brl: 0, eur: 0 } }
+}
+
+export function loadInvestimentoBoxes(): Array<{ label: string; value: number; currency: string }> {
+  try {
+    const wallet = readWallet()
+    const nome = loadNomeGrupoInvestimento().trim().toLowerCase()
+    const group = wallet.groups.find(g => g.label.trim().toLowerCase() === nome)
+    if (!group) return []
+    return group.boxes.map(b => ({
+      label: b.label,
+      value: parseFloat(b.value) || 0,
+      currency: b.currency,
+    }))
+  } catch { return [] }
+}

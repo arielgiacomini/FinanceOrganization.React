@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { dashboardApi, walletApi } from '@/lib/api'
 import type { MonthlyCashflowItem } from '@/lib/api'
 import {
@@ -13,6 +13,7 @@ import {
   loadGruposNomes,
 } from '@/lib/wallet'
 import { Spinner } from '@/components/ui'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
@@ -79,7 +80,9 @@ interface FinanceChartProps {
 export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [data, setData] = useState<ChartPoint[]>([])
   const [loading, setLoading] = useState(true)
-  const [calc, setCalc] = useState<CalcSnapshot | null>(null)
+  const [calcBase, setCalcBase] = useState<CalcSnapshot | null>(null)
+  const [byMonthState, setByMonthState] = useState<Record<string, MonthlyCashflowItem[]>>({})
+  const [calcOpen, setCalcOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -216,8 +219,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
           .reduce((s, i) => s + (i.value ?? 0), 0)
 
-        setCalc({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
-
+        setCalcBase({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
+        setByMonthState(byMonth)
         setData(points)
 
         // Inicializa slicers: todos os meses, ano atual + próximo por padrão
@@ -235,6 +238,56 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
   const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set())
   const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
+
+  // Filtra pontos conforme slicers — DEVE ficar antes de qualquer early return (regra de hooks)
+  const filteredData = useMemo(() => {
+    if (selectedYears.size === 0 && selectedMonths.size === 0) return data
+    return data.filter(d => {
+      const [mName, yStr] = d.yearMonth.split('/')
+      const y = parseInt(yStr)
+      const m = MONTHS[mName] ?? 0
+      const yearOk = selectedYears.size === 0 || selectedYears.has(y)
+      const monthOk = selectedMonths.size === 0 || selectedMonths.has(m)
+      return yearOk && monthOk
+    })
+  }, [data, selectedYears, selectedMonths])
+
+  // Recalcula a memória de cálculo respeitando os filtros ativos
+  const calc = useMemo(() => {
+    if (!calcBase) return null
+    const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
+    const filteredYms = new Set(filteredData.map(d => d.yearMonth))
+
+    const despesaEspanhaTotal = Object.entries(byMonthState)
+      .filter(([ym]) => filteredYms.has(ym))
+      .flatMap(([, items]) => items)
+      .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
+      .reduce((s, i) => s + (i.value ?? 0), 0)
+
+    const plrTotal = Object.entries(byMonthState)
+      .filter(([ym]) => filteredYms.has(ym))
+      .flatMap(([, items]) => items)
+      .filter(i => i.type?.startsWith('4'))
+      .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+
+    const saldoFinal = calcBase.contasBancariasTotal - plrTotal
+
+    const saldoFinalYmVisible = calcBase.saldoFinalYm && filteredYms.has(calcBase.saldoFinalYm)
+    const valeRefeicaoTotal = saldoFinalYmVisible
+      ? (byMonthState[calcBase.saldoFinalYm!] ?? [])
+          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+      : 0
+
+    return {
+      ...calcBase,
+      despesaEspanhaTotal,
+      plrTotal,
+      saldoFinal,
+      valeRefeicaoTotal,
+      saldoFinalYm: saldoFinalYmVisible ? calcBase.saldoFinalYm : null,
+    }
+  }, [calcBase, filteredData, byMonthState])
 
   if (loading) {
     return (
@@ -255,7 +308,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     setSelectedYears(prev => {
       const next = new Set(prev)
       next.has(y) ? next.delete(y) : next.add(y)
-      return next.size === 0 ? prev : next // impede desselecionar tudo
+      return next.size === 0 ? prev : next
     })
   }
 
@@ -266,18 +319,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       return next.size === 0 ? prev : next
     })
   }
-
-  // Filtra pontos conforme slicers
-  const filteredData = (selectedYears.size === 0 && selectedMonths.size === 0)
-    ? data
-    : data.filter(d => {
-        const [mName, yStr] = d.yearMonth.split('/')
-        const y = parseInt(yStr)
-        const m = MONTHS[mName] ?? 0
-        const yearOk = selectedYears.size === 0 || selectedYears.has(y)
-        const monthOk = selectedMonths.size === 0 || selectedMonths.has(m)
-        return yearOk && monthOk
-      })
 
   function CustomTooltip({ active, payload, label }: any) {
     if (!active || !payload || !payload.length) return null
@@ -476,160 +517,99 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       </div>
 
       <CustomLegend />
-      {/* Painel de memória de cálculo */}
+      {/* Memória de cálculo — colapsável, fechado por padrão */}
       {calc && (
         <div className="mt-4 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
-          {/* Header */}
-          <div className="px-4 py-2.5 flex items-center gap-2"
-            style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border-1)' }}>
+          {/* Header clicável */}
+          <button
+            type="button"
+            onClick={() => setCalcOpen(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-[var(--bg-4)]"
+            style={{ background: 'var(--bg-3)', borderBottom: calcOpen ? '1px solid var(--border-1)' : 'none' }}
+          >
             <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
               🧮 Memória de Cálculo
             </span>
-          </div>
+            {calcOpen
+              ? <ChevronUp size={14} style={{ color: 'var(--text-3)' }} />
+              : <ChevronDown size={14} style={{ color: 'var(--text-3)' }} />}
+          </button>
 
-          <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
+          {calcOpen && (
+            <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
 
-            {/* ── Bloco A: Acumulado Investimento Espanha ── */}
-            <div className="space-y-2">
-              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                A. Acumulado Investimento Espanha (€)
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Saldo inicial
-                    {calc.nomeGrupoEspanha && (
-                      <span className="block mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
-                        grupo "{calc.nomeGrupoEspanha}"
-                      </span>
-                    )}
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: calc.contasBancariasEspanha === 0 ? 'var(--red)' : 'var(--text-1)' }}>
-                    {calc.contasBancariasEspanha === 0 ? '⚠ Grupo não encontrado' : formatEur(calc.contasBancariasEspanha)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Total despesas Espanha</p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
-                    − {formatEur(calc.despesaEspanhaTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Saldo projetado (final do período)</p>
-                  <p className="font-mono font-bold mt-0.5" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
-                    = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
-                  </p>
+              {/* Espanha */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  🇪🇸 Acumulado Espanha (€)
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Saldo inicial</p>
+                    <p className="font-mono font-semibold" style={{ color: calc.contasBancariasEspanha === 0 ? 'var(--red)' : 'var(--text-1)' }}>
+                      {calc.contasBancariasEspanha === 0 ? '⚠ não encontrado' : formatEur(calc.contasBancariasEspanha)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Total despesas</p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                      − {formatEur(calc.despesaEspanhaTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Saldo projetado</p>
+                    <p className="font-mono font-bold" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
+                      = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
+                    </p>
+                  </div>
                 </div>
               </div>
-              {calc.contasBancariasEspanha === 0 && calc.gruposEncontrados.length > 0 && (
-                <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.3)' }}>
-                  <p className="font-semibold mb-1" style={{ color: 'var(--red)', fontSize: 10 }}>
-                    Grupos encontrados na Carteira (configure o nome exato em Carteira → Configurações do Gráfico):
-                  </p>
-                  {calc.gruposEncontrados.map((g, i) => (
-                    <p key={i} className="font-mono" style={{ color: 'var(--text-2)', fontSize: 10 }}>"{g}"</p>
-                  ))}
+
+              <div style={{ borderTop: '1px solid var(--border-1)' }} />
+
+              {/* Brasil */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  🇧🇷 Saldo Brasil (R$)
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Contas bancárias BR</p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
+                      {formatBrl(calc.contasBancariasTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      PLR{calc.plrName ? ` — ${calc.plrName}` : ''}
+                    </p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                      − {formatBrl(calc.plrTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(22,163,74,0.3)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      Saldo Final{calc.saldoFinalYm ? ` (${calc.saldoFinalYm})` : ''}
+                    </p>
+                    <p className="font-mono font-bold" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                      = {formatBrl(calc.saldoFinal)}
+                    </p>
+                  </div>
                 </div>
-              )}
-              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
-                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                <span style={{ color: '#3b82f6' }}>Acumulado Espanha (mês N)</span>
-                <span style={{ color: 'var(--text-3)' }}> = </span>
-                <span style={{ color: 'var(--text-1)' }}>Saldo inicial</span>
-                <span style={{ color: 'var(--text-3)' }}> − </span>
-                <span style={{ color: 'var(--red)' }}>Σ Despesa Espanha (meses 1…N)</span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  Saldo inicial = soma das caixinhas do grupo "{calc.nomeGrupoEspanha || 'Conta Bancária Espanha'}" na Carteira
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  Despesa Espanha = Σ value (contas a pagar com país = Espanha, não pagas)
-                </span>
+                {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
+                  <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      Vale Alimentação/Refeição ({calc.saldoFinalYm})
+                    </p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                      + {formatBrl(calc.valeRefeicaoTotal)}
+                    </p>
+                  </div>
+                )}
               </div>
+
             </div>
-
-            <div style={{ borderTop: '1px solid var(--border-1)' }} />
-
-            {/* ── Bloco B: Saldo Brasil ── */}
-            <div className="space-y-2">
-              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                B. Saldo Brasil (R$)
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Total Contas Bancárias BR</p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
-                    {formatBrl(calc.contasBancariasTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    PLR — Empréstimo próximos meses
-                    {calc.plrName && (
-                      <span className="block truncate mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
-                        "{calc.plrName}"
-                      </span>
-                    )}
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
-                    − {formatBrl(calc.plrTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(22,163,74,0.3)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Saldo Final
-                    {calc.saldoFinalYm && (
-                      <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
-                    )}
-                  </p>
-                  <p className="font-mono font-bold mt-0.5" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
-                    = {formatBrl(calc.saldoFinal)}
-                  </p>
-                </div>
-              </div>
-              {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Vale Alimentação/Refeição
-                    <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--green-400)' }}>
-                    + {formatBrl(calc.valeRefeicaoTotal)}
-                  </p>
-                </div>
-              )}
-              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
-                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                <span style={{ color: 'var(--green-400)' }}>Saldo Brasil</span>
-                <span style={{ color: 'var(--text-3)' }}> = </span>
-                <span style={{ color: 'var(--blue)' }}>Receita BR</span>
-                <span style={{ color: 'var(--text-3)' }}> + </span>
-                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
-                  Saldo Final{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ' (mês não configurado)'}
-                </span>
-                <span style={{ color: 'var(--text-3)' }}> + </span>
-                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
-                  Vale Refeição{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ''}
-                </span>
-                <span style={{ color: 'var(--text-3)' }}> − </span>
-                <span style={{ color: 'var(--red)' }}>Despesa BR</span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Receita BR = Σ manipulatedValue (recebíveis Brasil do mês)
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Vale Refeição = Σ manipulatedValue (categoria configurada, mês configurado)
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Despesa BR = Σ value (contas a pagar Brasil, não pagas)
-                </span>
-              </div>
-            </div>
-
-          </div>
+          )}
         </div>
       )}
     </div>
