@@ -671,9 +671,16 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
               </thead>
               <tbody>
                 {visibleHistory.map(h => {
-                  const isSelected = selected.has(h.id)
-                  const isCurrent  = isCurrentMonth(h.yearMonth)
-                  const bg = isSelected ? 'rgba(96,165,250,0.10)' : isCurrent && !h.hasReceived ? 'rgba(251,191,36,0.08)' : h.hasReceived ? 'rgba(34,197,94,0.06)' : 'var(--bg-1)'
+                  const isSelected   = selected.has(h.id)
+                  const isCurrent    = isCurrentMonth(h.yearMonth)
+                  const isReceived   = h.hasReceived
+                  const bg = isSelected
+                    ? 'rgba(96,165,250,0.10)'
+                    : isReceived
+                      ? '#1b2e1d'
+                      : isCurrent && !isReceived
+                        ? 'rgba(251,191,36,0.08)'
+                        : 'var(--bg-1)'
 
                   return (
                     <TRow key={h.id} bg={bg}>
@@ -700,7 +707,7 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
                           </div>
                         ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                       </Td>
-                      <Td><span className="font-mono text-xs font-semibold" style={{ color: h.hasReceived ? 'var(--text-3)' : 'var(--green-400)' }}>{formatCurrency(h.value, h.country)}</span></Td>
+                      <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(h.value, h.country)}</span></Td>
                       <Td><span className="font-mono text-xs" style={{ color: h.manipulatedValue < h.value ? 'var(--amber)' : 'var(--text-2)' }}>{formatCurrency(h.manipulatedValue, h.country)}</span></Td>
                       <Td className="text-xs">{formatDate(h.dueDate)}</Td>
                       <Td className="text-xs">{formatDate(h.dateReceived)}</Td>

@@ -19,7 +19,7 @@ import { SummaryCards } from '@/components/ui/SummaryCards'
 import {
   Plus, CheckCircle2, Pencil, Trash2,
   ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
-  Search, X, Square, SquareCheck,
+  Search, X, Square, SquareCheck, ReceiptText,
 } from 'lucide-react'
 
 function sortBills(data: BillToPay[]): BillToPay[] {
@@ -55,6 +55,7 @@ function ContasAPagarPageInner() {
   const [payTarget, setPayTarget] = useState<BillToPay | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
   const [historyTarget, setHistoryTarget] = useState<BillToPay | null>(null)
+  const [relatedTarget, setRelatedTarget] = useState<BillToPay | null>(null)
   const [bulkPayOpen, setBulkPayOpen] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
@@ -453,13 +454,13 @@ function ContasAPagarPageInner() {
           const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const toRgb = (h: string) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
-          const rowBg = hex
-            ? `rgba(${toRgb(hex).join(',')},${b.hasPay ? 0.07 : 0.15})`
-            : b.hasPay ? 'rgba(34,197,94,0.06)' : 'var(--bg-2)'
-          const cardBorder = hex
-            ? `rgba(${toRgb(hex).join(',')},0.5)`
-            : b.hasPay ? 'rgba(34,197,94,0.3)' : 'var(--border-1)'
-          const leftBar = hex ?? (b.hasPay ? '#22c55e' : 'var(--border-2)')
+          const rowBg = b.hasPay
+            ? 'rgba(34,197,94,0.08)'
+            : 'var(--bg-2)'
+          const cardBorder = b.hasPay
+            ? 'rgba(34,197,94,0.30)'
+            : 'var(--border-1)'
+          const leftBar = b.hasPay ? '#22c55e' : 'var(--border-2)'
 
           return (
             <div key={b.id} className="rounded-xl overflow-hidden transition-all"
@@ -486,7 +487,7 @@ function ContasAPagarPageInner() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <span className="font-mono font-semibold text-sm" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--red)' }}>
+                  <span className="font-mono font-semibold text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
                     {formatCurrency(b.value, b.country)}
                   </span>
                   {b.hasPay
@@ -495,7 +496,7 @@ function ContasAPagarPageInner() {
                 </div>
               </div>
 
-              {/* Linha 2: Conta + País + Vencimento */}
+              {/* Linha 2: Conta + País + Vencimento + Qtd Compras */}
               <div className="flex items-center gap-3 px-4 pb-2 flex-wrap">
                 {acc && hex ? (
                   <span className="inline-flex items-center gap-1 text-xs"
@@ -524,6 +525,14 @@ function ContasAPagarPageInner() {
                   <span className="text-xs" style={{ color: 'var(--green-400)' }}>
                     Pago {formatDate(b.payDay)}
                   </span>
+                )}
+                {(b.detailsQuantity ?? 0) > 0 && (
+                  <button type="button"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}
+                    onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}>
+                    <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''}
+                  </button>
                 )}
               </div>
 
@@ -564,9 +573,8 @@ function ContasAPagarPageInner() {
 
       {/* Tabela desktop */}
       <div className="hidden sm:block">
-            {/* Table */}
       <Table
-        headers={['', '', 'Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
+        headers={['', 'Nome', 'País', 'Qtd Compras', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
         loading={loading}
         empty={!loading && filtered.length === 0}
         headerOffset={headerOffset}
@@ -574,61 +582,50 @@ function ContasAPagarPageInner() {
         {filtered.map((b) => {
           const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
-          const rowBg = hex ? hex : b.hasPay ? 'rgba(34,197,94,0.08)' : 'var(--bg-2)'
-          const borderColor = hex ? hex : 'transparent'
-          const country = normalizeCountry(b.country)
+          const isRowSelected = !!selected[b.id]
+          const bg = isRowSelected
+            ? 'rgba(96,165,250,0.10)'
+            : b.hasPay
+              ? '#1b2e1d'
+              : 'var(--bg-2)'
 
           return (
-            <TRow key={b.id}
-              bg={!!selected[b.id] ? 'rgba(96,165,250,0.10)' : rowBg}
-              onClick={() => toggleOne(b.id)}
-              style={{ cursor: 'pointer', outline: !!selected[b.id] ? '1px solid rgba(96,165,250,0.4)' : undefined }}>
-              {/* Barra colorida lateral */}
-              <td style={{ width: 4, padding: 0 }}>
-                <div style={{ width: 4, minHeight: 44, height: '100%', background: !!selected[b.id] ? 'var(--blue)' : borderColor, borderRadius: '2px 0 0 2px' }} />
-              </td>
-
+            <TRow key={b.id} bg={bg} onClick={() => toggleOne(b.id)} style={{ cursor: 'pointer', outline: isRowSelected ? '1px solid rgba(96,165,250,0.4)' : undefined }}>
               <Td>
-                <button type="button" onClick={e => { e.stopPropagation(); toggleOne(b.id) }} style={{ color: !!selected[b.id] ? 'var(--blue)' : 'var(--text-3)' }}>
-                  {!!selected[b.id] ? <SquareCheck size={15} /> : <Square size={15} />}
+                <button type="button" onClick={e => { e.stopPropagation(); toggleOne(b.id) }} style={{ color: isRowSelected ? 'var(--blue)' : 'var(--text-3)' }}>
+                  {isRowSelected ? <SquareCheck size={15} /> : <Square size={15} />}
                 </button>
               </Td>
-
               <Td>
                 <div>
-                  <p className="font-medium" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--text-1)' }}>
-                    {b.name}
-                  </p>
+                  <p className="font-medium" style={{ color: 'var(--text-1)' }}>{b.name}</p>
                   {showDetails && b.additionalMessage && (
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
                   )}
                 </div>
               </Td>
-
-              {/* País */}
               <Td>
                 {b.country ? (
                   <div className="flex items-center gap-1.5">
-                    {normalizeCountry(b.country) === 'Espanha'
-                      ? <FlagEspanha size={16} />
-                      : <FlagBrasil size={16} />}
+                    {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={16} /> : <FlagBrasil size={16} />}
                     <span className="text-xs" style={{ color: 'var(--text-2)' }}>{normalizeCountry(b.country)}</span>
                   </div>
-                ) : (
-                  <span style={{ color: 'var(--text-3)' }}>—</span>
-                )}
+                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
               </Td>
-
+              <Td>
+                {(b.detailsQuantity ?? 0) > 0 ? (
+                  <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}
+                    title="Ver registros relacionados"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors"
+                    style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}>
+                    <ReceiptText size={11} /> {b.detailsQuantity}
+                  </button>
+                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+              </Td>
               <Td className="text-xs">
                 {acc && hex ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{
-                      background: `${hex}22`,
-                      border: `1px solid ${hex}66`,
-                      color: b.hasPay ? 'var(--text-3)' : 'var(--text-2)',
-                    }}
-                  >
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+                    style={{ background: `${hex}22`, border: `1px solid ${hex}66`, color: 'var(--text-2)' }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />
                     {b.account}
                   </span>
@@ -636,10 +633,9 @@ function ContasAPagarPageInner() {
                   <span style={{ color: 'var(--text-3)' }}>{b.account ?? '—'}</span>
                 )}
               </Td>
-
               <Td className="text-xs">{b.category ?? '—'}</Td>
               <Td>
-                <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--text-3)' : 'var(--red)' }}>
+                <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
                   {formatCurrency(b.value, b.country)}
                 </span>
               </Td>
@@ -654,22 +650,21 @@ function ContasAPagarPageInner() {
               <Td>
                 <div className="flex items-center gap-1">
                   {!b.hasPay && (
-                    <button
-                      title="Marcar como pago"
-                      className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]"
-                      style={{ color: 'var(--green-400)' }}
-                      onClick={e => { e.stopPropagation(); setPayTarget(b) }}
-                    >
+                    <button title="Marcar como pago" className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]" style={{ color: 'var(--green-400)' }}
+                      onClick={e => { e.stopPropagation(); setPayTarget(b) }}>
                       <CircleDollarSign size={15} />
                     </button>
                   )}
-                  <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }} onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
+                  <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }}
+                    onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
                     <History size={15} />
                   </button>
-                  <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }} onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
+                  <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }}
+                    onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
                     <Pencil size={15} />
                   </button>
-                  <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }} onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
+                  <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }}
+                    onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -720,6 +715,59 @@ function ContasAPagarPageInner() {
       {historyTarget && (
         <BillToPayHistory bill={historyTarget} onClose={() => setHistoryTarget(null)} onRefreshParent={load} />
       )}
+      {/* Registros Relacionados Modal */}
+      <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
+        {relatedTarget && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{relatedTarget.name}</span>
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>· {relatedTarget.category} · {formatYearMonth(relatedTarget.yearMonth)}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 rounded-lg px-4 py-3" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Qtd. registros</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{relatedTarget.detailsQuantity}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor realizado</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--green-400)' }}>{formatCurrency(relatedTarget.detailsAmount ?? 0, relatedTarget.country)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor restante</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: relatedTarget.hasPay ? 'var(--text-3)' : 'var(--red)' }}>{formatCurrency(relatedTarget.value, relatedTarget.country)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor total</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>{formatCurrency(relatedTarget.value + (relatedTarget.detailsAmount ?? 0), relatedTarget.country)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border-1)' }}>
+              <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
+                    {['Conta', 'Descrição', 'Categoria', 'Valor', 'Data de Compra', 'Status', 'Mensagem'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-3)', background: 'var(--bg-3)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(relatedTarget.details ?? []).map(d => (
+                    <TRow key={d.id}>
+                      <Td className="text-xs">{d.account ?? '—'}</Td>
+                      <Td className="text-xs"><span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{d.name ?? '—'}</span></Td>
+                      <Td className="text-xs">{d.category ?? '—'}</Td>
+                      <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(d.value, d.country)}</span></Td>
+                      <Td className="text-xs">{formatDate(d.purchaseDate)}</Td>
+                      <Td>{d.hasPay ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span> : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}</Td>
+                      <Td className="text-xs"><span style={{ color: 'var(--text-3)' }}>{d.additionalMessage ?? '—'}</span></Td>
+                    </TRow>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

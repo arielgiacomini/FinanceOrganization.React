@@ -360,15 +360,23 @@ function ContasAReceberPageInner() {
         {filtered.map((r) => {
           const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
-          const rowBg = hex ? hexToRowBg(hex) : 'var(--bg-2)'
+          const rowBg = hex
+            ? hexToRowBg(hex)
+            : r.hasReceived
+              ? '#1b2e1d'
+              : 'var(--bg-2)'
           const borderColor = hex ? hex : (r.hasReceived ? '#22c55e' : 'transparent')
           const country = normalizeCountry(r.country)
 
           return (
-            <TRow key={r.id} bg={rowBg} style={r.hasReceived ? { background: 'rgba(34,197,94,0.13)' } : undefined}>
-              <td style={{ width: 4, padding: 0 }}>
-                <div style={{ width: 4, minHeight: 44, height: '100%', background: borderColor, borderRadius: '2px 0 0 2px' }} />
-              </td>
+            <TRow key={r.id} bg={rowBg}>
+              {hex ? (
+                <td style={{ width: 4, padding: 0, backgroundColor: hex }}>
+                  <div style={{ width: 4, minHeight: 44, height: '100%', background: hex, borderRadius: '2px 0 0 2px' }} />
+                </td>
+              ) : (
+                <Td style={{ width: 4, padding: 0 }}>{null}</Td>
+              )}
 
               <Td>
                 <div>

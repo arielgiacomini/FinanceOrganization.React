@@ -174,7 +174,7 @@ export function Table({ headers, children, loading, empty, headerOffset = 0 }: T
               ))}
             </tr>
           </thead>
-          <tbody style={{ background: 'var(--bg-2)' }}>
+          <tbody>
             {loading ? (
               <tr>
                 <td colSpan={headers.length} className="py-12 text-center">
@@ -213,9 +213,9 @@ export function Tr({ children, onClick }: { children: React.ReactNode; onClick?:
 }
 
 
-// ─── TRow — passa background diretamente em cada <td> filho ──────────────────
-// Necessário porque Tailwind base reset força background: transparent em <tr>
-// e o browser não propaga background-color de <tr> para <td>.
+// ─── TRow + Td ───────────────────────────────────────────────────────────────
+// Usa CSS custom property no <tr> que o <td> herda via var().
+// Esta é a única abordagem confiável — não depende de cloneElement nem Context.
 
 interface TRowProps {
   children: React.ReactNode
@@ -225,23 +225,35 @@ interface TRowProps {
 }
 
 export function TRow({ children, bg = 'var(--bg-2)', style, onClick }: TRowProps) {
-  const coloredChildren = React.Children.map(children, (child) => {
-    if (!React.isValidElement(child)) return child
-    const existing = (child.props as { style?: React.CSSProperties }).style ?? {}
-    return React.cloneElement(child as React.ReactElement<{ style?: React.CSSProperties }>, {
-      style: { backgroundColor: bg, ...existing },
-    })
-  })
   return (
-    <tr onClick={onClick} style={{ borderBottom: '1px solid var(--border-1)', ...style }}>
-      {coloredChildren}
+    <tr
+      onClick={onClick}
+      style={{
+        borderBottom: '1px solid var(--border-1)',
+        // Define a CSS var no <tr> que os <td> filhos consomem
+        ['--row-bg' as string]: bg,
+        ...style,
+      }}
+    >
+      {children}
     </tr>
   )
 }
 
-export function Td({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Td({ children, className, style }: {
+  children: React.ReactNode
+  className?: string
+  style?: React.CSSProperties
+}) {
   return (
-    <td className={cn('px-4 py-3 text-sm', className)} style={{ color: 'var(--text-1)' }}>
+    <td
+      className={cn('px-4 py-3 text-sm', className)}
+      style={{
+        color: 'var(--text-1)',
+        backgroundColor: 'var(--row-bg, var(--bg-2))',
+        ...style,
+      }}
+    >
       {children}
     </td>
   )
