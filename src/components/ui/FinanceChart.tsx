@@ -15,6 +15,7 @@ import {
   loadInvestimentoBoxes,
   loadContasBancariasBoxes,
   loadNomeGrupoInvestimento,
+  transferBetweenBoxes,
 } from '@/lib/wallet'
 import { Modal, Spinner } from '@/components/ui'
 import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
@@ -85,10 +86,11 @@ interface AdjustInfo {
   grupoInvestimento: string
 }
 
-function AdjustModal({ open, onClose, adjustInfo }: {
+function AdjustModal({ open, onClose, adjustInfo, onTransferDone }: {
   open: boolean
   onClose: () => void
   adjustInfo: AdjustInfo | null
+  onTransferDone: () => void
 }) {
   const [investBoxes, setInvestBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
   const [contasBoxes, setContasBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
@@ -96,6 +98,8 @@ function AdjustModal({ open, onClose, adjustInfo }: {
   const [selectedTo, setSelectedTo] = useState<string | null>(null)
   const [transferValue, setTransferValue] = useState('')
   const [grupoNome, setGrupoNome] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -107,6 +111,7 @@ function AdjustModal({ open, onClose, adjustInfo }: {
       setSelectedFrom(invest.length === 1 ? invest[0].label : null)
       setSelectedTo(contas.length === 1 ? contas[0].label : null)
       setTransferValue(adjustInfo ? adjustInfo.deficit.toFixed(2) : '')
+      setDone(false)
     }
   }, [open, adjustInfo])
 
@@ -119,11 +124,49 @@ function AdjustModal({ open, onClose, adjustInfo }: {
   const saldoAposTransfer = adjustInfo.saldoNegativo + valor
   const fromSaldoApos = fromBox ? fromBox.value - valor : 0
   const toSaldoApos = toBox ? toBox.value + valor : 0
-  const valorValido = valor > 0 && fromBox && valor <= fromBox.value
+  const valorValido = valor > 0 && fromBox && valor <= fromBox.value && !!selectedTo
+
+  async function handleConfirm() {
+    if (!valorValido || !selectedFrom || !selectedTo) return
+    setSaving(true)
+    try {
+      const ok = transferBetweenBoxes(grupoNome, selectedFrom, 'Contas Bancárias', selectedTo, valor)
+      if (!ok) { setSaving(false); return }
+      const raw = localStorage.getItem('finance_wallet')
+      if (raw) {
+        try {
+          const res = await walletApi.search()
+          const records = res.output?.data ?? []
+          const existing = records.find((r: any) => r.walletKey === 'finance_wallet')
+          if (existing) {
+            await walletApi.edit(existing.id, 'finance_wallet', raw, existing.creationDate)
+          } else {
+            await walletApi.register('finance_wallet', raw)
+          }
+        } catch {}
+      }
+      setDone(true)
+      onTransferDone()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="Ajustar Saldo com Investimentos" size="lg">
       <div className="space-y-5">
+
+        {done && (
+          <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(22,163,94,0.12)', border: '1px solid rgba(22,163,94,0.25)' }}>
+            <p className="text-sm font-semibold" style={{ color: 'var(--green-400)' }}>
+              Transferência realizada com sucesso!
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-2)' }}>
+              {formatBrl(valor)} movido de &quot;{selectedFrom}&quot; para &quot;{selectedTo}&quot;. O gráfico será atualizado.
+            </p>
+          </div>
+        )}
+
         {/* Resumo da situação */}
         <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>Situação atual — {adjustInfo.mesAno}</p>
@@ -150,7 +193,7 @@ function AdjustModal({ open, onClose, adjustInfo }: {
         </div>
 
         {/* Origem — Investimentos */}
-        <div>
+        {!done && <div>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
             De onde resgatar — {grupoNome}
           </p>
@@ -181,10 +224,10 @@ function AdjustModal({ open, onClose, adjustInfo }: {
               </p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Destino — Contas Bancárias */}
-        <div>
+        {!done && <div>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
             Para onde direcionar — Contas Bancárias
           </p>
@@ -215,10 +258,10 @@ function AdjustModal({ open, onClose, adjustInfo }: {
               </p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Valor da transferência */}
-        {selectedFrom && selectedTo && (
+        {selectedFrom && selectedTo && !done && (
           <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
             <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)' }}>
               Valor a transferir
@@ -294,12 +337,35 @@ function AdjustModal({ open, onClose, adjustInfo }: {
                 )}
               </div>
             )}
+
+            {/* Botão confirmar */}
+            {valorValido && (
+              <div className="mt-4 flex items-center justify-end gap-3">
+                <button type="button" onClick={onClose}
+                  className="px-4 py-2 rounded-lg text-xs font-medium"
+                  style={{ color: 'var(--text-2)', background: 'var(--bg-4)', border: '1px solid var(--border-1)' }}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={handleConfirm} disabled={saving}
+                  className="px-5 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2"
+                  style={{ background: 'var(--green-400)', color: '#fff', opacity: saving ? 0.6 : 1 }}>
+                  {saving ? <Spinner size={14} /> : null}
+                  {saving ? 'Salvando...' : 'Confirmar transferência'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-          Esta simulação é apenas para apoiar sua tomada de decisão. Nenhum valor será alterado automaticamente.
-        </p>
+        {done && (
+          <div className="flex justify-end">
+            <button type="button" onClick={onClose}
+              className="px-5 py-2 rounded-lg text-xs font-semibold"
+              style={{ background: 'var(--green-400)', color: '#fff' }}>
+              Fechar
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
   )
@@ -316,6 +382,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [byMonthState, setByMonthState] = useState<Record<string, MonthlyCashflowItem[]>>({})
   const [calcOpen, setCalcOpen] = useState(false)
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -462,7 +529,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
     load()
     return () => { cancelled = true }
-  }, [monthsRange])
+  }, [monthsRange, reloadKey])
 
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
   const [filterMode, setFilterMode] = useState<'next6' | 'custom'>('next6')
@@ -727,6 +794,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         open={adjustModalOpen}
         onClose={() => setAdjustModalOpen(false)}
         adjustInfo={adjustInfo}
+        onTransferDone={() => setReloadKey(k => k + 1)}
       />
 
       <div style={{ width: '100%', height: 360 }}>
