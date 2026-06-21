@@ -22,7 +22,7 @@ export interface WalletGroup {
   boxes: WalletBox[]
 }
 
-function readWallet(): { groups: Array<{ label: string; boxes: Array<{ value: string; currency: string }> }> } {
+function readWallet(): { groups: Array<{ label: string; boxes: Array<{ label: string; value: string; currency: string }> }> } {
   try {
     const raw = localStorage.getItem(WALLET_KEY)
     if (raw) return JSON.parse(raw)
@@ -124,6 +124,40 @@ export function loadInvestimentoBoxes(): Array<{ label: string; value: number; c
       currency: b.currency,
     }))
   } catch { return [] }
+}
+
+export function transferBetweenBoxes(
+  fromGroupLabel: string,
+  fromBoxLabel: string,
+  toGroupLabel: string,
+  toBoxLabel: string,
+  amount: number,
+): boolean {
+  try {
+    const raw = localStorage.getItem(WALLET_KEY)
+    if (!raw) return false
+    const wallet = JSON.parse(raw)
+
+    const fromGroup = wallet.groups.find((g: any) => g.label.trim().toLowerCase() === fromGroupLabel.trim().toLowerCase())
+    const toGroup = wallet.groups.find((g: any) => {
+      const l = g.label.trim().toLowerCase()
+      return l === toGroupLabel.trim().toLowerCase() || l === 'contas bancárias' || l === 'contas bancarias'
+    })
+    if (!fromGroup || !toGroup) return false
+
+    const fromBox = fromGroup.boxes.find((b: any) => b.label === fromBoxLabel)
+    const toBox = toGroup.boxes.find((b: any) => b.label === toBoxLabel)
+    if (!fromBox || !toBox) return false
+
+    const fromVal = parseFloat(fromBox.value) || 0
+    if (amount <= 0 || amount > fromVal) return false
+
+    fromBox.value = (fromVal - amount).toFixed(2)
+    toBox.value = ((parseFloat(toBox.value) || 0) + amount).toFixed(2)
+
+    localStorage.setItem(WALLET_KEY, JSON.stringify(wallet))
+    return true
+  } catch { return false }
 }
 
 export function loadContasBancariasBoxes(): Array<{ label: string; value: number; currency: string }> {
