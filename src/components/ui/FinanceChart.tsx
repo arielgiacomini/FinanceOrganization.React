@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { dashboardApi, walletApi } from '@/lib/api'
 import type { MonthlyCashflowItem } from '@/lib/api'
 import {
@@ -11,11 +11,16 @@ import {
   loadContasBancariasTotal,
   loadContasBancariasEspanha,
   loadGruposNomes,
+  loadInvestimentoTotal,
+  loadInvestimentoBoxes,
+  loadContasBancariasBoxes,
+  loadNomeGrupoInvestimento,
 } from '@/lib/wallet'
-import { Spinner } from '@/components/ui'
+import { Modal, Spinner } from '@/components/ui'
+import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer,
+  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 
 interface ChartPoint {
@@ -72,6 +77,234 @@ interface CalcSnapshot {
   despesaEspanhaTotal: number
 }
 
+interface AdjustInfo {
+  saldoNegativo: number
+  investimentoBrl: number
+  deficit: number
+  mesAno: string
+  grupoInvestimento: string
+}
+
+function AdjustModal({ open, onClose, adjustInfo }: {
+  open: boolean
+  onClose: () => void
+  adjustInfo: AdjustInfo | null
+}) {
+  const [investBoxes, setInvestBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
+  const [contasBoxes, setContasBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
+  const [selectedFrom, setSelectedFrom] = useState<string | null>(null)
+  const [selectedTo, setSelectedTo] = useState<string | null>(null)
+  const [transferValue, setTransferValue] = useState('')
+  const [grupoNome, setGrupoNome] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      const invest = loadInvestimentoBoxes().filter(b => b.currency === 'Brasil' && b.value > 0)
+      const contas = loadContasBancariasBoxes().filter(b => b.currency === 'Brasil')
+      setInvestBoxes(invest)
+      setContasBoxes(contas)
+      setGrupoNome(loadNomeGrupoInvestimento())
+      setSelectedFrom(invest.length === 1 ? invest[0].label : null)
+      setSelectedTo(contas.length === 1 ? contas[0].label : null)
+      setTransferValue(adjustInfo ? adjustInfo.deficit.toFixed(2) : '')
+    }
+  }, [open, adjustInfo])
+
+  if (!adjustInfo) return null
+
+  const fromBox = investBoxes.find(b => b.label === selectedFrom)
+  const toBox = contasBoxes.find(b => b.label === selectedTo)
+  const valor = parseFloat(transferValue) || 0
+  const maxTransfer = fromBox ? Math.min(fromBox.value, adjustInfo.deficit) : 0
+  const saldoAposTransfer = adjustInfo.saldoNegativo + valor
+  const fromSaldoApos = fromBox ? fromBox.value - valor : 0
+  const toSaldoApos = toBox ? toBox.value + valor : 0
+  const valorValido = valor > 0 && fromBox && valor <= fromBox.value
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ajustar Saldo com Investimentos" size="lg">
+      <div className="space-y-5">
+        {/* Resumo da situação */}
+        <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>Situação atual — {adjustInfo.mesAno}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Saldo Brasil</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--red)' }}>
+                {formatBrl(adjustInfo.saldoNegativo)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Déficit</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--amber)' }}>
+                {formatBrl(adjustInfo.deficit)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Investimentos disponíveis</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--green-400)' }}>
+                {formatBrl(adjustInfo.investimentoBrl)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Origem — Investimentos */}
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+            De onde resgatar — {grupoNome}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {investBoxes.map(box => {
+              const active = selectedFrom === box.label
+              return (
+                <button
+                  key={box.label}
+                  type="button"
+                  onClick={() => setSelectedFrom(box.label)}
+                  className="rounded-lg px-4 py-3 text-left transition-all"
+                  style={{
+                    background: active ? 'rgba(22,163,74,0.12)' : 'var(--bg-3)',
+                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                  }}
+                >
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{box.label}</p>
+                  <p className="font-mono font-semibold text-sm mt-1" style={{ color: 'var(--green-400)' }}>
+                    {formatBrl(box.value)}
+                  </p>
+                </button>
+              )
+            })}
+            {investBoxes.length === 0 && (
+              <p className="text-xs py-3" style={{ color: 'var(--text-3)' }}>
+                Nenhuma caixinha com saldo positivo em R$ encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Destino — Contas Bancárias */}
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+            Para onde direcionar — Contas Bancárias
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {contasBoxes.map(box => {
+              const active = selectedTo === box.label
+              return (
+                <button
+                  key={box.label}
+                  type="button"
+                  onClick={() => setSelectedTo(box.label)}
+                  className="rounded-lg px-4 py-3 text-left transition-all"
+                  style={{
+                    background: active ? 'rgba(96,165,250,0.10)' : 'var(--bg-3)',
+                    border: `1px solid ${active ? 'var(--blue)' : 'var(--border-1)'}`,
+                  }}
+                >
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{box.label}</p>
+                  <p className="font-mono font-semibold text-sm mt-1" style={{ color: 'var(--blue)' }}>
+                    {formatBrl(box.value)}
+                  </p>
+                </button>
+              )
+            })}
+            {contasBoxes.length === 0 && (
+              <p className="text-xs py-3" style={{ color: 'var(--text-3)' }}>
+                Nenhuma conta bancária em R$ encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Valor da transferência */}
+        {selectedFrom && selectedTo && (
+          <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)' }}>
+              Valor a transferir
+            </p>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  className="input w-full font-mono"
+                  value={transferValue}
+                  onChange={e => setTransferValue(e.target.value)}
+                  min={0}
+                  max={fromBox?.value ?? 0}
+                  step={0.01}
+                  placeholder="0,00"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setTransferValue(maxTransfer.toFixed(2))}
+                className="px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                style={{ background: 'var(--bg-4)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
+              >
+                Cobrir déficit ({formatBrl(maxTransfer)})
+              </button>
+            </div>
+
+            {/* Simulação */}
+            {valor > 0 && (
+              <div className="space-y-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  Simulação do resultado
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedFrom}</p>
+                    <p className="font-mono text-xs" style={{ color: 'var(--text-3)' }}>{formatBrl(fromBox?.value ?? 0)}</p>
+                    <p className="font-mono font-semibold text-sm" style={{ color: fromSaldoApos >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                      {formatBrl(fromSaldoApos)}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--amber)' }}>
+                      <ArrowRight size={16} />
+                      <span className="font-mono font-semibold">{formatBrl(valor)}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedTo}</p>
+                    <p className="font-mono text-xs" style={{ color: 'var(--text-3)' }}>{formatBrl(toBox?.value ?? 0)}</p>
+                    <p className="font-mono font-semibold text-sm" style={{ color: 'var(--blue)' }}>
+                      {formatBrl(toSaldoApos)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg px-3 py-2" style={{
+                  background: saldoAposTransfer >= 0 ? 'rgba(22,163,74,0.08)' : 'var(--red-dim)',
+                  border: `1px solid ${saldoAposTransfer >= 0 ? 'rgba(22,163,74,0.25)' : 'rgba(248,113,113,0.25)'}`,
+                }}>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                    Saldo Brasil após ajuste ({adjustInfo.mesAno})
+                  </p>
+                  <p className="font-mono font-bold text-base" style={{ color: saldoAposTransfer >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                    {formatBrl(saldoAposTransfer)}
+                  </p>
+                </div>
+
+                {!valorValido && valor > 0 && fromBox && valor > fromBox.value && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--red)' }}>
+                    O valor excede o saldo disponível em &quot;{selectedFrom}&quot;.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+          Esta simulação é apenas para apoiar sua tomada de decisão. Nenhum valor será alterado automaticamente.
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
 interface FinanceChartProps {
   monthsRange?: number
 }
@@ -79,7 +312,10 @@ interface FinanceChartProps {
 export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [data, setData] = useState<ChartPoint[]>([])
   const [loading, setLoading] = useState(true)
-  const [calc, setCalc] = useState<CalcSnapshot | null>(null)
+  const [calcBase, setCalcBase] = useState<CalcSnapshot | null>(null)
+  const [byMonthState, setByMonthState] = useState<Record<string, MonthlyCashflowItem[]>>({})
+  const [calcOpen, setCalcOpen] = useState(false)
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -216,13 +452,9 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
           .reduce((s, i) => s + (i.value ?? 0), 0)
 
-        setCalc({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
-
+        setCalcBase({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
+        setByMonthState(byMonth)
         setData(points)
-
-        // Inicializa slicers: todos os meses, ano atual + próximo por padrão
-        setSelectedMonths(new Set(Object.values(MONTHS)))
-        setSelectedYears(new Set([now.getFullYear(), now.getFullYear() + 1]))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -233,8 +465,112 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }, [monthsRange])
 
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
-  const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set())
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
+  const [filterMode, setFilterMode] = useState<'next6' | 'custom'>('next6')
+  const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
+
+  // Filtra pontos conforme slicers — DEVE ficar antes de qualquer early return (regra de hooks)
+  const filteredData = useMemo(() => {
+    if (filterMode === 'next6') {
+      const now = new Date()
+      const curNum = now.getFullYear() * 12 + now.getMonth()
+      return data.filter(d => {
+        const n = ymToNum(d.yearMonth)
+        return n >= curNum && n < curNum + 6
+      })
+    }
+    if (selectedYearMonths.size === 0) return data
+    return data.filter(d => {
+      const [mName, yStr] = d.yearMonth.split('/')
+      const key = `${parseInt(yStr)}-${MONTHS[mName] ?? 0}`
+      return selectedYearMonths.has(key)
+    })
+  }, [data, filterMode, selectedYearMonths])
+
+  // Recalcula a memória de cálculo respeitando os filtros ativos
+  const calc = useMemo(() => {
+    if (!calcBase) return null
+    const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
+    const filteredYms = new Set(filteredData.map(d => d.yearMonth))
+
+    const despesaEspanhaTotal = Object.entries(byMonthState)
+      .filter(([ym]) => filteredYms.has(ym))
+      .flatMap(([, items]) => items)
+      .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
+      .reduce((s, i) => s + (i.value ?? 0), 0)
+
+    const plrTotal = Object.entries(byMonthState)
+      .filter(([ym]) => filteredYms.has(ym))
+      .flatMap(([, items]) => items)
+      .filter(i => i.type?.startsWith('4'))
+      .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+
+    const saldoFinal = calcBase.contasBancariasTotal - plrTotal
+
+    const saldoFinalYmVisible = calcBase.saldoFinalYm && filteredYms.has(calcBase.saldoFinalYm)
+    const valeRefeicaoTotal = saldoFinalYmVisible
+      ? (byMonthState[calcBase.saldoFinalYm!] ?? [])
+          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+      : 0
+
+    return {
+      ...calcBase,
+      despesaEspanhaTotal,
+      plrTotal,
+      saldoFinal,
+      valeRefeicaoTotal,
+      saldoFinalYm: saldoFinalYmVisible ? calcBase.saldoFinalYm : null,
+    }
+  }, [calcBase, filteredData, byMonthState])
+
+  const adjustInfo = useMemo(() => {
+    if (!calcBase?.saldoFinalYm) return null
+    const configuredPoint = data.find(d => d.yearMonth === calcBase.saldoFinalYm)
+    if (!configuredPoint || configuredPoint.saldoBrasil >= 0) return null
+    const investimento = loadInvestimentoTotal()
+    if (investimento.brl <= 0) return null
+    return {
+      saldoNegativo: configuredPoint.saldoBrasil,
+      investimentoBrl: investimento.brl,
+      deficit: Math.abs(configuredPoint.saldoBrasil),
+      mesAno: calcBase.saldoFinalYm,
+      grupoInvestimento: loadNomeGrupoInvestimento(),
+    }
+  }, [calcBase, data])
+
+  // Detecta o primeiro mês em que o Acumulado Invest. Espanha fica negativo
+  // Conta meses a partir do pico (último ponto antes de começar a descer)
+  const espanhaZeroPin = useMemo(() => {
+    const negIdx = filteredData.findIndex(d => d.investAcumEspanha < 0)
+    if (negIdx < 0) return null
+    const negPoint = filteredData[negIdx]
+
+    // Encontra o pico: último ponto estável antes de começar a descer
+    let peakIdx = 0
+    for (let i = 1; i < filteredData.length; i++) {
+      if (filteredData[i].investAcumEspanha >= filteredData[peakIdx].investAcumEspanha) {
+        peakIdx = i
+      } else {
+        break
+      }
+    }
+
+    const peakNum = ymToNum(filteredData[peakIdx].yearMonth)
+    const negNum = ymToNum(negPoint.yearMonth)
+    const meses = Math.max(0, negNum - peakNum)
+
+    return { label: negPoint.label, meses }
+  }, [filteredData])
+
+  // Anos ativos no modo custom (derivado de selectedYearMonths) — hook antes de early return
+  const activeYears = useMemo(() => {
+    const years = new Set<number>()
+    selectedYearMonths.forEach(key => {
+      const y = parseInt(key.split('-')[0])
+      years.add(y)
+    })
+    return years
+  }, [selectedYearMonths])
 
   if (loading) {
     return (
@@ -249,35 +585,31 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const baseYear = sfYmForYears ? parseInt(sfYmForYears.split('/')[1]) : new Date().getFullYear()
   const availableYears = Array.from({ length: 6 }, (_, i) => baseYear + i)
   const MONTH_NAMES = Object.keys(MONTHS)
-  const availableMonths = Array.from({ length: 12 }, (_, i) => i)
 
   function toggleYear(y: number) {
-    setSelectedYears(prev => {
+    setFilterMode('custom')
+    setSelectedYearMonths(prev => {
       const next = new Set(prev)
-      next.has(y) ? next.delete(y) : next.add(y)
-      return next.size === 0 ? prev : next // impede desselecionar tudo
+      const hasAny = Array.from({ length: 12 }, (_, m) => `${y}-${m}`).some(k => next.has(k))
+      if (hasAny) {
+        for (let m = 0; m < 12; m++) next.delete(`${y}-${m}`)
+        if (next.size === 0) return prev
+      } else {
+        for (let m = 0; m < 12; m++) next.add(`${y}-${m}`)
+      }
+      return next
     })
   }
 
-  function toggleMonth(m: number) {
-    setSelectedMonths(prev => {
+  function toggleMonthForYear(y: number, m: number) {
+    setSelectedYearMonths(prev => {
       const next = new Set(prev)
-      next.has(m) ? next.delete(m) : next.add(m)
-      return next.size === 0 ? prev : next
+      const key = `${y}-${m}`
+      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.size === 0) return prev
+      return next
     })
   }
-
-  // Filtra pontos conforme slicers
-  const filteredData = (selectedYears.size === 0 && selectedMonths.size === 0)
-    ? data
-    : data.filter(d => {
-        const [mName, yStr] = d.yearMonth.split('/')
-        const y = parseInt(yStr)
-        const m = MONTHS[mName] ?? 0
-        const yearOk = selectedYears.size === 0 || selectedYears.has(y)
-        const monthOk = selectedMonths.size === 0 || selectedMonths.has(m)
-        return yearOk && monthOk
-      })
 
   function CustomTooltip({ active, payload, label }: any) {
     if (!active || !payload || !payload.length) return null
@@ -356,9 +688,46 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           Evolução Financeira
         </h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-          Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — próximos {monthsRange} meses
+          Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : 'período personalizado'}
         </p>
       </div>
+
+      {/* Alerta de saldo negativo com opção de ajuste via investimentos */}
+      {adjustInfo && (
+        <div
+          className="mb-4 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3"
+          style={{ background: 'var(--amber-dim)', border: '1px solid rgba(251,191,36,0.25)' }}
+        >
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <AlertTriangle size={16} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
+            <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+              <p className="font-semibold" style={{ color: 'var(--amber)' }}>
+                Saldo Brasil negativo em {adjustInfo.mesAno}
+              </p>
+              <p className="mt-0.5">
+                Déficit de <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatBrl(adjustInfo.deficit)}</span>
+                {' '}— você possui <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatBrl(adjustInfo.investimentoBrl)}</span> em &quot;{adjustInfo.grupoInvestimento}&quot;.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdjustModalOpen(true)}
+            className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+            style={{ background: 'var(--amber)', color: '#000', border: 'none' }}
+          >
+            Ajustar saldo
+            <ArrowRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Modal de ajuste */}
+      <AdjustModal
+        open={adjustModalOpen}
+        onClose={() => setAdjustModalOpen(false)}
+        adjustInfo={adjustInfo}
+      />
 
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer>
@@ -426,210 +795,212 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 label={<CustomLabel dataKey="saldoBrasil" />}
               />
             )}
+
+            {/* Linha vertical + label no topo: primeiro mês negativo Espanha */}
+            {espanhaZeroPin && !hiddenLines['investAcumEspanha'] && (
+              <ReferenceLine
+                yAxisId="left"
+                x={espanhaZeroPin.label}
+                stroke="#dc2626"
+                strokeDasharray="6 3"
+                strokeOpacity={0.5}
+                label={{
+                  value: `${espanhaZeroPin.meses} ${espanhaZeroPin.meses === 1 ? 'mês' : 'meses'}`,
+                  position: 'insideTopRight',
+                  fill: '#dc2626',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  offset: 4,
+                }}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Slicers — Anos e Meses */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Anos */}
-        <div>
-          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Anos</p>
-          <div className="flex flex-wrap gap-1.5">
-            {availableYears.map(y => {
-              const active = selectedYears.has(y)
-              return (
-                <button key={y} type="button" onClick={() => toggleYear(y)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
-                    color: active ? '#fff' : 'var(--text-2)',
-                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
-                  }}>
+      {/* Slicers — Filtros de período */}
+      <div className="mt-4 space-y-3">
+        {/* Presets */}
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button"
+            onClick={() => setFilterMode('next6')}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: filterMode === 'next6' ? 'var(--green-400)' : 'var(--bg-3)',
+              color: filterMode === 'next6' ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filterMode === 'next6' ? 'var(--green-400)' : 'var(--border-1)'}`,
+            }}>
+            Próximos 6 meses
+          </button>
+          <button type="button"
+            onClick={() => {
+              if (filterMode !== 'custom') {
+                setFilterMode('custom')
+                if (selectedYearMonths.size === 0) {
+                  const now = new Date()
+                  const initial = new Set<string>()
+                  for (let m = 0; m < 12; m++) {
+                    initial.add(`${now.getFullYear()}-${m}`)
+                    initial.add(`${now.getFullYear() + 1}-${m}`)
+                  }
+                  setSelectedYearMonths(initial)
+                }
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: filterMode === 'custom' ? 'var(--green-400)' : 'var(--bg-3)',
+              color: filterMode === 'custom' ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filterMode === 'custom' ? 'var(--green-400)' : 'var(--border-1)'}`,
+            }}>
+            Personalizar
+          </button>
+        </div>
+
+        {/* Anos + Meses por ano */}
+        {filterMode === 'custom' && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {availableYears.map(y => {
+                const active = activeYears.has(y)
+                return (
+                  <button key={y} type="button" onClick={() => toggleYear(y)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                      color: active ? '#fff' : 'var(--text-2)',
+                      border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                    }}>
+                    {y}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Meses por ano selecionado */}
+            {availableYears.filter(y => activeYears.has(y)).map(y => (
+              <div key={y}>
+                <p className="text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
                   {y}
-                </button>
-              )
-            })}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: 12 }, (_, m) => {
+                    const key = `${y}-${m}`
+                    const active = selectedYearMonths.has(key)
+                    const name = MONTH_NAMES[m]?.slice(0, 3) ?? ''
+                    return (
+                      <button key={key} type="button" onClick={() => toggleMonthForYear(y, m)}
+                        className="px-2 py-1 rounded-md text-xs font-medium transition-all"
+                        style={{
+                          background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                          color: active ? '#fff' : 'var(--text-2)',
+                          border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                        }}>
+                        {name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-        {/* Meses */}
-        <div>
-          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Meses</p>
-          <div className="flex flex-wrap gap-1.5">
-            {availableMonths.map(m => {
-              const active = selectedMonths.has(m)
-              const name = MONTH_NAMES[m]?.slice(0, 3) ?? ''
-              return (
-                <button key={m} type="button" onClick={() => toggleMonth(m)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
-                    color: active ? '#fff' : 'var(--text-2)',
-                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
-                  }}>
-                  {name}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        )}
       </div>
 
       <CustomLegend />
-      {/* Painel de memória de cálculo */}
+      {/* Memória de cálculo — colapsável, fechado por padrão */}
       {calc && (
         <div className="mt-4 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
-          {/* Header */}
-          <div className="px-4 py-2.5 flex items-center gap-2"
-            style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border-1)' }}>
+          {/* Header clicável */}
+          <button
+            type="button"
+            onClick={() => setCalcOpen(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-[var(--bg-4)]"
+            style={{ background: 'var(--bg-3)', borderBottom: calcOpen ? '1px solid var(--border-1)' : 'none' }}
+          >
             <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
               🧮 Memória de Cálculo
             </span>
-          </div>
+            {calcOpen
+              ? <ChevronUp size={14} style={{ color: 'var(--text-3)' }} />
+              : <ChevronDown size={14} style={{ color: 'var(--text-3)' }} />}
+          </button>
 
-          <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
+          {calcOpen && (
+            <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
 
-            {/* ── Bloco A: Acumulado Investimento Espanha ── */}
-            <div className="space-y-2">
-              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                A. Acumulado Investimento Espanha (€)
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Saldo inicial
-                    {calc.nomeGrupoEspanha && (
-                      <span className="block mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
-                        grupo "{calc.nomeGrupoEspanha}"
-                      </span>
-                    )}
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: calc.contasBancariasEspanha === 0 ? 'var(--red)' : 'var(--text-1)' }}>
-                    {calc.contasBancariasEspanha === 0 ? '⚠ Grupo não encontrado' : formatEur(calc.contasBancariasEspanha)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Total despesas Espanha</p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
-                    − {formatEur(calc.despesaEspanhaTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Saldo projetado (final do período)</p>
-                  <p className="font-mono font-bold mt-0.5" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
-                    = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
-                  </p>
+              {/* Espanha */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  🇪🇸 Acumulado Espanha (€)
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Saldo inicial</p>
+                    <p className="font-mono font-semibold" style={{ color: calc.contasBancariasEspanha === 0 ? 'var(--red)' : 'var(--text-1)' }}>
+                      {calc.contasBancariasEspanha === 0 ? '⚠ não encontrado' : formatEur(calc.contasBancariasEspanha)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Total despesas</p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                      − {formatEur(calc.despesaEspanhaTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Saldo projetado</p>
+                    <p className="font-mono font-bold" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
+                      = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
+                    </p>
+                  </div>
                 </div>
               </div>
-              {calc.contasBancariasEspanha === 0 && calc.gruposEncontrados.length > 0 && (
-                <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.3)' }}>
-                  <p className="font-semibold mb-1" style={{ color: 'var(--red)', fontSize: 10 }}>
-                    Grupos encontrados na Carteira (configure o nome exato em Carteira → Configurações do Gráfico):
-                  </p>
-                  {calc.gruposEncontrados.map((g, i) => (
-                    <p key={i} className="font-mono" style={{ color: 'var(--text-2)', fontSize: 10 }}>"{g}"</p>
-                  ))}
+
+              <div style={{ borderTop: '1px solid var(--border-1)' }} />
+
+              {/* Brasil */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  🇧🇷 Saldo Brasil (R$)
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Contas bancárias BR</p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
+                      {formatBrl(calc.contasBancariasTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      PLR{calc.plrName ? ` — ${calc.plrName}` : ''}
+                    </p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                      − {formatBrl(calc.plrTotal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(22,163,74,0.3)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      Saldo Final{calc.saldoFinalYm ? ` (${calc.saldoFinalYm})` : ''}
+                    </p>
+                    <p className="font-mono font-bold" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                      = {formatBrl(calc.saldoFinal)}
+                    </p>
+                  </div>
                 </div>
-              )}
-              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
-                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                <span style={{ color: '#3b82f6' }}>Acumulado Espanha (mês N)</span>
-                <span style={{ color: 'var(--text-3)' }}> = </span>
-                <span style={{ color: 'var(--text-1)' }}>Saldo inicial</span>
-                <span style={{ color: 'var(--text-3)' }}> − </span>
-                <span style={{ color: 'var(--red)' }}>Σ Despesa Espanha (meses 1…N)</span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  Saldo inicial = soma das caixinhas do grupo "{calc.nomeGrupoEspanha || 'Conta Bancária Espanha'}" na Carteira
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  Despesa Espanha = Σ value (contas a pagar com país = Espanha, não pagas)
-                </span>
+                {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
+                  <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                      Vale Alimentação/Refeição ({calc.saldoFinalYm})
+                    </p>
+                    <p className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                      + {formatBrl(calc.valeRefeicaoTotal)}
+                    </p>
+                  </div>
+                )}
               </div>
+
             </div>
-
-            <div style={{ borderTop: '1px solid var(--border-1)' }} />
-
-            {/* ── Bloco B: Saldo Brasil ── */}
-            <div className="space-y-2">
-              <p className="font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                B. Saldo Brasil (R$)
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>Total Contas Bancárias BR</p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--text-1)' }}>
-                    {formatBrl(calc.contasBancariasTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    PLR — Empréstimo próximos meses
-                    {calc.plrName && (
-                      <span className="block truncate mt-0.5" style={{ color: 'var(--text-3)', fontStyle: 'italic', fontSize: 10 }}>
-                        "{calc.plrName}"
-                      </span>
-                    )}
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--red)' }}>
-                    − {formatBrl(calc.plrTotal)}
-                  </p>
-                </div>
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(22,163,74,0.3)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Saldo Final
-                    {calc.saldoFinalYm && (
-                      <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
-                    )}
-                  </p>
-                  <p className="font-mono font-bold mt-0.5" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
-                    = {formatBrl(calc.saldoFinal)}
-                  </p>
-                </div>
-              </div>
-              {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
-                <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                  <p style={{ color: 'var(--text-3)' }}>
-                    Vale Alimentação/Refeição
-                    <span className="ml-1" style={{ color: 'var(--blue)' }}>({calc.saldoFinalYm})</span>
-                  </p>
-                  <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--green-400)' }}>
-                    + {formatBrl(calc.valeRefeicaoTotal)}
-                  </p>
-                </div>
-              )}
-              <div className="rounded-lg px-4 py-3 font-mono text-xs leading-relaxed"
-                style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                <span style={{ color: 'var(--green-400)' }}>Saldo Brasil</span>
-                <span style={{ color: 'var(--text-3)' }}> = </span>
-                <span style={{ color: 'var(--blue)' }}>Receita BR</span>
-                <span style={{ color: 'var(--text-3)' }}> + </span>
-                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
-                  Saldo Final{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ' (mês não configurado)'}
-                </span>
-                <span style={{ color: 'var(--text-3)' }}> + </span>
-                <span style={{ color: calc.saldoFinalYm ? 'var(--amber)' : 'var(--text-3)' }}>
-                  Vale Refeição{calc.saldoFinalYm ? ` (só em ${calc.saldoFinalYm})` : ''}
-                </span>
-                <span style={{ color: 'var(--text-3)' }}> − </span>
-                <span style={{ color: 'var(--red)' }}>Despesa BR</span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Receita BR = Σ manipulatedValue (recebíveis Brasil do mês)
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Vale Refeição = Σ manipulatedValue (categoria configurada, mês configurado)
-                </span>
-                <br />
-                <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
-                  onde Despesa BR = Σ value (contas a pagar Brasil, não pagas)
-                </span>
-              </div>
-            </div>
-
-          </div>
+          )}
         </div>
       )}
     </div>

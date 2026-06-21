@@ -144,6 +144,8 @@ function ConfiguracoesInner() {
   const [saldoFinalYm, setSaldoFinalYm] = useState('')
   const [valeCategoria, setValeCategoria] = useState('')
   const [nomeGrupoEspanha, setNomeGrupoEspanha] = useState('')
+  const [nomeGrupoInvestimento, setNomeGrupoInvestimento] = useState('')
+  const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
   const [chartSaved, setChartSaved] = useState(false)
   const [chartRecords, setChartRecords] = useState<WalletRecord[]>([])
 
@@ -156,6 +158,8 @@ function ConfiguracoesInner() {
     setSaldoFinalYm(c.saldoFinalYm ?? '')
     setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
+    setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
+    setInvestimentoAnosProjecao(c.investimentoAnosProjecao ?? '5')
     // Sincroniza com backend
     walletApi.search().then(res => {
       const records = res.output?.data ?? []
@@ -169,6 +173,8 @@ function ConfiguracoesInner() {
           setSaldoFinalYm(parsed.saldoFinalYm ?? '')
           setValeCategoria(parsed.valeCategoria ?? '')
           setNomeGrupoEspanha(parsed.nomeGrupoEspanha ?? '')
+          setNomeGrupoInvestimento(parsed.nomeGrupoInvestimento ?? 'Investimentos')
+          setInvestimentoAnosProjecao(parsed.investimentoAnosProjecao ?? '5')
         } catch {}
       }
     }).catch(() => { /* usa localStorage como fallback */ })
@@ -233,7 +239,7 @@ function ConfiguracoesInner() {
             type="button"
             className="btn-primary px-3 flex items-center gap-2"
             onClick={() => {
-              const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha }
+              const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
               savePlrConfigAll(data)
               const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
               const savePromise = existing
@@ -279,6 +285,23 @@ function ConfiguracoesInner() {
             </p>
             <input className="input w-full" value={nomeGrupoEspanha} onChange={e => setNomeGrupoEspanha(e.target.value)}
               placeholder="Ex: Conta Bancária Espanha" />
+          </div>
+          <div>
+            <label className="label">Grupo de Investimentos (Carteira)</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Nome do grupo na Carteira usado no gráfico de projeção de investimentos.
+            </p>
+            <input className="input w-full" value={nomeGrupoInvestimento} onChange={e => setNomeGrupoInvestimento(e.target.value)}
+              placeholder="Ex: Investimentos" />
+          </div>
+          <div>
+            <label className="label">Anos de projeção (Investimentos)</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+              Quantos anos à frente projetar o valor atual dos investimentos (1 a 10).
+            </p>
+            <input className="input w-full" type="number" min={1} max={10} value={investimentoAnosProjecao}
+              onChange={e => setInvestimentoAnosProjecao(e.target.value)}
+              placeholder="5" />
           </div>
         </div>
       </div>
