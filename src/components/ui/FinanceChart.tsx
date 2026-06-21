@@ -455,10 +455,6 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         setCalcBase({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
         setByMonthState(byMonth)
         setData(points)
-
-        // Inicializa slicers: todos os meses, ano atual + próximo por padrão
-        setSelectedMonths(new Set(Object.values(MONTHS)))
-        setSelectedYears(new Set([now.getFullYear(), now.getFullYear() + 1]))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -469,21 +465,26 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }, [monthsRange])
 
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
-  const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set())
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
+  const [filterMode, setFilterMode] = useState<'next6' | 'custom'>('next6')
+  const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
 
   // Filtra pontos conforme slicers — DEVE ficar antes de qualquer early return (regra de hooks)
   const filteredData = useMemo(() => {
-    if (selectedYears.size === 0 && selectedMonths.size === 0) return data
+    if (filterMode === 'next6') {
+      const now = new Date()
+      const curNum = now.getFullYear() * 12 + now.getMonth()
+      return data.filter(d => {
+        const n = ymToNum(d.yearMonth)
+        return n >= curNum && n < curNum + 6
+      })
+    }
+    if (selectedYearMonths.size === 0) return data
     return data.filter(d => {
       const [mName, yStr] = d.yearMonth.split('/')
-      const y = parseInt(yStr)
-      const m = MONTHS[mName] ?? 0
-      const yearOk = selectedYears.size === 0 || selectedYears.has(y)
-      const monthOk = selectedMonths.size === 0 || selectedMonths.has(m)
-      return yearOk && monthOk
+      const key = `${parseInt(yStr)}-${MONTHS[mName] ?? 0}`
+      return selectedYearMonths.has(key)
     })
-  }, [data, selectedYears, selectedMonths])
+  }, [data, filterMode, selectedYearMonths])
 
   // Recalcula a memória de cálculo respeitando os filtros ativos
   const calc = useMemo(() => {
@@ -537,6 +538,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     }
   }, [calcBase, data])
 
+  // Anos ativos no modo custom (derivado de selectedYearMonths) — hook antes de early return
+  const activeYears = useMemo(() => {
+    const years = new Set<number>()
+    selectedYearMonths.forEach(key => {
+      const y = parseInt(key.split('-')[0])
+      years.add(y)
+    })
+    return years
+  }, [selectedYearMonths])
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center" style={{ minHeight: 400 }}>
@@ -550,21 +561,29 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const baseYear = sfYmForYears ? parseInt(sfYmForYears.split('/')[1]) : new Date().getFullYear()
   const availableYears = Array.from({ length: 6 }, (_, i) => baseYear + i)
   const MONTH_NAMES = Object.keys(MONTHS)
-  const availableMonths = Array.from({ length: 12 }, (_, i) => i)
 
   function toggleYear(y: number) {
-    setSelectedYears(prev => {
+    setFilterMode('custom')
+    setSelectedYearMonths(prev => {
       const next = new Set(prev)
-      next.has(y) ? next.delete(y) : next.add(y)
-      return next.size === 0 ? prev : next
+      const hasAny = Array.from({ length: 12 }, (_, m) => `${y}-${m}`).some(k => next.has(k))
+      if (hasAny) {
+        for (let m = 0; m < 12; m++) next.delete(`${y}-${m}`)
+        if (next.size === 0) return prev
+      } else {
+        for (let m = 0; m < 12; m++) next.add(`${y}-${m}`)
+      }
+      return next
     })
   }
 
-  function toggleMonth(m: number) {
-    setSelectedMonths(prev => {
+  function toggleMonthForYear(y: number, m: number) {
+    setSelectedYearMonths(prev => {
       const next = new Set(prev)
-      next.has(m) ? next.delete(m) : next.add(m)
-      return next.size === 0 ? prev : next
+      const key = `${y}-${m}`
+      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.size === 0) return prev
+      return next
     })
   }
 
@@ -645,7 +664,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           Evolução Financeira
         </h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-          Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — próximos {monthsRange} meses
+          Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : 'período personalizado'}
         </p>
       </div>
 
@@ -756,49 +775,93 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         </ResponsiveContainer>
       </div>
 
-      {/* Slicers — Anos e Meses */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Anos */}
-        <div>
-          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Anos</p>
-          <div className="flex flex-wrap gap-1.5">
-            {availableYears.map(y => {
-              const active = selectedYears.has(y)
-              return (
-                <button key={y} type="button" onClick={() => toggleYear(y)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
-                    color: active ? '#fff' : 'var(--text-2)',
-                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
-                  }}>
+      {/* Slicers — Filtros de período */}
+      <div className="mt-4 space-y-3">
+        {/* Presets */}
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button"
+            onClick={() => setFilterMode('next6')}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: filterMode === 'next6' ? 'var(--green-400)' : 'var(--bg-3)',
+              color: filterMode === 'next6' ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filterMode === 'next6' ? 'var(--green-400)' : 'var(--border-1)'}`,
+            }}>
+            Próximos 6 meses
+          </button>
+          <button type="button"
+            onClick={() => {
+              if (filterMode !== 'custom') {
+                setFilterMode('custom')
+                if (selectedYearMonths.size === 0) {
+                  const now = new Date()
+                  const initial = new Set<string>()
+                  for (let m = 0; m < 12; m++) {
+                    initial.add(`${now.getFullYear()}-${m}`)
+                    initial.add(`${now.getFullYear() + 1}-${m}`)
+                  }
+                  setSelectedYearMonths(initial)
+                }
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: filterMode === 'custom' ? 'var(--green-400)' : 'var(--bg-3)',
+              color: filterMode === 'custom' ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filterMode === 'custom' ? 'var(--green-400)' : 'var(--border-1)'}`,
+            }}>
+            Personalizar
+          </button>
+        </div>
+
+        {/* Anos + Meses por ano */}
+        {filterMode === 'custom' && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {availableYears.map(y => {
+                const active = activeYears.has(y)
+                return (
+                  <button key={y} type="button" onClick={() => toggleYear(y)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                      color: active ? '#fff' : 'var(--text-2)',
+                      border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                    }}>
+                    {y}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Meses por ano selecionado */}
+            {availableYears.filter(y => activeYears.has(y)).map(y => (
+              <div key={y}>
+                <p className="text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
                   {y}
-                </button>
-              )
-            })}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: 12 }, (_, m) => {
+                    const key = `${y}-${m}`
+                    const active = selectedYearMonths.has(key)
+                    const name = MONTH_NAMES[m]?.slice(0, 3) ?? ''
+                    return (
+                      <button key={key} type="button" onClick={() => toggleMonthForYear(y, m)}
+                        className="px-2 py-1 rounded-md text-xs font-medium transition-all"
+                        style={{
+                          background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                          color: active ? '#fff' : 'var(--text-2)',
+                          border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                        }}>
+                        {name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-        {/* Meses */}
-        <div>
-          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>Meses</p>
-          <div className="flex flex-wrap gap-1.5">
-            {availableMonths.map(m => {
-              const active = selectedMonths.has(m)
-              const name = MONTH_NAMES[m]?.slice(0, 3) ?? ''
-              return (
-                <button key={m} type="button" onClick={() => toggleMonth(m)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background: active ? 'var(--green-400)' : 'var(--bg-3)',
-                    color: active ? '#fff' : 'var(--text-2)',
-                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
-                  }}>
-                  {name}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        )}
       </div>
 
       <CustomLegend />
