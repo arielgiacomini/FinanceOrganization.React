@@ -466,14 +466,12 @@ export function BillToPayHistory({ bill, onClose, onRefreshParent }: BillToPayHi
                     const bg = isSelected
                       ? 'rgba(96,165,250,0.10)'
                       : isPaid
-                        ? 'transparent'
-                        : isCurrent
+                        ? '#1b2e1d'
+                        : isCurrent && !isPaid
                           ? 'rgba(251,191,36,0.08)'
                           : 'var(--bg-1)'
                     return (
-                      <TRow key={h.id} bg={bg} style={isPaid ? {
-                        background: 'linear-gradient(90deg, var(--green-400) 0, var(--green-400) 4px, rgba(34,197,94,0.15) 4px)',
-                      } : undefined}>
+                      <TRow key={h.id} bg={bg}>
                         <Td>
                           <button type="button" onClick={() => toggleOne(h.id)} style={{ color: isSelected ? 'var(--blue)' : 'var(--text-3)' }}>
                             {isSelected ? <SquareCheck size={15} /> : <Square size={15} />}
