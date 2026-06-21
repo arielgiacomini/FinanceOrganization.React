@@ -9,6 +9,19 @@ const PLR_CONFIG_KEY = 'finance_plr_config'
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
 
+export interface WalletBox {
+  label: string
+  value: string
+  currency: string
+}
+
+export interface WalletGroup {
+  id: string
+  label: string
+  collapsed: boolean
+  boxes: WalletBox[]
+}
+
 function readWallet(): { groups: Array<{ label: string; boxes: Array<{ value: string; currency: string }> }> } {
   try {
     const raw = localStorage.getItem(WALLET_KEY)
@@ -104,6 +117,22 @@ export function loadInvestimentoBoxes(): Array<{ label: string; value: number; c
     const wallet = readWallet()
     const nome = loadNomeGrupoInvestimento().trim().toLowerCase()
     const group = wallet.groups.find(g => g.label.trim().toLowerCase() === nome)
+    if (!group) return []
+    return group.boxes.map(b => ({
+      label: b.label,
+      value: parseFloat(b.value) || 0,
+      currency: b.currency,
+    }))
+  } catch { return [] }
+}
+
+export function loadContasBancariasBoxes(): Array<{ label: string; value: number; currency: string }> {
+  try {
+    const wallet = readWallet()
+    const group = wallet.groups.find(g =>
+      g.label.trim().toLowerCase() === 'contas bancárias' ||
+      g.label.trim().toLowerCase() === 'contas bancarias'
+    )
     if (!group) return []
     return group.boxes.map(b => ({
       label: b.label,

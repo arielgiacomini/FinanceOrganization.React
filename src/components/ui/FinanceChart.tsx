@@ -11,9 +11,13 @@ import {
   loadContasBancariasTotal,
   loadContasBancariasEspanha,
   loadGruposNomes,
+  loadInvestimentoTotal,
+  loadInvestimentoBoxes,
+  loadContasBancariasBoxes,
+  loadNomeGrupoInvestimento,
 } from '@/lib/wallet'
-import { Spinner } from '@/components/ui'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Modal, Spinner } from '@/components/ui'
+import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
@@ -73,6 +77,234 @@ interface CalcSnapshot {
   despesaEspanhaTotal: number
 }
 
+interface AdjustInfo {
+  saldoNegativo: number
+  investimentoBrl: number
+  deficit: number
+  mesAno: string
+  grupoInvestimento: string
+}
+
+function AdjustModal({ open, onClose, adjustInfo }: {
+  open: boolean
+  onClose: () => void
+  adjustInfo: AdjustInfo | null
+}) {
+  const [investBoxes, setInvestBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
+  const [contasBoxes, setContasBoxes] = useState<Array<{ label: string; value: number; currency: string }>>([])
+  const [selectedFrom, setSelectedFrom] = useState<string | null>(null)
+  const [selectedTo, setSelectedTo] = useState<string | null>(null)
+  const [transferValue, setTransferValue] = useState('')
+  const [grupoNome, setGrupoNome] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      const invest = loadInvestimentoBoxes().filter(b => b.currency === 'Brasil' && b.value > 0)
+      const contas = loadContasBancariasBoxes().filter(b => b.currency === 'Brasil')
+      setInvestBoxes(invest)
+      setContasBoxes(contas)
+      setGrupoNome(loadNomeGrupoInvestimento())
+      setSelectedFrom(invest.length === 1 ? invest[0].label : null)
+      setSelectedTo(contas.length === 1 ? contas[0].label : null)
+      setTransferValue(adjustInfo ? adjustInfo.deficit.toFixed(2) : '')
+    }
+  }, [open, adjustInfo])
+
+  if (!adjustInfo) return null
+
+  const fromBox = investBoxes.find(b => b.label === selectedFrom)
+  const toBox = contasBoxes.find(b => b.label === selectedTo)
+  const valor = parseFloat(transferValue) || 0
+  const maxTransfer = fromBox ? Math.min(fromBox.value, adjustInfo.deficit) : 0
+  const saldoAposTransfer = adjustInfo.saldoNegativo + valor
+  const fromSaldoApos = fromBox ? fromBox.value - valor : 0
+  const toSaldoApos = toBox ? toBox.value + valor : 0
+  const valorValido = valor > 0 && fromBox && valor <= fromBox.value
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ajustar Saldo com Investimentos" size="lg">
+      <div className="space-y-5">
+        {/* Resumo da situação */}
+        <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>Situação atual — {adjustInfo.mesAno}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Saldo Brasil</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--red)' }}>
+                {formatBrl(adjustInfo.saldoNegativo)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Déficit</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--amber)' }}>
+                {formatBrl(adjustInfo.deficit)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Investimentos disponíveis</p>
+              <p className="font-mono font-semibold text-sm" style={{ color: 'var(--green-400)' }}>
+                {formatBrl(adjustInfo.investimentoBrl)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Origem — Investimentos */}
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+            De onde resgatar — {grupoNome}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {investBoxes.map(box => {
+              const active = selectedFrom === box.label
+              return (
+                <button
+                  key={box.label}
+                  type="button"
+                  onClick={() => setSelectedFrom(box.label)}
+                  className="rounded-lg px-4 py-3 text-left transition-all"
+                  style={{
+                    background: active ? 'rgba(22,163,74,0.12)' : 'var(--bg-3)',
+                    border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+                  }}
+                >
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{box.label}</p>
+                  <p className="font-mono font-semibold text-sm mt-1" style={{ color: 'var(--green-400)' }}>
+                    {formatBrl(box.value)}
+                  </p>
+                </button>
+              )
+            })}
+            {investBoxes.length === 0 && (
+              <p className="text-xs py-3" style={{ color: 'var(--text-3)' }}>
+                Nenhuma caixinha com saldo positivo em R$ encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Destino — Contas Bancárias */}
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+            Para onde direcionar — Contas Bancárias
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {contasBoxes.map(box => {
+              const active = selectedTo === box.label
+              return (
+                <button
+                  key={box.label}
+                  type="button"
+                  onClick={() => setSelectedTo(box.label)}
+                  className="rounded-lg px-4 py-3 text-left transition-all"
+                  style={{
+                    background: active ? 'rgba(96,165,250,0.10)' : 'var(--bg-3)',
+                    border: `1px solid ${active ? 'var(--blue)' : 'var(--border-1)'}`,
+                  }}
+                >
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{box.label}</p>
+                  <p className="font-mono font-semibold text-sm mt-1" style={{ color: 'var(--blue)' }}>
+                    {formatBrl(box.value)}
+                  </p>
+                </button>
+              )
+            })}
+            {contasBoxes.length === 0 && (
+              <p className="text-xs py-3" style={{ color: 'var(--text-3)' }}>
+                Nenhuma conta bancária em R$ encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Valor da transferência */}
+        {selectedFrom && selectedTo && (
+          <div className="rounded-xl p-4" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)' }}>
+              Valor a transferir
+            </p>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  className="input w-full font-mono"
+                  value={transferValue}
+                  onChange={e => setTransferValue(e.target.value)}
+                  min={0}
+                  max={fromBox?.value ?? 0}
+                  step={0.01}
+                  placeholder="0,00"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setTransferValue(maxTransfer.toFixed(2))}
+                className="px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                style={{ background: 'var(--bg-4)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
+              >
+                Cobrir déficit ({formatBrl(maxTransfer)})
+              </button>
+            </div>
+
+            {/* Simulação */}
+            {valor > 0 && (
+              <div className="space-y-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  Simulação do resultado
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedFrom}</p>
+                    <p className="font-mono text-xs" style={{ color: 'var(--text-3)' }}>{formatBrl(fromBox?.value ?? 0)}</p>
+                    <p className="font-mono font-semibold text-sm" style={{ color: fromSaldoApos >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                      {formatBrl(fromSaldoApos)}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--amber)' }}>
+                      <ArrowRight size={16} />
+                      <span className="font-mono font-semibold">{formatBrl(valor)}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedTo}</p>
+                    <p className="font-mono text-xs" style={{ color: 'var(--text-3)' }}>{formatBrl(toBox?.value ?? 0)}</p>
+                    <p className="font-mono font-semibold text-sm" style={{ color: 'var(--blue)' }}>
+                      {formatBrl(toSaldoApos)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg px-3 py-2" style={{
+                  background: saldoAposTransfer >= 0 ? 'rgba(22,163,74,0.08)' : 'var(--red-dim)',
+                  border: `1px solid ${saldoAposTransfer >= 0 ? 'rgba(22,163,74,0.25)' : 'rgba(248,113,113,0.25)'}`,
+                }}>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                    Saldo Brasil após ajuste ({adjustInfo.mesAno})
+                  </p>
+                  <p className="font-mono font-bold text-base" style={{ color: saldoAposTransfer >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                    {formatBrl(saldoAposTransfer)}
+                  </p>
+                </div>
+
+                {!valorValido && valor > 0 && fromBox && valor > fromBox.value && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--red)' }}>
+                    O valor excede o saldo disponível em &quot;{selectedFrom}&quot;.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+          Esta simulação é apenas para apoiar sua tomada de decisão. Nenhum valor será alterado automaticamente.
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
 interface FinanceChartProps {
   monthsRange?: number
 }
@@ -83,6 +315,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [calcBase, setCalcBase] = useState<CalcSnapshot | null>(null)
   const [byMonthState, setByMonthState] = useState<Record<string, MonthlyCashflowItem[]>>({})
   const [calcOpen, setCalcOpen] = useState(false)
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -289,6 +522,21 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     }
   }, [calcBase, filteredData, byMonthState])
 
+  const adjustInfo = useMemo(() => {
+    if (!calcBase?.saldoFinalYm) return null
+    const configuredPoint = data.find(d => d.yearMonth === calcBase.saldoFinalYm)
+    if (!configuredPoint || configuredPoint.saldoBrasil >= 0) return null
+    const investimento = loadInvestimentoTotal()
+    if (investimento.brl <= 0) return null
+    return {
+      saldoNegativo: configuredPoint.saldoBrasil,
+      investimentoBrl: investimento.brl,
+      deficit: Math.abs(configuredPoint.saldoBrasil),
+      mesAno: calcBase.saldoFinalYm,
+      grupoInvestimento: loadNomeGrupoInvestimento(),
+    }
+  }, [calcBase, data])
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center" style={{ minHeight: 400 }}>
@@ -400,6 +648,43 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — próximos {monthsRange} meses
         </p>
       </div>
+
+      {/* Alerta de saldo negativo com opção de ajuste via investimentos */}
+      {adjustInfo && (
+        <div
+          className="mb-4 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3"
+          style={{ background: 'var(--amber-dim)', border: '1px solid rgba(251,191,36,0.25)' }}
+        >
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <AlertTriangle size={16} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
+            <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+              <p className="font-semibold" style={{ color: 'var(--amber)' }}>
+                Saldo Brasil negativo em {adjustInfo.mesAno}
+              </p>
+              <p className="mt-0.5">
+                Déficit de <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatBrl(adjustInfo.deficit)}</span>
+                {' '}— você possui <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatBrl(adjustInfo.investimentoBrl)}</span> em &quot;{adjustInfo.grupoInvestimento}&quot;.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdjustModalOpen(true)}
+            className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+            style={{ background: 'var(--amber)', color: '#000', border: 'none' }}
+          >
+            Ajustar saldo
+            <ArrowRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Modal de ajuste */}
+      <AdjustModal
+        open={adjustModalOpen}
+        onClose={() => setAdjustModalOpen(false)}
+        adjustInfo={adjustInfo}
+      />
 
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer>
