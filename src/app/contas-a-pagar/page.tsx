@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { billsToPayApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
+import { loadSaldoFinalYm } from '@/lib/wallet'
 import type { BillToPay, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -39,6 +40,7 @@ function sortBills(data: BillToPay[]): BillToPay[] {
 
 function ContasAPagarPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
+  const [configLoaded, setConfigLoaded] = useState(false)
   const [bills, setBills] = useState<BillToPay[]>([])
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
   const [loading, setLoading] = useState(true)
@@ -85,6 +87,12 @@ function ContasAPagarPageInner() {
     }).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    const configured = loadSaldoFinalYm()
+    setYm(configured || currentYearMonth())
+    setConfigLoaded(true)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -95,7 +103,7 @@ function ContasAPagarPageInner() {
     }
   }, [ym])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (!configLoaded) return; load() }, [load, configLoaded])
 
   // Contadores por país para as abas
   const countryCounts = useMemo(() => {
@@ -411,7 +419,7 @@ function ContasAPagarPageInner() {
               const accData = accountMap[acc.trim().toLowerCase()]
               const hex = accData?.colors?.backgroundColorHexadecimal
               const active = accountFilter === acc
-              const accBills = filtered.filter(b => b.account === acc)
+              const accBills = bills.filter(b => b.account === acc)
               const accTotal = accBills.reduce((s, b) => s + b.value, 0)
               const onlySpain = accBills.length > 0 && accBills.every(b => b.country?.trim() === 'Espanha')
               const accCurr = onlySpain ? 'Espanha' : 'Brasil'
@@ -429,11 +437,9 @@ function ContasAPagarPageInner() {
                 >
                   {hex && <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />}
                   {acc}
-                  {active && (
-                    <span className="font-mono ml-0.5">
-                      {formatCurrency(accTotal, accCurr)}
-                    </span>
-                  )}
+                  <span className="font-mono ml-0.5" style={{ opacity: active ? 1 : 0.6 }}>
+                    {formatCurrency(accTotal, accCurr)}
+                  </span>
                 </button>
               )
             })}
@@ -751,7 +757,7 @@ function ContasAPagarPageInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(relatedTarget.details ?? []).map(d => (
+                  {[...(relatedTarget.details ?? [])].sort((a, b) => (b.purchaseDate ?? '').localeCompare(a.purchaseDate ?? '')).map(d => (
                     <TRow key={d.id}>
                       <Td className="text-xs">{d.account ?? '—'}</Td>
                       <Td className="text-xs"><span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{d.name ?? '—'}</span></Td>
