@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { FinanceChart } from '@/components/ui/FinanceChart'
 import { InvestmentChart } from '@/components/ui/InvestmentChart'
+import { DailyExpenseChart } from '@/components/ui/DailyExpenseChart'
 
 function DashboardPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
@@ -74,6 +75,9 @@ function DashboardPageInner() {
 
       {/* Gráfico de Evolução Financeira */}
       <FinanceChart monthsRange={12} />
+
+      {/* Despesas por dia / mês */}
+      <DailyExpenseChart />
 
       {/* Gráfico de Projeção de Investimentos */}
       <InvestmentChart />
