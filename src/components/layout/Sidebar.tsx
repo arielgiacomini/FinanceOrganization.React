@@ -5,20 +5,19 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  CreditCard, ChevronRight, Menu, X, LogOut, Settings, Wallet, BarChart2,
+  CreditCard, ChevronRight, Menu, X, LogOut, Settings, Wallet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 
 /** Versão da aplicação — deve ser incrementada a cada entrega. */
-export const APP_VERSION = 'v247'
+export const APP_VERSION = 'v248'
 
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
   { href: '/carteira',           label: 'Carteira',         icon: Wallet          },
   { href: '/contas-a-pagar',     label: 'Contas a Pagar',   icon: ArrowUpCircle   },
   { href: '/contas-a-receber',   label: 'Contas a Receber', icon: ArrowDownCircle },
-  { href: '/analise',            label: 'Análise',          icon: BarChart2       },
   { href: '/configuracoes',      label: 'Configurações',    icon: Settings        },
 ]
 
