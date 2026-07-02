@@ -90,6 +90,7 @@ function AnalisePageInner() {
           })}
         </div>
       )}
+
     </div>
   )
 }

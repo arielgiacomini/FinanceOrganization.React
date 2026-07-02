@@ -188,6 +188,24 @@ export const dateApi = {
     ),
 }
 
+export interface DailyExpenseRecord {
+  type: string
+  account: string
+  category: string
+  date: string
+  day: number
+  month: string
+  dayWeek: string
+  weekend: boolean
+  holiday: boolean
+  taxCountry: string
+  monthYear: string
+  quantity: number
+  value: number
+  manipulatedValue: number
+  hasPay: boolean
+}
+
 export interface MonthlyCashflowItem {
   type: string
   date: string
@@ -209,6 +227,12 @@ export const dashboardApi = {
       loanNextMonths,
     })
     return request<MonthlyCashflowItem[]>(`/v1/dashboard/monthly-cashflow-billtopay-cashreceivable?${params.toString()}`, 'GET')
+  },
+
+  dailyExpenseByCategoryAccount: (months: number[], years: number[], category?: string) => {
+    const params = new URLSearchParams({ months: months.join(','), years: years.join(',') })
+    if (category) params.set('category', category)
+    return request<DailyExpenseRecord[]>(`/v1/dashboard/daily-expense-category-account-date?${params}`, 'GET')
   },
 }
 

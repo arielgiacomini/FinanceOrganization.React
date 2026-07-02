@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { PageHeader, Spinner } from '@/components/ui'
 import { billsToPayApi, cashReceivableApi } from '@/lib/api'
 import { formatCurrency, currentYearMonth, formatYearMonth } from '@/lib/utils'
+import { loadSaldoFinalYm } from '@/lib/wallet'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import {
@@ -320,6 +321,7 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
 function CarteiraInner() {
   const [wallet, setWallet] = useState<WalletData>({ groups: [] })
   const [ym, setYm] = useState(currentYearMonth())
+  const [configLoaded, setConfigLoaded] = useState(false)
   const [pendingBills, setPendingBills] = useState(0)
   const [pendingReceivables, setPendingReceivables] = useState(0)
   const [loadingAPI, setLoadingAPI] = useState(false)
@@ -328,6 +330,12 @@ function CarteiraInner() {
   const [walletRecords, setWalletRecords] = useState<WalletRecord[]>([])
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState('')
+
+  useEffect(() => {
+    const configured = loadSaldoFinalYm()
+    setYm(configured || currentYearMonth())
+    setConfigLoaded(true)
+  }, [])
 
   useEffect(() => {
     // Carrega localStorage imediatamente (sem travar UI)
@@ -367,7 +375,7 @@ function CarteiraInner() {
     }
   }, [ym])
 
-  useEffect(() => { fetchAPI() }, [fetchAPI])
+  useEffect(() => { if (!configLoaded) return; fetchAPI() }, [fetchAPI, configLoaded])
 
   function updateWallet(next: WalletData) {
     setWallet(next)

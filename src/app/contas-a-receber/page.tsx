@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { cashReceivableApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
+import { loadSaldoFinalYm } from '@/lib/wallet'
 import type { CashReceivable, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -33,6 +34,7 @@ function hexToRowBg(hex: string): string {
 
 function ContasAReceberPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
+  const [configLoaded, setConfigLoaded] = useState(false)
   const [items, setItems] = useState<CashReceivable[]>([])
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
   const [loading, setLoading] = useState(true)
@@ -73,6 +75,12 @@ function ContasAReceberPageInner() {
     }).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    const configured = loadSaldoFinalYm()
+    setYm(configured || currentYearMonth())
+    setConfigLoaded(true)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -83,7 +91,7 @@ function ContasAReceberPageInner() {
     }
   }, [ym])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (!configLoaded) return; load() }, [load, configLoaded])
 
   const countryCounts = useMemo(() => {
     const counts = { Todos: items.length, Brasil: 0, Espanha: 0 } as Record<CountryFilter, number>

@@ -383,6 +383,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [calcOpen, setCalcOpen] = useState(false)
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const [configYm, setConfigYm] = useState<string>('')
 
   useEffect(() => {
     let cancelled = false
@@ -411,6 +412,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         const plrName = loadPlrName()
         const valeCategoria = loadValeCategoria()
         const saldoFinalYm = loadSaldoFinalYm()
+        if (!cancelled) setConfigYm(saldoFinalYm)
 
         const now = new Date()
         const curYm = now.getFullYear() * 12 + now.getMonth()
@@ -538,11 +540,12 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   // Filtra pontos conforme slicers — DEVE ficar antes de qualquer early return (regra de hooks)
   const filteredData = useMemo(() => {
     if (filterMode === 'next6') {
-      const now = new Date()
-      const curNum = now.getFullYear() * 12 + now.getMonth()
+      const baseNum = configYm
+        ? ymToNum(configYm)
+        : new Date().getFullYear() * 12 + new Date().getMonth()
       return data.filter(d => {
         const n = ymToNum(d.yearMonth)
-        return n >= curNum && n < curNum + 6
+        return n >= baseNum && n < baseNum + 6
       })
     }
     if (selectedYearMonths.size === 0) return data
@@ -551,7 +554,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       const key = `${parseInt(yStr)}-${MONTHS[mName] ?? 0}`
       return selectedYearMonths.has(key)
     })
-  }, [data, filterMode, selectedYearMonths])
+  }, [data, filterMode, selectedYearMonths, configYm])
 
   // Recalcula a memória de cálculo respeitando os filtros ativos
   const calc = useMemo(() => {

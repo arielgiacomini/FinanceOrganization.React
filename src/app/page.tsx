@@ -3,20 +3,31 @@
 import { useEffect, useState } from 'react'
 import { billsToPayApi, cashReceivableApi } from '@/lib/api'
 import { formatYearMonth, currentYearMonth } from '@/lib/utils'
+import { loadSaldoFinalYm } from '@/lib/wallet'
 import type { BillToPay, CashReceivable } from '@/types'
 import { PageHeader, Spinner } from '@/components/ui'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { FinanceChart } from '@/components/ui/FinanceChart'
 import { InvestmentChart } from '@/components/ui/InvestmentChart'
+import { DailyExpenseChart } from '@/components/ui/DailyExpenseChart'
 
 function DashboardPageInner() {
-  const ym = currentYearMonth()
+  const [ym, setYm] = useState(currentYearMonth())
+  const [configLoaded, setConfigLoaded] = useState(false)
   const [bills, setBills] = useState<BillToPay[]>([])
   const [receivables, setReceivables] = useState<CashReceivable[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const configured = loadSaldoFinalYm()
+    setYm(configured || currentYearMonth())
+    setConfigLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    if (!configLoaded) return
+    setLoading(true)
     Promise.all([
       billsToPayApi.search({ yearMonth: ym, showDetails: true }),
       cashReceivableApi.search({ yearMonth: ym, showDetails: true }),
@@ -24,7 +35,7 @@ function DashboardPageInner() {
       setBills(b.output?.data ?? [])
       setReceivables(r.output?.data ?? [])
     }).finally(() => setLoading(false))
-  }, [ym])
+  }, [ym, configLoaded])
 
   const totalBills   = bills.length
   const pendingCount = bills.filter(b => !b.hasPay).length
@@ -64,6 +75,9 @@ function DashboardPageInner() {
 
       {/* Gráfico de Evolução Financeira */}
       <FinanceChart monthsRange={12} />
+
+      {/* Despesas por dia / mês */}
+      <DailyExpenseChart />
 
       {/* Gráfico de Projeção de Investimentos */}
       <InvestmentChart />
