@@ -53,6 +53,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
     purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : (draft?.purchaseDate ?? ''),
     dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate ?? ''),
+    payDay: initial?.payDay ? new Date(initial.payDay).toISOString().slice(0, 10) : (draft?.payDay ?? ''),
     initialMonthYear: initial?.yearMonth ?? draft?.initialMonthYear ?? currentYearMonth(),
     fynallyMonthYear: initial?.yearMonth ?? draft?.fynallyMonthYear ?? currentYearMonth(),
     bestPayDay: draft?.bestPayDay ?? '',
@@ -115,7 +116,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
       name: '', account: '', category: '', value: '',
       frequence: 'Livre',
       registrationType: regTypeList[0] ?? 'Compra Livre',
-      purchaseDate: '', dueDate: '',
+      purchaseDate: '', dueDate: '', payDay: '',
       initialMonthYear: currentYearMonth(),
       fynallyMonthYear: currentYearMonth(),
       bestPayDay: '', additionalMessage: '', country: 'Brasil', hasPay: false,
@@ -140,7 +141,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           YearMonth: form.initialMonthYear || initial!.yearMonth,
           Frequence: form.frequence || initial!.frequence,
           RegistrationType: form.registrationType || initial!.registrationType,
-          PayDay: initial!.payDay ?? null,
+          PayDay: form.payDay || initial!.payDay || null,
           HasPay: form.hasPay,
           LastChangeDate: new Date().toISOString(),
           AdditionalMessage: form.additionalMessage || null,
@@ -380,7 +381,13 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
               <label className="label">Status</label>
               <div className="flex gap-2">
                 {[{ label: 'Pendente', value: false }, { label: 'Pago', value: true }].map(({ label, value }) => (
-                  <button key={label} type="button" onClick={() => setForm(f => ({ ...f, hasPay: value }))}
+                  <button key={label} type="button"
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      hasPay: value,
+                      // Auto-preenche payDay com hoje ao marcar como Pago (se estiver vazio)
+                      payDay: value && !f.payDay ? new Date().toISOString().slice(0, 10) : f.payDay,
+                    }))}
                     className="flex-1 py-2 rounded-lg border text-sm font-medium transition-all"
                     style={{
                       background: form.hasPay === value ? (value ? 'var(--green-dim)' : 'rgba(245,158,11,0.1)') : 'var(--bg-3)',
@@ -392,6 +399,13 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
                 ))}
               </div>
             </div>
+
+            {form.hasPay && (
+              <div>
+                <label className="label">Data de Pagamento</label>
+                <input className="input" type="date" value={form.payDay} onChange={(e) => set('payDay', e.target.value)} />
+              </div>
+            )}
           </>
         )}
 
