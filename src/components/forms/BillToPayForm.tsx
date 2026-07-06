@@ -19,6 +19,12 @@ interface BillToPayFormProps {
 
 const DRAFT_KEY = 'finance_billtopay_draft'
 
+function safeDate(value: string | undefined | null): string {
+  if (!value) return ''
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+}
+
 function saveDraft(form: Record<string, unknown>) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
 }
@@ -51,9 +57,9 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     value: initial?.value?.toString() ?? draft?.value ?? '',
     frequence: initial?.frequence ?? draft?.frequence ?? 'Livre',
     registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
-    purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : (draft?.purchaseDate ?? ''),
-    dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate ?? ''),
-    payDay: initial?.payDay ? new Date(initial.payDay).toISOString().slice(0, 10) : (draft?.payDay ?? ''),
+    purchaseDate: safeDate(initial?.purchaseDate) || (draft?.purchaseDate ?? ''),
+    dueDate: safeDate(initial?.dueDate) || (draft?.dueDate ?? ''),
+    payDay: safeDate(initial?.payDay) || (draft?.payDay ?? ''),
     initialMonthYear: initial?.yearMonth ?? draft?.initialMonthYear ?? currentYearMonth(),
     fynallyMonthYear: initial?.yearMonth ?? draft?.fynallyMonthYear ?? currentYearMonth(),
     bestPayDay: draft?.bestPayDay ?? '',
@@ -76,7 +82,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     ]).then(([accRes, cats]) => {
       setAccounts(
         (accRes.data ?? [])
-          .filter(a => a.enable)
+          .filter(a => isEdit || a.enable)
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
       )
       setCategories(cats ?? [])
@@ -136,12 +142,12 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           Account: form.account || initial!.account,
           Category: form.category || initial!.category,
           Value: !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : initial!.value,
-          PurchaseDate: form.purchaseDate || initial!.purchaseDate || null,
+          PurchaseDate: form.purchaseDate || null,
           DueDate: form.dueDate || initial!.dueDate,
           YearMonth: form.initialMonthYear || initial!.yearMonth,
           Frequence: form.frequence || initial!.frequence,
           RegistrationType: form.registrationType || initial!.registrationType,
-          PayDay: form.payDay || initial!.payDay || null,
+          PayDay: form.payDay || null,
           HasPay: form.hasPay,
           LastChangeDate: new Date().toISOString(),
           AdditionalMessage: form.additionalMessage || null,
