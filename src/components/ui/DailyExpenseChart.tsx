@@ -309,9 +309,18 @@ export function DailyExpenseChart() {
     )
   }
 
-  function selectYear(y: number) {
+  function toggleYear(y: number) {
     yearChangedRef.current = true
-    setSelectedYears([y])
+    setSelectedYears(prev => {
+      // Se "Todos" está ativo, começa uma seleção nova com apenas este ano
+      if (prev.length === AVAILABLE_YEARS.length) return [y]
+      if (prev.includes(y)) {
+        // Não permite desmarcar o último
+        if (prev.length === 1) return prev
+        return prev.filter(yr => yr !== y)
+      }
+      return [...prev, y].sort((a, b) => a - b)
+    })
   }
 
   function selectAllYears() {
@@ -417,7 +426,17 @@ export function DailyExpenseChart() {
 
   const sortedBills = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1
-    return [...detailsBills].filter(b => !hideZero || b.value !== 0).sort((a, b) => {
+    const allYears = selectedYears.length === AVAILABLE_YEARS.length
+    return [...detailsBills]
+      .filter(b => !hideZero || b.value !== 0)
+      .filter(b => {
+        // Quando uma barra está selecionada o mês/ano já vem da API — não filtra de novo
+        if (barSelection) return true
+        if (allYears) return true
+        const y = parseInt(b.yearMonth?.split('/')?.[1] ?? '0')
+        return selectedYears.includes(y)
+      })
+      .sort((a, b) => {
       switch (sortCol) {
         case 'name':         return dir * (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR')
         case 'country':      return dir * (a.country ?? '').localeCompare(b.country ?? '', 'pt-BR')
@@ -435,7 +454,7 @@ export function DailyExpenseChart() {
         default:             return 0
       }
     })
-  }, [detailsBills, sortCol, sortDir, hideZero])
+  }, [detailsBills, sortCol, sortDir, hideZero, selectedYears, barSelection])
 
   // Recarrega detalhes quando categoria muda (e reseta filtro de barra)
   useEffect(() => {
@@ -604,12 +623,13 @@ export function DailyExpenseChart() {
             )
           })()}
           {AVAILABLE_YEARS.map(y => {
+            const allActive = selectedYears.length === AVAILABLE_YEARS.length
             const active = viewMode === 'month'
-              ? selectedYears.length === 1 && selectedYears[0] === y
+              ? !allActive && selectedYears.includes(y)
               : dayYear === y
             return (
               <button key={y} type="button"
-                onClick={() => viewMode === 'month' ? selectYear(y) : handleDayYearChange(y)}
+                onClick={() => viewMode === 'month' ? toggleYear(y) : handleDayYearChange(y)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                 style={{
                   background: active ? 'var(--green-400)' : 'var(--bg-3)',
