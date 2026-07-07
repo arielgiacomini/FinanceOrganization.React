@@ -1,16 +1,25 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { dashboardApi, categoriesApi } from '@/lib/api'
+import { dashboardApi, categoriesApi, billsToPayApi } from '@/lib/api'
 import type { DailyExpenseRecord } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
-import { Spinner } from '@/components/ui'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import { Spinner, Modal, TRow, Td } from '@/components/ui'
 import { CategoryFilter, matchesCategory, parseCategory } from '@/components/ui/CategoryFilter'
+import { BillToPayForm } from '@/components/forms/BillToPayForm'
+import { PayBillModal } from '@/components/ui/PayBillModal'
+import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
+import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { normalizeCountry } from '@/components/ui/CountryTabs'
+import type { BillToPay } from '@/types'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, Cell,
 } from 'recharts'
-import { RefreshCw } from 'lucide-react'
+import {
+  RefreshCw, Pencil, Trash2, CircleDollarSign,
+  History, CheckCircle2, AlertCircle,
+} from 'lucide-react'
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -46,6 +55,15 @@ function isSpain(r: DailyExpenseRecord) {
   return r.taxCountry === 'Espanha'
 }
 
+function sortBills(data: BillToPay[]): BillToPay[] {
+  const byDue = (a: BillToPay, b: BillToPay) =>
+    new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+  return [
+    ...data.filter(b => !b.hasPay).sort(byDue),
+    ...data.filter(b =>  b.hasPay).sort(byDue),
+  ]
+}
+
 export function DailyExpenseChart() {
   const now = new Date()
   const currentYear = now.getFullYear()
@@ -60,14 +78,31 @@ export function DailyExpenseChart() {
   const [dayYear, setDayYear] = useState(currentYear)
   const [dayMonth, setDayMonth] = useState(now.getMonth() + 1)
 
-  const [catGroup, setCatGroup] = useState('Alimentação')
-  const [catSub, setCatSub] = useState('Café da Manhã')
+  const [catGroup, setCatGroup] = useState('Viagem')
+  const [catSub, setCatSub] = useState('Preparação:Espanha')
 
   const [categories, setCategories] = useState<string[]>([])
   const [allData, setAllData] = useState<DailyExpenseRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [accountFilter, setAccountFilter] = useState('Todos')
   const [hasLoaded, setHasLoaded] = useState(false)
+
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsBills, setDetailsBills] = useState<BillToPay[]>([])
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [showDetails, setShowDetails] = useState(true)
+  const [hideZero, setHideZero] = useState(false)
+  const [barFilterLabel, setBarFilterLabel] = useState<string | null>(null)
+  const [barSelection, setBarSelection] = useState<{ yearMonth: string | null; day: number | null } | null>(null)
+  // ref para que loadDetailBills leia o filtro sem precisar estar nas deps
+  const barFilterRef = useRef<{ yearMonth: string | null; day: number | null }>({ yearMonth: null, day: null })
+  const [sortCol, setSortCol] = useState<string>('purchaseDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
+  const [payTarget, setPayTarget] = useState<BillToPay | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<BillToPay | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchedYearsRef = useRef<Record<number, boolean>>({})
   const fetchedCatsRef = useRef<Record<string, boolean>>({})
@@ -139,14 +174,8 @@ export function DailyExpenseChart() {
     return list
   }, [allData])
 
-  const catDataCount = useMemo(() => {
-    if (!catGroup) return allData.length
-    return allData.filter(r => matchesCategory(r.category, catGroup, catSub)).length
-  }, [allData, catGroup, catSub])
-
   useEffect(() => {
     if (!catGroup || !hasLoaded) return
-    if (catDataCount > 0) return
     const key = catSub ? `${catGroup}:${catSub}` : catGroup
     if (fetchedCatsRef.current[key]) return
     fetchedCatsRef.current[key] = true
@@ -162,7 +191,7 @@ export function DailyExpenseChart() {
         })
       })
       .catch(() => {})
-  }, [catGroup, catSub, catDataCount, hasLoaded])
+  }, [catGroup, catSub, hasLoaded])
 
   const filteredData = useMemo(() => {
     let rows = allData
@@ -180,7 +209,27 @@ export function DailyExpenseChart() {
     return rows
   }, [allData, catGroup, catSub, accountFilter, viewMode, dayMonth, dayYear, selectedYears])
 
-  const positiveRows = useMemo(() => filteredData.filter(d => d.value > 0), [filteredData])
+  // Inclui todos os registros; negativos são tratados como positivos (descontos)
+  const positiveRows = useMemo(() => filteredData, [filteredData])
+
+  // Pontos que têm ao menos um registro negativo (desconto) — por moeda
+  const discountBrlSet = useMemo(() => {
+    const s: Record<string, boolean> = {}
+    filteredData.forEach(d => {
+      if (!isSpain(d) && d.value < 0)
+        s[viewMode === 'day' ? String(d.day) : d.monthYear] = true
+    })
+    return s
+  }, [filteredData, viewMode])
+
+  const discountEurSet = useMemo(() => {
+    const s: Record<string, boolean> = {}
+    filteredData.forEach(d => {
+      if (isSpain(d) && d.value < 0)
+        s[viewMode === 'day' ? String(d.day) : d.monthYear] = true
+    })
+    return s
+  }, [filteredData, viewMode])
 
   const chartData = useMemo((): ChartPoint[] => {
     if (viewMode === 'day') {
@@ -192,22 +241,22 @@ export function DailyExpenseChart() {
             dayWeek: d.dayWeek, weekend: d.weekend, holiday: d.holiday,
           }
         }
-        if (isSpain(d)) map[d.day].valueEur += d.value
-        else             map[d.day].valueBrl += d.value
+        if (isSpain(d)) map[d.day].valueEur += Math.abs(d.value)
+        else             map[d.day].valueBrl += Math.abs(d.value)
       })
       return Object.values(map).sort((a, b) => (a.day ?? 0) - (b.day ?? 0))
     }
     const map: Record<string, ChartPoint> = {}
     positiveRows.forEach(d => {
       if (!map[d.monthYear]) map[d.monthYear] = { monthYear: d.monthYear, valueBrl: 0, valueEur: 0 }
-      if (isSpain(d)) map[d.monthYear].valueEur += d.value
-      else            map[d.monthYear].valueBrl += d.value
+      if (isSpain(d)) map[d.monthYear].valueEur += Math.abs(d.value)
+      else            map[d.monthYear].valueBrl += Math.abs(d.value)
     })
     return Object.values(map).sort((a, b) => monthYearOrder(a.monthYear ?? '') - monthYearOrder(b.monthYear ?? ''))
   }, [positiveRows, viewMode])
 
-  const totalBrl = useMemo(() => positiveRows.filter(d => !isSpain(d)).reduce((s, d) => s + d.value, 0), [positiveRows])
-  const totalEur = useMemo(() => positiveRows.filter(d =>  isSpain(d)).reduce((s, d) => s + d.value, 0), [positiveRows])
+  const totalBrl = useMemo(() => positiveRows.filter(d => !isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
+  const totalEur = useMemo(() => positiveRows.filter(d =>  isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
   const hasBrl = totalBrl > 0
   const hasEur = totalEur > 0
 
@@ -263,12 +312,20 @@ export function DailyExpenseChart() {
   function toggleYear(y: number) {
     yearChangedRef.current = true
     setSelectedYears(prev => {
+      // Se "Todos" está ativo, começa uma seleção nova com apenas este ano
+      if (prev.length === AVAILABLE_YEARS.length) return [y]
       if (prev.includes(y)) {
+        // Não permite desmarcar o último
         if (prev.length === 1) return prev
         return prev.filter(yr => yr !== y)
       }
       return [...prev, y].sort((a, b) => a - b)
     })
+  }
+
+  function selectAllYears() {
+    yearChangedRef.current = true
+    setSelectedYears([...AVAILABLE_YEARS])
   }
 
   function handleDayYearChange(y: number) {
@@ -281,6 +338,134 @@ export function DailyExpenseChart() {
     setViewMode(mode)
     setAccountFilter('Todos')
   }
+
+  const loadDetailBills = useCallback(async () => {
+    if (!catGroup) return
+    setDetailsLoading(true)
+    try {
+      const category = catSub ? `${catGroup}:${catSub}` : catGroup
+      const { yearMonth, day } = barFilterRef.current
+      const res = await billsToPayApi.search({ category, ...(yearMonth ? { yearMonth } : {}) })
+      let data = res.output?.data ?? []
+      // Garante o mesmo filtro de categoria que o gráfico usa (matchesCategory = prefixo)
+      data = data.filter(b => matchesCategory(b.category, catGroup, catSub))
+      if (day !== null) {
+        data = data.filter(b => {
+          const raw = b.purchaseDate ?? b.dueDate
+          if (!raw) return false
+          return new Date(raw + 'T12:00:00').getDate() === day
+        })
+      }
+      setDetailsBills(sortBills(data))
+    } catch {
+      setDetailsBills([])
+    } finally {
+      setDetailsLoading(false)
+    }
+  }, [catGroup, catSub])
+
+  async function handleDeleteBill() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await billsToPayApi.delete({ id: [deleteTarget.id] })
+      setDeleteTarget(null)
+      loadDetailBills()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function toggleDetails() {
+    if (!detailsOpen) loadDetailBills()
+    setDetailsOpen(v => !v)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function handleBarClick(data: any) {
+    const pt = data?.activePayload?.[0]?.payload as ChartPoint | undefined
+    if (!pt) return
+
+    let yearMonth: string | null = null
+    let day: number | null = null
+    let label: string | null = null
+
+    if (viewMode === 'month') {
+      yearMonth = pt.monthYear ?? null
+      label = yearMonth
+    } else {
+      yearMonth = `${MONTH_NAMES[dayMonth - 1]}/${dayYear}`
+      day = pt.day ?? null
+      label = day !== null ? `Dia ${day} · ${yearMonth}` : yearMonth
+    }
+
+    // Clicar na mesma barra deseleciona
+    if (barSelection?.yearMonth === yearMonth && barSelection?.day === day) {
+      clearBarFilter()
+      return
+    }
+
+    barFilterRef.current = { yearMonth, day }
+    setBarFilterLabel(label)
+    setBarSelection({ yearMonth, day })
+    if (!detailsOpen) setDetailsOpen(true)
+    loadDetailBills()
+  }
+
+  function clearBarFilter() {
+    barFilterRef.current = { yearMonth: null, day: null }
+    setBarFilterLabel(null)
+    setBarSelection(null)
+    if (detailsOpen) loadDetailBills()
+  }
+
+  function handleSort(col: string) {
+    if (col === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const sortedBills = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    const allYears = selectedYears.length === AVAILABLE_YEARS.length
+    return [...detailsBills]
+      .filter(b => !hideZero || b.value !== 0)
+      .filter(b => {
+        // Quando uma barra está selecionada o mês/ano já vem da API — não filtra de novo
+        if (barSelection) return true
+        if (allYears) return true
+        const y = parseInt(b.yearMonth?.split('/')?.[1] ?? '0')
+        return selectedYears.includes(y)
+      })
+      .sort((a, b) => {
+      switch (sortCol) {
+        case 'name':         return dir * (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR')
+        case 'country':      return dir * (a.country ?? '').localeCompare(b.country ?? '', 'pt-BR')
+        case 'account':      return dir * (a.account ?? '').localeCompare(b.account ?? '', 'pt-BR')
+        case 'yearMonth':    return dir * ((a.yearMonth ?? '') > (b.yearMonth ?? '') ? 1 : -1)
+        case 'value':        return dir * (a.value - b.value)
+        case 'dueDate':      return dir * ((a.dueDate ?? '') > (b.dueDate ?? '') ? 1 : -1)
+        case 'purchaseDate': {
+          const pa = a.purchaseDate ?? a.dueDate ?? ''
+          const pb = b.purchaseDate ?? b.dueDate ?? ''
+          return dir * (pa > pb ? 1 : -1)
+        }
+        case 'payDay':       return dir * ((a.payDay ?? '') > (b.payDay ?? '') ? 1 : -1)
+        case 'status':       return dir * ((a.hasPay ? 1 : 0) - (b.hasPay ? 1 : 0))
+        default:             return 0
+      }
+    })
+  }, [detailsBills, sortCol, sortDir, hideZero, selectedYears, barSelection])
+
+  // Recarrega detalhes quando categoria muda (e reseta filtro de barra)
+  useEffect(() => {
+    if (detailsOpen) {
+      barFilterRef.current = { yearMonth: null, day: null }
+      setBarFilterLabel(null)
+      setBarSelection(null)
+      loadDetailBills()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catGroup, catSub])
 
   const brlBarColor = (pt: ChartPoint) => {
     if (viewMode !== 'day') return '#dc2626'
@@ -296,13 +481,22 @@ export function DailyExpenseChart() {
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const BrlLabel = ({ x, y, width, value }: any) => {
+  const BrlLabel = ({ x, y, width, value, index }: any) => {
     if (!(value > 0)) return null
+    const pt = chartData[index]
+    const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
+    const hasDiscount = !!discountBrlSet[key]
     const cx = (x ?? 0) + (width ?? 0) / 2
     const fs = viewMode === 'day' ? 11 : 12
     const fw = 14; const fh = fw * 0.667
     return (
       <g>
+        {hasDiscount && (
+          <g transform={`translate(${cx - 14},${(y ?? 0) - 40})`}>
+            <rect width={28} height={13} rx={4} fill="rgba(74,222,128,0.15)" stroke="rgba(74,222,128,0.5)" strokeWidth={0.8} />
+            <text x={14} y={9.5} textAnchor="middle" fontSize={9} fill="#4ade80">desc</text>
+          </g>
+        )}
         {/* Bandeira Brasil */}
         <g transform={`translate(${cx - fw / 2},${(y ?? 0) - 24})`}>
           <rect width={fw} height={fh} fill="#009c3b" rx="1" />
@@ -316,13 +510,22 @@ export function DailyExpenseChart() {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const EurLabel = ({ x, y, width, value }: any) => {
+  const EurLabel = ({ x, y, width, value, index }: any) => {
     if (!(value > 0)) return null
+    const pt = chartData[index]
+    const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
+    const hasDiscount = !!discountEurSet[key]
     const cx = (x ?? 0) + (width ?? 0) / 2
     const fs = viewMode === 'day' ? 11 : 12
     const fw = 14; const fh = fw * 0.667
     return (
       <g>
+        {hasDiscount && (
+          <g transform={`translate(${cx - 14},${(y ?? 0) - 40})`}>
+            <rect width={28} height={13} rx={4} fill="rgba(74,222,128,0.15)" stroke="rgba(74,222,128,0.5)" strokeWidth={0.8} />
+            <text x={14} y={9.5} textAnchor="middle" fontSize={9} fill="#4ade80">desc</text>
+          </g>
+        )}
         {/* Bandeira Espanha */}
         <g transform={`translate(${cx - fw / 2},${(y ?? 0) - 24})`}>
           <rect width={fw} height={fh} fill="#c60b1e" rx="1" />
@@ -401,11 +604,29 @@ export function DailyExpenseChart() {
       {/* Seletor de Anos */}
       <div>
         <p className="text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
-          {viewMode === 'month' ? 'Anos' : 'Ano'}
+          Ano
         </p>
         <div className="flex flex-wrap gap-1.5">
+          {viewMode === 'month' && (() => {
+            const allActive = selectedYears.length === AVAILABLE_YEARS.length
+            return (
+              <button type="button"
+                onClick={selectAllYears}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: allActive ? 'var(--green-400)' : 'var(--bg-3)',
+                  color: allActive ? '#fff' : 'var(--text-2)',
+                  border: `1px solid ${allActive ? 'var(--green-400)' : 'var(--border-1)'}`,
+                }}>
+                Todos
+              </button>
+            )
+          })()}
           {AVAILABLE_YEARS.map(y => {
-            const active = viewMode === 'month' ? selectedYears.includes(y) : dayYear === y
+            const allActive = selectedYears.length === AVAILABLE_YEARS.length
+            const active = viewMode === 'month'
+              ? !allActive && selectedYears.includes(y)
+              : dayYear === y
             return (
               <button key={y} type="button"
                 onClick={() => viewMode === 'month' ? toggleYear(y) : handleDayYearChange(y)}
@@ -619,9 +840,11 @@ export function DailyExpenseChart() {
           <ResponsiveContainer width="100%" height={viewMode === 'day' ? 360 : 320}>
             <BarChart
               data={chartData}
-              margin={{ top: 48, right: 8, left: 0, bottom: 4 }}
+              margin={{ top: 60, right: 8, left: 0, bottom: 4 }}
               barCategoryGap="25%"
               barGap={2}
+              style={{ cursor: 'pointer' }}
+              onClick={handleBarClick}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
               <XAxis
@@ -675,16 +898,31 @@ export function DailyExpenseChart() {
               />
               {/* Barra R$ (Brasil) */}
               {hasBrl && (
-                <Bar dataKey="valueBrl" name="valueBrl" radius={[3, 3, 0, 0]}>
-                  {chartData.map((pt, i) => (
-                    <Cell key={i} fill={brlBarColor(pt)} />
-                  ))}
+                <Bar dataKey="valueBrl" name="valueBrl" radius={[3, 3, 0, 0]} minPointSize={3}>
+                  {chartData.map((pt, i) => {
+                    const sel = barSelection
+                    const isSelected = sel
+                      ? (viewMode === 'month' ? pt.monthYear === sel.yearMonth : pt.day === sel.day)
+                      : true
+                    return (
+                      <Cell key={i} fill={brlBarColor(pt)} opacity={sel ? (isSelected ? 1 : 0.3) : 1} />
+                    )
+                  })}
                   <LabelList dataKey="valueBrl" position="top" content={BrlLabel} />
                 </Bar>
               )}
               {/* Barra € (Espanha) */}
               {hasEur && (
-                <Bar dataKey="valueEur" name="valueEur" radius={[3, 3, 0, 0]} fill="#b91c1c">
+                <Bar dataKey="valueEur" name="valueEur" radius={[3, 3, 0, 0]} minPointSize={3}>
+                  {chartData.map((pt, i) => {
+                    const sel = barSelection
+                    const isSelected = sel
+                      ? (viewMode === 'month' ? pt.monthYear === sel.yearMonth : pt.day === sel.day)
+                      : true
+                    return (
+                      <Cell key={i} fill="#b91c1c" opacity={sel ? (isSelected ? 1 : 0.3) : 1} />
+                    )
+                  })}
                   <LabelList dataKey="valueEur" position="top" content={EurLabel} />
                 </Bar>
               )}
@@ -719,57 +957,222 @@ export function DailyExpenseChart() {
             )}
           </div>
 
-          <details className="group">
-            <summary className="text-xs cursor-pointer select-none flex items-center gap-2 py-1"
-              style={{ color: 'var(--text-3)' }}>
-              <span className="transition-transform group-open:rotate-90 inline-block">▶</span>
-              Ver dados detalhados ({positiveRows.length} registros)
-            </summary>
-            <div className="mt-3 overflow-x-auto rounded-xl" style={{ border: '1px solid var(--border-1)' }}>
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr style={{ background: 'var(--bg-3)' }}>
-                    {['Mês/Ano', 'Dia', 'Dia Semana', 'Conta', 'País', 'Qtd.', 'Valor'].map(h => (
-                      <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap"
-                        style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border-1)' }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {positiveRows.map((d, i) => {
-                    const rowColor = d.holiday
-                      ? 'rgba(248,113,113,0.08)'
-                      : d.weekend
-                      ? 'rgba(251,191,36,0.07)'
-                      : i % 2 === 0 ? 'var(--bg-2)' : 'var(--bg-1)'
-                    const dayColor = d.holiday ? 'var(--red)' : d.weekend ? 'var(--amber)' : 'var(--text-2)'
-                    const currency = isSpain(d) ? 'Espanha' : 'Brasil'
-                    return (
-                      <tr key={i} style={{ background: rowColor }}>
-                        <td className="px-3 py-2" style={{ color: 'var(--text-3)' }}>{d.monthYear}</td>
-                        <td className="px-3 py-2 font-semibold" style={{ color: dayColor }}>
-                          {d.day}{d.holiday ? ' ✦' : d.weekend ? ' ★' : ''}
-                        </td>
-                        <td className="px-3 py-2" style={{ color: dayColor }}>{d.dayWeek}</td>
-                        <td className="px-3 py-2" style={{ color: 'var(--text-2)' }}>{d.account}</td>
-                        <td className="px-3 py-2" style={{ color: isSpain(d) ? 'var(--blue)' : 'var(--green-400)' }}>
-                          {isSpain(d) ? '🇪🇸' : '🇧🇷'}
-                        </td>
-                        <td className="px-3 py-2 text-center" style={{ color: 'var(--text-3)' }}>{d.quantity}</td>
-                        <td className="px-3 py-2 font-mono font-semibold"
-                          style={{ color: isSpain(d) ? 'var(--blue)' : 'var(--green-400)' }}>
-                          {formatCurrency(d.value, currency)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+          {/* Ver Registros — busca real na API */}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button type="button" onClick={toggleDetails}
+                className="flex items-center gap-2 text-xs py-1 transition-colors"
+                style={{ color: 'var(--text-3)' }}>
+                <span className={`transition-transform inline-block ${detailsOpen ? 'rotate-90' : ''}`}>▶</span>
+                Ver registros{detailsBills.length > 0 ? ` (${detailsBills.length})` : ''}
+                {detailsLoading && <Spinner size={12} />}
+              </button>
+              {barFilterLabel && (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>
+                  {barFilterLabel}
+                  <button
+                    onClick={clearBarFilter}
+                    className="ml-0.5 leading-none opacity-70 hover:opacity-100"
+                    title="Limpar filtro"
+                  >✕</button>
+                </span>
+              )}
             </div>
-          </details>
+
+            {detailsOpen && (
+              <div className="mt-3 overflow-hidden rounded-xl" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b" style={{ borderColor: 'var(--border-1)' }}>
+                  <button
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+                    onClick={() => setShowDetails(v => !v)}
+                  >
+                    {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+                  </button>
+                  <button
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${hideZero ? 'border-[var(--amber-dim)] text-[var(--amber)] bg-[var(--amber-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+                    onClick={() => setHideZero(v => !v)}
+                  >
+                    {hideZero ? 'Mostrar valor zero' : 'Ocultar valor zero'}
+                  </button>
+                  <span className="ml-auto text-xs" style={{ color: 'var(--text-3)' }}>
+                    {sortedBills.length} registros
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-2)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
+                        {([
+                          { label: 'Nome',       key: 'name'         },
+                          { label: 'País',       key: 'country'      },
+                          { label: 'Conta',      key: 'account'      },
+                          { label: 'Mês/Ano',    key: 'yearMonth'    },
+                          { label: 'Valor',      key: 'value'        },
+                          { label: 'Vencimento', key: 'dueDate'      },
+                          { label: 'Data Compra',key: 'purchaseDate' },
+                          { label: 'Pago em',    key: 'payDay'       },
+                          { label: 'Status',     key: 'status'       },
+                          { label: 'Ações',      key: null           },
+                        ] as { label: string; key: string | null }[]).map(({ label, key }) => (
+                          <th
+                            key={label}
+                            className="px-4 py-3 text-left text-xs font-medium"
+                            style={{
+                              color: key && sortCol === key ? 'var(--text-1)' : 'var(--text-3)',
+                              background: 'var(--bg-2)',
+                              boxShadow: 'inset 0 -1px 0 var(--border-1)',
+                              cursor: key ? 'pointer' : 'default',
+                              userSelect: 'none',
+                              whiteSpace: 'nowrap',
+                            }}
+                            onClick={() => key && handleSort(key)}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {label}
+                              {key && (
+                                <span style={{ fontSize: 10, opacity: sortCol === key ? 1 : 0.3 }}>
+                                  {sortCol === key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                                </span>
+                              )}
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailsLoading ? (
+                        <tr>
+                          <td colSpan={10} className="py-12 text-center">
+                            <div className="flex justify-center"><Spinner /></div>
+                          </td>
+                        </tr>
+                      ) : sortedBills.length === 0 ? (
+                        <tr>
+                          <td colSpan={10} className="py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                            Nenhum registro encontrado
+                          </td>
+                        </tr>
+                      ) : sortedBills.map(b => {
+                        const currency = normalizeCountry(b.country) === 'Espanha' ? 'Espanha' : 'Brasil'
+                        const bg = b.hasPay ? '#1b2e1d' : 'var(--bg-2)'
+                        return (
+                          <TRow key={b.id} bg={bg}>
+                            <Td>
+                              <p className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>{b.name}</p>
+                              {showDetails && b.additionalMessage && (
+                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
+                              )}
+                            </Td>
+                              <Td>
+                                {b.country ? (
+                                  <div className="flex items-center gap-1.5">
+                                    {normalizeCountry(b.country) === 'Espanha'
+                                      ? <FlagEspanha size={15} />
+                                      : <FlagBrasil size={15} />}
+                                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>
+                                      {normalizeCountry(b.country)}
+                                    </span>
+                                  </div>
+                                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                              </Td>
+                              <Td className="text-xs">{b.account ?? '—'}</Td>
+                              <Td className="text-xs">{b.yearMonth ?? '—'}</Td>
+                              <Td>
+                                <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
+                                  {formatCurrency(b.value, currency)}
+                                </span>
+                              </Td>
+                              <Td className="text-xs">{formatDate(b.dueDate)}</Td>
+                              <Td className="text-xs">{b.purchaseDate ? formatDate(b.purchaseDate) : <span style={{ color: 'var(--text-3)' }}>—</span>}</Td>
+                              <Td className="text-xs">{b.payDay ? formatDate(b.payDay) : <span style={{ color: 'var(--text-3)' }}>—</span>}</Td>
+                              <Td>
+                                {b.hasPay
+                                  ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span>
+                                  : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}
+                              </Td>
+                              <Td>
+                                <div className="flex items-center gap-1">
+                                  {!b.hasPay && (
+                                    <button title="Pagar"
+                                      className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]"
+                                      style={{ color: 'var(--green-400)' }}
+                                      onClick={() => setPayTarget(b)}>
+                                      <CircleDollarSign size={15} />
+                                    </button>
+                                  )}
+                                  <button title="Histórico"
+                                    className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]"
+                                    style={{ color: 'var(--blue)' }}
+                                    onClick={() => setHistoryTarget(b)}>
+                                    <History size={15} />
+                                  </button>
+                                  <button title="Editar"
+                                    className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]"
+                                    style={{ color: 'var(--text-3)' }}
+                                    onClick={() => setEditTarget(b)}>
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button title="Excluir"
+                                    className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]"
+                                    style={{ color: 'var(--text-3)' }}
+                                    onClick={() => setDeleteTarget(b)}>
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </Td>
+                          </TRow>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         </>
+      )}
+
+      {/* Modais de ação */}
+      <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Editar Conta a Pagar" size="lg">
+        {editTarget && (
+          <BillToPayForm
+            initial={editTarget}
+            onSuccess={() => { setEditTarget(null); loadDetailBills() }}
+            onCancel={() => setEditTarget(null)}
+          />
+        )}
+      </Modal>
+
+      {payTarget && (
+        <PayBillModal
+          bill={payTarget}
+          onClose={() => setPayTarget(null)}
+          onSuccess={() => { setPayTarget(null); loadDetailBills() }}
+        />
+      )}
+
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Excluir Conta" size="sm">
+        {deleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+              Deseja excluir <strong style={{ color: 'var(--text-1)' }}>{deleteTarget.name}</strong>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancelar</button>
+              <button className="btn-danger" onClick={handleDeleteBill} disabled={deleting}>
+                {deleting ? <Spinner size={16} /> : <Trash2 size={16} />} Excluir
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {historyTarget && (
+        <BillToPayHistory
+          bill={historyTarget}
+          onClose={() => setHistoryTarget(null)}
+          onRefreshParent={loadDetailBills}
+        />
       )}
     </div>
   )

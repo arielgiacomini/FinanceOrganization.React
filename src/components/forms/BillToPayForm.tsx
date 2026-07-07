@@ -19,6 +19,12 @@ interface BillToPayFormProps {
 
 const DRAFT_KEY = 'finance_billtopay_draft'
 
+function safeDate(value: string | undefined | null): string {
+  if (!value) return ''
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+}
+
 function saveDraft(form: Record<string, unknown>) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
 }
@@ -51,8 +57,9 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     value: initial?.value?.toString() ?? draft?.value ?? '',
     frequence: initial?.frequence ?? draft?.frequence ?? 'Livre',
     registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
-    purchaseDate: initial?.purchaseDate ? new Date(initial.purchaseDate).toISOString().slice(0, 10) : (draft?.purchaseDate ?? ''),
-    dueDate: initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate ?? ''),
+    purchaseDate: safeDate(initial?.purchaseDate) || (draft?.purchaseDate ?? ''),
+    dueDate: safeDate(initial?.dueDate) || (draft?.dueDate ?? ''),
+    payDay: safeDate(initial?.payDay) || (draft?.payDay ?? ''),
     initialMonthYear: initial?.yearMonth ?? draft?.initialMonthYear ?? currentYearMonth(),
     fynallyMonthYear: initial?.yearMonth ?? draft?.fynallyMonthYear ?? currentYearMonth(),
     bestPayDay: draft?.bestPayDay ?? '',
@@ -75,7 +82,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
     ]).then(([accRes, cats]) => {
       setAccounts(
         (accRes.data ?? [])
-          .filter(a => a.enable)
+          .filter(a => isEdit || a.enable)
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
       )
       setCategories(cats ?? [])
@@ -115,7 +122,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
       name: '', account: '', category: '', value: '',
       frequence: 'Livre',
       registrationType: regTypeList[0] ?? 'Compra Livre',
-      purchaseDate: '', dueDate: '',
+      purchaseDate: '', dueDate: '', payDay: '',
       initialMonthYear: currentYearMonth(),
       fynallyMonthYear: currentYearMonth(),
       bestPayDay: '', additionalMessage: '', country: 'Brasil', hasPay: false,
@@ -135,12 +142,12 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
           Account: form.account || initial!.account,
           Category: form.category || initial!.category,
           Value: !isNaN(parseFloat(form.value.replace(',', '.'))) ? parseFloat(form.value.replace(',', '.')) : initial!.value,
-          PurchaseDate: form.purchaseDate || initial!.purchaseDate || null,
+          PurchaseDate: form.purchaseDate || null,
           DueDate: form.dueDate || initial!.dueDate,
           YearMonth: form.initialMonthYear || initial!.yearMonth,
           Frequence: form.frequence || initial!.frequence,
           RegistrationType: form.registrationType || initial!.registrationType,
-          PayDay: initial!.payDay ?? null,
+          PayDay: form.payDay || null,
           HasPay: form.hasPay,
           LastChangeDate: new Date().toISOString(),
           AdditionalMessage: form.additionalMessage || null,
@@ -380,7 +387,13 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
               <label className="label">Status</label>
               <div className="flex gap-2">
                 {[{ label: 'Pendente', value: false }, { label: 'Pago', value: true }].map(({ label, value }) => (
-                  <button key={label} type="button" onClick={() => setForm(f => ({ ...f, hasPay: value }))}
+                  <button key={label} type="button"
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      hasPay: value,
+                      // Auto-preenche payDay com hoje ao marcar como Pago (se estiver vazio)
+                      payDay: value && !f.payDay ? new Date().toISOString().slice(0, 10) : f.payDay,
+                    }))}
                     className="flex-1 py-2 rounded-lg border text-sm font-medium transition-all"
                     style={{
                       background: form.hasPay === value ? (value ? 'var(--green-dim)' : 'rgba(245,158,11,0.1)') : 'var(--bg-3)',
@@ -392,6 +405,13 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
                 ))}
               </div>
             </div>
+
+            {form.hasPay && (
+              <div>
+                <label className="label">Data de Pagamento</label>
+                <input className="input" type="date" value={form.payDay} onChange={(e) => set('payDay', e.target.value)} />
+              </div>
+            )}
           </>
         )}
 

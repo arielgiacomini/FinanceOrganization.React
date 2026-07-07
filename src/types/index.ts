@@ -86,6 +86,7 @@ export interface SearchBillToPayViewModel {
   idBillToPayRegistrations?: number[]
   yearMonth?: string
   showDetails?: boolean
+  category?: string
 }
 
 export interface CreateBillToPayViewModel {
