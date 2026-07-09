@@ -2,123 +2,436 @@
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { useState, useEffect } from 'react'
-import { PageHeader } from '@/components/ui'
+import { PageHeader, Spinner, Modal } from '@/components/ui'
+import type { Account } from '@/types'
 import {
   getFrequences, getRegistrationTypes,
   saveFrequences, saveRegistrationTypes,
-  DEFAULT_FREQUENCES, DEFAULT_REGISTRATION_TYPES,
+  DEFAULT_FREQUENCES, DEFAULT_REGISTRATION_TYPES, DEFAULT_SALDO_CONTAS,
 } from '@/lib/utils'
-import { Plus, Trash2, GripVertical, RotateCcw, Save, CreditCard, ChevronRight, TrendingUp, Edit2, Check } from 'lucide-react'
-import { walletApi } from '@/lib/api'
-import type { WalletRecord } from '@/lib/api'
+import {
+  Plus, RotateCcw, Save, CreditCard,
+  TrendingUp, Check, X, SlidersHorizontal, Building2,
+} from 'lucide-react'
+import { walletApi, accountsApi } from '@/lib/api'
+import type { WalletRecord, RegisterAccountViewModel } from '@/lib/api'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { currentYearMonth } from '@/lib/utils'
-import Link from 'next/link'
 
-interface EditableListProps {
-  title: string
-  subtitle: string
+// ─── Chip list ────────────────────────────────────────────────────────────────
+
+interface ChipListProps {
   items: string[]
   onChange: (items: string[]) => void
   onReset: () => void
+  options?: string[]        // quando fornecido → <select>; caso contrário → input livre
+  emptyLabel?: string
 }
 
-function EditableList({ title, subtitle, items, onChange, onReset }: EditableListProps) {
+function ChipList({ items, onChange, onReset, options, emptyLabel = 'Nenhuma opção cadastrada.' }: ChipListProps) {
   const [newItem, setNewItem] = useState('')
-
-  function add() {
-    const v = newItem.trim()
-    if (!v || items.includes(v)) return
-    onChange([...items, v])
-    setNewItem('')
-  }
 
   function remove(idx: number) {
     onChange(items.filter((_, i) => i !== idx))
   }
 
-  function moveUp(idx: number) {
-    if (idx === 0) return
-    const next = [...items]
-    ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
-    onChange(next)
+  function add(value?: string) {
+    const v = (value ?? newItem).trim()
+    if (!v) return
+    if (items.some(i => i.toLowerCase() === v.toLowerCase())) return
+    onChange([...items, v])
+    setNewItem('')
   }
 
-  function moveDown(idx: number) {
-    if (idx === items.length - 1) return
-    const next = [...items]
-    ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
-    onChange(next)
-  }
+  const available = options?.filter(
+    o => !items.some(i => i.toLowerCase() === o.toLowerCase())
+  ) ?? []
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>{title}</h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
-        </div>
-        <button type="button" onClick={onReset}
-          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors hover:bg-[var(--bg-4)]"
-          style={{ color: 'var(--text-3)' }}>
-          <RotateCcw size={12} /> Restaurar padrão
-        </button>
+    <div className="space-y-3">
+      {/* Chips */}
+      <div className="flex flex-wrap gap-2 min-h-[2rem]">
+        {items.length === 0 && (
+          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{emptyLabel}</span>
+        )}
+        {items.map((item, idx) => (
+          <span
+            key={idx}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full"
+            style={{
+              background: 'var(--bg-4)',
+              color: 'var(--text-1)',
+              border: '1px solid var(--border-2)',
+            }}
+          >
+            {item}
+            <button
+              type="button"
+              onClick={() => remove(idx)}
+              className="flex-shrink-0 rounded-full p-0.5 transition-colors"
+              style={{ color: 'var(--text-3)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ))}
       </div>
 
-      {/* Lista */}
-      <div className="space-y-1.5">
-        {items.map((item, idx) => (
-          <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-lg group"
-            style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-            {/* Reordenar */}
-            <div className="flex flex-col gap-0.5 flex-shrink-0">
-              <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0}
-                className="p-0.5 rounded disabled:opacity-20 hover:bg-[var(--bg-4)]"
-                style={{ color: 'var(--text-3)' }}>
-                <GripVertical size={14} className="rotate-90" />
-              </button>
-            </div>
-
-            <span className="flex-1 text-sm" style={{ color: 'var(--text-1)' }}>{item}</span>
-
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0}
-                className="text-xs px-1.5 py-0.5 rounded disabled:opacity-30"
-                style={{ color: 'var(--text-3)' }}>↑</button>
-              <button type="button" onClick={() => moveDown(idx)} disabled={idx === items.length - 1}
-                className="text-xs px-1.5 py-0.5 rounded disabled:opacity-30"
-                style={{ color: 'var(--text-3)' }}>↓</button>
-              <button type="button" onClick={() => remove(idx)}
-                className="p-1 rounded transition-colors hover:bg-[var(--red-dim)]"
-                style={{ color: 'var(--red)' }}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          </div>
-        ))}
-        {items.length === 0 && (
-          <p className="text-xs text-center py-4" style={{ color: 'var(--text-3)' }}>
-            Nenhuma opção cadastrada.
-          </p>
+      {/* Add */}
+      <div className="flex gap-2">
+        {options !== undefined ? (
+          available.length > 0 ? (
+            <select
+              className="input flex-1 text-sm"
+              value=""
+              onChange={e => { if (e.target.value) add(e.target.value) }}
+            >
+              <option value="" disabled>Selecionar conta...</option>
+              {available.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <p className="text-xs py-1" style={{ color: 'var(--text-3)' }}>
+              Todas as contas já adicionadas.
+            </p>
+          )
+        ) : (
+          <>
+            <input
+              className="input flex-1 text-sm"
+              value={newItem}
+              onChange={e => setNewItem(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), add())}
+              placeholder="Nova opção..."
+            />
+            <button type="button" onClick={() => add()} className="btn-primary px-3">
+              <Plus size={15} />
+            </button>
+          </>
         )}
       </div>
 
-      {/* Adicionar */}
-      <div className="flex gap-2">
-        <input
-          className="input flex-1"
-          value={newItem}
-          onChange={e => setNewItem(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), add())}
-          placeholder="Nova opção..."
-        />
-        <button type="button" onClick={add} className="btn-primary px-3">
-          <Plus size={16} />
-        </button>
-      </div>
+      {/* Reset */}
+      <button
+        type="button"
+        onClick={onReset}
+        className="inline-flex items-center gap-1.5 text-xs transition-colors"
+        style={{ color: 'var(--text-3)' }}
+        onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-2)')}
+        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+      >
+        <RotateCcw size={11} /> Restaurar padrão
+      </button>
     </div>
   )
 }
+
+// ─── Section block ────────────────────────────────────────────────────────────
+
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{title}</p>
+        {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ─── Account register modal ───────────────────────────────────────────────────
+
+const EMPTY_FORM: RegisterAccountViewModel = {
+  name: '',
+  enable: true,
+  dueDate: undefined,
+  closingDay: undefined,
+  considerPaid: false,
+  accountAgency: '',
+  accountNumber: '',
+  accountDigit: '',
+  cardNumber: '',
+  commissionPercentage: undefined,
+}
+
+function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<RegisterAccountViewModel>({ ...EMPTY_FORM })
+  const [isCreditCard, setIsCreditCard] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function set<K extends keyof RegisterAccountViewModel>(key: K, value: RegisterAccountViewModel[K]) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const payload: RegisterAccountViewModel = {
+        name: form.name.trim(),
+        enable: form.enable,
+        considerPaid: form.considerPaid,
+      }
+      if (isCreditCard) {
+        if (form.cardNumber)             payload.cardNumber             = form.cardNumber
+        if (form.dueDate)                payload.dueDate                = Number(form.dueDate)
+        if (form.closingDay)             payload.closingDay             = Number(form.closingDay)
+        if (form.commissionPercentage)   payload.commissionPercentage   = Number(form.commissionPercentage)
+      } else {
+        if (form.accountAgency)  payload.accountAgency  = form.accountAgency
+        if (form.accountNumber)  payload.accountNumber  = form.accountNumber
+        if (form.accountDigit)   payload.accountDigit   = form.accountDigit
+      }
+      await accountsApi.register(payload)
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao cadastrar conta.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <label className="label">{label}</label>
+      {children}
+    </div>
+  )
+
+  return (
+    <Modal open title={isCreditCard ? 'Nova conta — Cartão de Crédito' : 'Nova conta — Conta Bancária'} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-5">
+
+        {/* Tipo */}
+        <div
+          className="flex rounded-lg p-1 gap-1"
+          style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}
+        >
+          {[
+            { label: 'Conta Bancária', icon: Building2, value: false },
+            { label: 'Cartão de Crédito', icon: CreditCard, value: true },
+          ].map(({ label, icon: Icon, value }) => (
+            <button
+              key={String(value)}
+              type="button"
+              onClick={() => setIsCreditCard(value)}
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all"
+              style={isCreditCard === value ? {
+                background: 'var(--bg-5)',
+                color: 'var(--text-1)',
+                border: '1px solid var(--border-2)',
+              } : {
+                color: 'var(--text-3)',
+                border: '1px solid transparent',
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Nome */}
+        <Field label="Nome *">
+          <input
+            className="input w-full"
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder="Ex: Nubank, Itaú Corrente…"
+            autoFocus
+          />
+        </Field>
+
+        {/* Campos por tipo */}
+        {isCreditCard ? (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Número do cartão (últimos dígitos)">
+              <input
+                className="input w-full"
+                value={form.cardNumber ?? ''}
+                onChange={e => set('cardNumber', e.target.value)}
+                placeholder="Ex: 1234"
+                maxLength={8}
+              />
+            </Field>
+            <Field label="Dia de vencimento">
+              <input
+                className="input w-full"
+                type="number" min={1} max={31}
+                value={form.dueDate ?? ''}
+                onChange={e => set('dueDate', e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="Ex: 10"
+              />
+            </Field>
+            <Field label="Dia de fechamento">
+              <input
+                className="input w-full"
+                type="number" min={1} max={31}
+                value={form.closingDay ?? ''}
+                onChange={e => set('closingDay', e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="Ex: 3"
+              />
+            </Field>
+            <Field label="Comissão (%)">
+              <input
+                className="input w-full"
+                type="number" min={0} step={0.01}
+                value={form.commissionPercentage ?? ''}
+                onChange={e => set('commissionPercentage', e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="Ex: 1.5"
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Agência">
+              <input
+                className="input w-full"
+                value={form.accountAgency ?? ''}
+                onChange={e => set('accountAgency', e.target.value)}
+                placeholder="Ex: 0001"
+              />
+            </Field>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <Field label="Número da conta">
+                  <input
+                    className="input w-full"
+                    value={form.accountNumber ?? ''}
+                    onChange={e => set('accountNumber', e.target.value)}
+                    placeholder="Ex: 123456"
+                  />
+                </Field>
+              </div>
+              <Field label="Dígito">
+                <input
+                  className="input w-full"
+                  value={form.accountDigit ?? ''}
+                  onChange={e => set('accountDigit', e.target.value)}
+                  placeholder="0"
+                  maxLength={2}
+                />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {/* Toggles */}
+        <div className="flex flex-wrap gap-4 pt-1">
+          {[
+            { label: 'Conta ativa', key: 'enable' as const },
+            { label: 'Considerar como pago', key: 'considerPaid' as const },
+          ].map(({ label, key }) => (
+            <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
+              <div
+                className="w-9 h-5 rounded-full relative transition-colors"
+                style={{ background: form[key] ? 'var(--green-500)' : 'var(--bg-5)' }}
+                onClick={() => set(key, !form[key])}
+              >
+                <span
+                  className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+                  style={{
+                    background: 'var(--text-1)',
+                    transform: form[key] ? 'translateX(1.1rem)' : 'translateX(0.125rem)',
+                  }}
+                />
+              </div>
+              <span className="text-sm" style={{ color: 'var(--text-2)' }}>{label}</span>
+            </label>
+          ))}
+        </div>
+
+        {error && (
+          <p className="text-xs px-3 py-2 rounded-lg"
+            style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary">
+            Cancelar
+          </button>
+          <button type="submit" disabled={saving} className="btn-primary">
+            {saving ? <Spinner size={14} /> : <Check size={14} />}
+            {saving ? 'Salvando…' : 'Cadastrar conta'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// ─── Account row ─────────────────────────────────────────────────────────────
+
+function AccountRow({ account: a }: { account: Account }) {
+  const dot = a.colors?.backgroundColorHexadecimal
+  const isWhite = dot?.toUpperCase() === '#FFFFFF' || dot?.toUpperCase() === '#FFF'
+
+  const detail = a.isCreditCard
+    ? (a.cardNumber ? `•••• ${a.cardNumber}` : null)
+    : (a.accountAgency && a.accountNumber
+        ? `Ag. ${a.accountAgency} · Cc. ${a.accountNumber}${a.accountDigit ? `-${a.accountDigit}` : ''}`
+        : null)
+
+  const duePart = a.dueDate ? `Venc. dia ${a.dueDate}` : null
+
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3"
+      style={{ borderBottom: '1px solid var(--border-1)' }}
+    >
+      {/* Color dot */}
+      <span
+        className="w-2 h-2 rounded-full flex-shrink-0"
+        style={{ background: isWhite ? 'var(--bg-5)' : (dot ?? 'var(--bg-5)'), border: isWhite ? '1px solid var(--border-2)' : undefined }}
+      />
+
+      {/* Name */}
+      <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--text-1)' }}>
+        {a.name}
+      </span>
+
+      {/* Detail (agency/card) — hidden on mobile */}
+      {detail && (
+        <span className="hidden sm:block text-xs font-mono" style={{ color: 'var(--text-3)' }}>
+          {detail}
+        </span>
+      )}
+
+      {/* Due day */}
+      {duePart && (
+        <span className="hidden md:block text-xs" style={{ color: 'var(--text-3)' }}>
+          {duePart}
+        </span>
+      )}
+
+      {/* Status */}
+      <span
+        className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+        style={{
+          background: a.enable ? 'var(--green-dim)' : 'var(--red-dim)',
+          color:      a.enable ? 'var(--green-400)' : 'var(--red)',
+        }}
+      >
+        {a.enable ? 'Ativa' : 'Inativa'}
+      </span>
+
+      {/* Type icon */}
+      <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>
+        {a.isCreditCard ? <CreditCard size={13} /> : <Building2 size={13} />}
+      </span>
+    </div>
+  )
+}
+
+// ─── PLR config localStorage ──────────────────────────────────────────────────
 
 const PLR_CONFIG_KEY = 'finance_plr_config'
 
@@ -134,25 +447,57 @@ function savePlrConfigAll(data: Record<string, string>) {
   localStorage.setItem(PLR_CONFIG_KEY, JSON.stringify(data))
 }
 
+// ─── Tabs definition ──────────────────────────────────────────────────────────
+
+type TabId = 'formularios' | 'contas' | 'grafico'
+
+const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
+  { id: 'formularios', label: 'Formulários',   Icon: SlidersHorizontal },
+  { id: 'contas',      label: 'Contas',         Icon: Building2         },
+  { id: 'grafico',     label: 'Gráfico',        Icon: TrendingUp        },
+]
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 function ConfiguracoesInner() {
+  const [activeTab, setActiveTab] = useState<TabId>('formularios')
+
   const [frequences, setFrequences] = useState<string[]>([])
-  const [regTypes, setRegTypes] = useState<string[]>([])
+  const [regTypes,   setRegTypes]   = useState<string[]>([])
+
+  const [saldoContas,       setSaldoContas]       = useState<string[]>([...DEFAULT_SALDO_CONTAS])
+  const [saldoContasRecord, setSaldoContasRecord] = useState<WalletRecord | null>(null)
+  const [accounts,          setAccounts]          = useState<Account[]>([])
+  const [accountsLoading,   setAccountsLoading]   = useState(false)
+  const [availableAccounts, setAvailableAccounts] = useState<string[]>([])
+  const [registerOpen,      setRegisterOpen]      = useState(false)
+  const [showInactive,      setShowInactive]      = useState(false)
+
+  const [plrName,                  setPlrName]                  = useState('')
+  const [saldoFinalYm,             setSaldoFinalYm]             = useState('')
+  const [valeCategoria,            setValeCategoria]            = useState('')
+  const [nomeGrupoEspanha,         setNomeGrupoEspanha]         = useState('')
+  const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
+  const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
+  const [chartRecords,             setChartRecords]             = useState<WalletRecord[]>([])
+
   const [saved, setSaved] = useState(false)
 
-  // Configurações do Gráfico
-  const [plrName, setPlrName] = useState('')
-  const [saldoFinalYm, setSaldoFinalYm] = useState('')
-  const [valeCategoria, setValeCategoria] = useState('')
-  const [nomeGrupoEspanha, setNomeGrupoEspanha] = useState('')
-  const [nomeGrupoInvestimento, setNomeGrupoInvestimento] = useState('')
-  const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
-  const [chartSaved, setChartSaved] = useState(false)
-  const [chartRecords, setChartRecords] = useState<WalletRecord[]>([])
+  function loadAccounts() {
+    setAccountsLoading(true)
+    accountsApi.searchAll().then(res => {
+      const accs: Account[] = res.data ?? []
+      setAccounts(accs)
+      setAvailableAccounts(accs.map(a => a.name).sort())
+    }).catch(() => {}).finally(() => setAccountsLoading(false))
+  }
 
   useEffect(() => {
     setFrequences(getFrequences())
     setRegTypes(getRegistrationTypes())
-    // Carrega do localStorage imediatamente
+
+    loadAccounts()
+
     const c = loadPlrConfig()
     setPlrName(c.name ?? 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)')
     setSaldoFinalYm(c.saldoFinalYm ?? '')
@@ -160,167 +505,399 @@ function ConfiguracoesInner() {
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
     setInvestimentoAnosProjecao(c.investimentoAnosProjecao ?? '5')
-    // Sincroniza com backend
+
     walletApi.search().then(res => {
       const records = res.output?.data ?? []
       setChartRecords(records)
-      const rec = records.find(r => r.walletKey === 'finance_plr_config')
-      if (rec?.walletValue) {
+
+      const plrRec = records.find(r => r.walletKey === 'finance_plr_config')
+      if (plrRec?.walletValue) {
         try {
-          const parsed = JSON.parse(rec.walletValue)
-          savePlrConfigAll(parsed)
-          setPlrName(parsed.name ?? '')
-          setSaldoFinalYm(parsed.saldoFinalYm ?? '')
-          setValeCategoria(parsed.valeCategoria ?? '')
-          setNomeGrupoEspanha(parsed.nomeGrupoEspanha ?? '')
-          setNomeGrupoInvestimento(parsed.nomeGrupoInvestimento ?? 'Investimentos')
-          setInvestimentoAnosProjecao(parsed.investimentoAnosProjecao ?? '5')
+          const p = JSON.parse(plrRec.walletValue)
+          savePlrConfigAll(p)
+          setPlrName(p.name ?? '')
+          setSaldoFinalYm(p.saldoFinalYm ?? '')
+          setValeCategoria(p.valeCategoria ?? '')
+          setNomeGrupoEspanha(p.nomeGrupoEspanha ?? '')
+          setNomeGrupoInvestimento(p.nomeGrupoInvestimento ?? 'Investimentos')
+          setInvestimentoAnosProjecao(p.investimentoAnosProjecao ?? '5')
         } catch {}
       }
-    }).catch(() => { /* usa localStorage como fallback */ })
+
+      const saldoRec = records.find(r => r.walletKey === 'finance_saldo_contas')
+      setSaldoContasRecord(saldoRec ?? null)
+      if (saldoRec?.walletValue) {
+        try { setSaldoContas(JSON.parse(saldoRec.walletValue)) } catch {}
+      }
+    }).catch(() => {})
   }, [])
 
   function save() {
+    // Formulários → localStorage
     saveFrequences(frequences)
     saveRegistrationTypes(regTypes)
+
+    // Saldo contas → API
+    const saldoVal = JSON.stringify(saldoContas)
+    const saldoPromise = saldoContasRecord
+      ? walletApi.edit(saldoContasRecord.id, 'finance_saldo_contas', saldoVal, saldoContasRecord.creationDate)
+      : walletApi.register('finance_saldo_contas', saldoVal)
+    saldoPromise
+      .then(res => {
+        if (!saldoContasRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setSaldoContasRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
+    // Gráfico → localStorage + API
+    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
+    savePlrConfigAll(data)
+    const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
+    const plrPromise = existing
+      ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
+      : walletApi.register('finance_plr_config', JSON.stringify(data))
+    plrPromise.catch(() => {})
+
     setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setTimeout(() => setSaved(false), 2500)
   }
 
   return (
-    <div className="space-y-6 animate-slide-up max-w-2xl">
+    <div className="animate-slide-up space-y-6 max-w-3xl">
       <PageHeader
         title="Configurações"
-        subtitle="Gerencie as opções dos formulários de cadastro"
+        subtitle="Preferências e parâmetros da aplicação"
         action={
           <button onClick={save} className="btn-primary">
-            <Save size={16} />
-            {saved ? 'Salvo!' : 'Salvar alterações'}
+            {saved ? <Check size={15} /> : <Save size={15} />}
+            {saved ? 'Salvo!' : 'Salvar'}
           </button>
         }
       />
 
-      <div
-        className="rounded-lg px-4 py-3 text-xs"
-        style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.2)' }}
-      >
-        As opções são salvas localmente no seu navegador e aplicadas em todos os formulários de cadastro e edição.
-      </div>
+      <div className="flex flex-col lg:flex-row gap-6">
 
-      {/* Contas Bancárias */}
-      <Link href="/contas"
-        className="card px-5 py-4 flex items-center justify-between transition-colors hover:bg-[var(--bg-3)] cursor-pointer"
-        style={{ textDecoration: 'none' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: 'var(--bg-4)', color: 'var(--text-2)' }}>
-            <CreditCard size={16} />
-          </div>
-          <div>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Contas Bancárias</p>
-            <p className="text-xs" style={{ color: 'var(--text-3)' }}>Visualize suas contas e cartões cadastrados na API</p>
-          </div>
+        {/* ── Sidebar nav (desktop) ── */}
+        <aside className="hidden lg:flex flex-col gap-0.5 w-48 flex-shrink-0 pt-1">
+          {TABS.map(({ id, label, Icon }) => {
+            const active = activeTab === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
+                style={active ? {
+                  background: 'var(--green-dim)',
+                  color: 'var(--green-400)',
+                  border: '1px solid var(--green-border)',
+                } : {
+                  color: 'var(--text-2)',
+                  background: 'transparent',
+                  border: '1px solid transparent',
+                }}
+              >
+                <Icon size={15} className="flex-shrink-0" />
+                {label}
+              </button>
+            )
+          })}
+        </aside>
+
+        {/* ── Top tabs (mobile) ── */}
+        <div
+          className="flex lg:hidden"
+          style={{ borderBottom: '1px solid var(--border-1)' }}
+        >
+          {TABS.map(({ id, label, Icon }) => {
+            const active = activeTab === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors"
+                style={{
+                  color: active ? 'var(--green-400)' : 'var(--text-3)',
+                  borderBottom: active ? '2px solid var(--green-400)' : '2px solid transparent',
+                  marginBottom: -1,
+                }}
+              >
+                <Icon size={13} />
+                {label}
+              </button>
+            )
+          })}
         </div>
-        <ChevronRight size={16} style={{ color: 'var(--text-3)' }} />
-      </Link>
 
-      {/* Configurações do Gráfico */}
-      <div className="card overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}>
-          <div className="flex items-center gap-2">
-            <TrendingUp size={16} style={{ color: 'var(--green-400)' }} />
-            <div>
-              <h2 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>Configurações do Gráfico</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Parâmetros usados no gráfico de Evolução Financeira do Dashboard</p>
+        {/* ── Tab content ── */}
+        <div className="flex-1 min-w-0 space-y-6">
+
+          {/* Formulários */}
+          {activeTab === 'formularios' && (
+            <>
+              <div
+                className="card p-5"
+                style={{ border: '1px solid var(--border-1)' }}
+              >
+                <Section
+                  title="Frequências"
+                  subtitle="Opções do campo Frequência nos formulários de cadastro"
+                >
+                  <ChipList
+                    items={frequences}
+                    onChange={setFrequences}
+                    onReset={() => setFrequences([...DEFAULT_FREQUENCES])}
+                  />
+                </Section>
+              </div>
+
+              <div
+                className="card p-5"
+                style={{ border: '1px solid var(--border-1)' }}
+              >
+                <Section
+                  title="Tipos de Registro"
+                  subtitle="Opções do campo Tipo de Registro nos formulários de cadastro"
+                >
+                  <ChipList
+                    items={regTypes}
+                    onChange={setRegTypes}
+                    onReset={() => setRegTypes([...DEFAULT_REGISTRATION_TYPES])}
+                  />
+                </Section>
+              </div>
+            </>
+          )}
+
+          {/* Contas */}
+          {activeTab === 'contas' && (
+            <>
+              {/* Saldo disponível — primeiro para não sumir atrás da lista */}
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Saldo Disponível em Contas a Pagar"
+                  subtitle="O saldo dessas contas em Contas a Receber será exibido na tela de Contas a Pagar"
+                >
+                  <ChipList
+                    items={saldoContas}
+                    onChange={setSaldoContas}
+                    onReset={() => setSaldoContas([...DEFAULT_SALDO_CONTAS])}
+                    options={availableAccounts}
+                    emptyLabel="Nenhuma conta selecionada."
+                  />
+                </Section>
+              </div>
+
+              {/* Lista de contas */}
+              <div className="card overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
+                <div
+                  className="px-4 py-3 flex flex-wrap items-center gap-3"
+                  style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}
+                >
+                  <Building2 size={14} style={{ color: 'var(--text-2)' }} />
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                    Contas cadastradas
+                  </span>
+                  {!accountsLoading && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-mono"
+                      style={{ background: 'var(--bg-5)', color: 'var(--text-3)' }}>
+                      {accounts.filter(a => a.enable).length} ativas
+                      {accounts.filter(a => !a.enable).length > 0 && (
+                        <> · {accounts.filter(a => !a.enable).length} inativas</>
+                      )}
+                    </span>
+                  )}
+                  {/* Checkbox mostrar inativas */}
+                  {!accountsLoading && accounts.some(a => !a.enable) && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none ml-auto"
+                      style={{ color: 'var(--text-3)' }}>
+                      <input
+                        type="checkbox"
+                        checked={showInactive}
+                        onChange={e => setShowInactive(e.target.checked)}
+                        className="accent-[var(--green-500)] w-3.5 h-3.5"
+                      />
+                      <span className="text-xs">Mostrar inativas</span>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRegisterOpen(true)}
+                    className="btn-primary px-3 py-1.5 text-xs flex items-center gap-1.5"
+                    style={!accounts.some(a => !a.enable) ? { marginLeft: 'auto' } : undefined}
+                  >
+                    <Plus size={13} /> Nova conta
+                  </button>
+                </div>
+
+                {accountsLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Spinner size={22} />
+                  </div>
+                ) : accounts.length === 0 ? (
+                  <p className="text-xs text-center py-8" style={{ color: 'var(--text-3)' }}>
+                    Nenhuma conta encontrada.
+                  </p>
+                ) : (
+                  (() => {
+                    const visible = accounts.filter(a => showInactive || a.enable)
+                    const cards   = visible.filter(a => a.isCreditCard)
+                    const banks   = visible.filter(a => !a.isCreditCard)
+                    return (
+                      <div>
+                        {/* Cartões de Crédito — primeiro */}
+                        {cards.length > 0 && (
+                          <>
+                            <div className="px-4 py-2" style={{ borderBottom: '1px solid var(--border-1)' }}>
+                              <span className="text-xs font-medium uppercase tracking-wider"
+                                style={{ color: 'var(--text-3)', letterSpacing: '0.06em' }}>
+                                Cartões de Crédito
+                              </span>
+                            </div>
+                            {cards.map(a => <AccountRow key={a.id} account={a} />)}
+                          </>
+                        )}
+                        {/* Contas bancárias */}
+                        {banks.length > 0 && (
+                          <>
+                            <div className="px-4 py-2"
+                              style={{ borderTop: cards.length > 0 ? '1px solid var(--border-1)' : undefined, borderBottom: '1px solid var(--border-1)' }}>
+                              <span className="text-xs font-medium uppercase tracking-wider"
+                                style={{ color: 'var(--text-3)', letterSpacing: '0.06em' }}>
+                                Contas Bancárias
+                              </span>
+                            </div>
+                            {banks.map(a => <AccountRow key={a.id} account={a} />)}
+                          </>
+                        )}
+                        {visible.length === 0 && (
+                          <p className="text-xs text-center py-8" style={{ color: 'var(--text-3)' }}>
+                            Nenhuma conta ativa encontrada.
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()
+                )}
+              </div>
+
+              {registerOpen && (
+                <AccountRegisterModal
+                  onClose={() => setRegisterOpen(false)}
+                  onSaved={loadAccounts}
+                />
+              )}
+            </>
+          )}
+
+          {/* Gráfico */}
+          {activeTab === 'grafico' && (
+            <div
+              className="card overflow-hidden"
+              style={{ border: '1px solid var(--border-1)' }}
+            >
+              <div
+                className="px-5 py-4"
+                style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={15} style={{ color: 'var(--green-400)' }} />
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                      Evolução Financeira
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                      Parâmetros usados no gráfico do Dashboard
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="sm:col-span-2">
+                  <label className="label">Nome do PLR</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Busca recebíveis com esse nome nos próximos 24 meses e soma à receita Brasil.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={plrName}
+                    onChange={e => setPlrName(e.target.value)}
+                    placeholder="Ex: PLR - Ciclo 2 - 2025 de méritocracia"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Mês/Ano do Saldo Final</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Mês em que o Saldo Final da Carteira entra na receita Brasil.
+                  </p>
+                  <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
+                </div>
+
+                <div>
+                  <label className="label">Categoria Vale Alimentação/Refeição</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Categoria somada na receita Brasil do mês configurado.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={valeCategoria}
+                    onChange={e => setValeCategoria(e.target.value)}
+                    placeholder="Ex: Vale Alimentação/Refeição"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="label">Grupo Conta Bancária Espanha</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Nome exato do grupo na Carteira para o acumulado de investimento Espanha.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={nomeGrupoEspanha}
+                    onChange={e => setNomeGrupoEspanha(e.target.value)}
+                    placeholder="Ex: Conta Bancária Espanha"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Grupo de Investimentos</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Nome do grupo na Carteira para a projeção de investimentos.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={nomeGrupoInvestimento}
+                    onChange={e => setNomeGrupoInvestimento(e.target.value)}
+                    placeholder="Ex: Investimentos"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Anos de projeção</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Quantos anos à frente projetar o valor dos investimentos (1–10).
+                  </p>
+                  <input
+                    className="input w-full"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={investimentoAnosProjecao}
+                    onChange={e => setInvestimentoAnosProjecao(e.target.value)}
+                    placeholder="5"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            className="btn-primary px-3 flex items-center gap-2"
-            onClick={() => {
-              const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
-              savePlrConfigAll(data)
-              const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
-              const savePromise = existing
-                ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
-                : walletApi.register('finance_plr_config', JSON.stringify(data))
-              savePromise.catch(() => {})
-              setChartSaved(true)
-              setTimeout(() => setChartSaved(false), 2000)
-            }}
-          >
-            {chartSaved ? <Check size={14} /> : <Edit2 size={14} />}
-            {chartSaved ? 'Salvo!' : 'Salvar'}
-          </button>
-        </div>
-        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="label">Nome do PLR (empréstimo próximos meses)</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Busca recebíveis com esse nome nos próximos 24 meses e soma à receita Brasil do gráfico.
-            </p>
-            <input className="input w-full" value={plrName} onChange={e => setPlrName(e.target.value)}
-              placeholder="Ex: PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)" />
-          </div>
-          <div>
-            <label className="label">Mês/Ano do Saldo Final</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Mês em que o Saldo Final da Carteira entra na Receita Brasil.
-            </p>
-            <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
-          </div>
-          <div>
-            <label className="label">Categoria do Vale Alimentação/Refeição</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Categoria somada na Receita Brasil do mês configurado.
-            </p>
-            <input className="input w-full" value={valeCategoria} onChange={e => setValeCategoria(e.target.value)}
-              placeholder="Ex: Vale Alimentação/Refeição" />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Nome do grupo Conta Bancária Espanha</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Nome exato do grupo na Carteira para calcular o acumulado de investimento Espanha.
-            </p>
-            <input className="input w-full" value={nomeGrupoEspanha} onChange={e => setNomeGrupoEspanha(e.target.value)}
-              placeholder="Ex: Conta Bancária Espanha" />
-          </div>
-          <div>
-            <label className="label">Grupo de Investimentos (Carteira)</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Nome do grupo na Carteira usado no gráfico de projeção de investimentos.
-            </p>
-            <input className="input w-full" value={nomeGrupoInvestimento} onChange={e => setNomeGrupoInvestimento(e.target.value)}
-              placeholder="Ex: Investimentos" />
-          </div>
-          <div>
-            <label className="label">Anos de projeção (Investimentos)</label>
-            <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-              Quantos anos à frente projetar o valor atual dos investimentos (1 a 10).
-            </p>
-            <input className="input w-full" type="number" min={1} max={10} value={investimentoAnosProjecao}
-              onChange={e => setInvestimentoAnosProjecao(e.target.value)}
-              placeholder="5" />
-          </div>
+          )}
+
         </div>
       </div>
-
-      <EditableList
-        title="Frequências"
-        subtitle="Opções disponíveis no campo Frequência dos formulários"
-        items={frequences}
-        onChange={setFrequences}
-        onReset={() => setFrequences([...DEFAULT_FREQUENCES])}
-      />
-
-      <EditableList
-        title="Tipos de Registro"
-        subtitle="Opções disponíveis no campo Tipo de Registro dos formulários"
-        items={regTypes}
-        onChange={setRegTypes}
-        onReset={() => setRegTypes([...DEFAULT_REGISTRATION_TYPES])}
-      />
     </div>
   )
 }

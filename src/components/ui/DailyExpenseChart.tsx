@@ -36,6 +36,14 @@ const AVAILABLE_YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030]
 
 type ViewMode = 'day' | 'month'
 
+type ChartSize = 'compact' | 'normal' | 'large'
+const DAILY_CHART_SIZE_KEY = 'daily_expense_chart_size'
+const DAILY_FONT_SIZES: Record<ChartSize, { tick: number; tickSub: number; dataLabel: number; yAxis: number }> = {
+  compact: { tick: 10, tickSub: 9,  dataLabel: 10, yAxis: 9  },
+  normal:  { tick: 12, tickSub: 11, dataLabel: 11, yAxis: 10 },
+  large:   { tick: 14, tickSub: 13, dataLabel: 13, yAxis: 12 },
+}
+
 interface ChartPoint {
   valueBrl: number
   valueEur: number
@@ -73,6 +81,7 @@ export function DailyExpenseChart() {
     Array.from({ length: 7 }, (_, i) => ((currentMonth - 1 + i) % 12) + 1)
   )
 
+  const [chartSize, setChartSize] = useState<ChartSize>('normal')
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedYears, setSelectedYears] = useState<number[]>([...AVAILABLE_YEARS])
   const [dayYear, setDayYear] = useState(currentYear)
@@ -126,6 +135,11 @@ export function DailyExpenseChart() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    const stored = localStorage.getItem(DAILY_CHART_SIZE_KEY) as ChartSize | null
+    if (stored && stored in DAILY_FONT_SIZES) setChartSize(stored)
   }, [])
 
   useEffect(() => {
@@ -272,6 +286,13 @@ export function DailyExpenseChart() {
   const qty = positiveRows.reduce((s, d) => s + d.quantity, 0)
   const unitLabel = viewMode === 'day' ? 'dia' : 'mês'
 
+  const fs = DAILY_FONT_SIZES[chartSize]
+
+  function handleSizeChange(size: ChartSize) {
+    setChartSize(size)
+    localStorage.setItem(DAILY_CHART_SIZE_KEY, size)
+  }
+
   const formatTickY = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
   const fmtBrl = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v.toFixed(0)}`
   const fmtEur = (v: number) => v >= 1000 ? `€${(v / 1000).toFixed(1)}k`  : `€${v.toFixed(0)}`
@@ -285,11 +306,11 @@ export function DailyExpenseChart() {
     const color = isHoliday ? 'var(--red)' : isWeekend ? 'var(--amber)' : 'var(--text-3)'
     return (
       <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-        <text x={0} y={0} dy={14} textAnchor="middle" fill={color} fontSize={12}
+        <text x={0} y={0} dy={14} textAnchor="middle" fill={color} fontSize={fs.tick}
           fontWeight={isHoliday || isWeekend ? 700 : 400}>
           {payload?.value}
         </text>
-        <text x={0} y={0} dy={30} textAnchor="middle" fill={color} fontSize={11}>
+        <text x={0} y={0} dy={30} textAnchor="middle" fill={color} fontSize={fs.tickSub}>
           {abbr}
         </text>
       </g>
@@ -302,7 +323,7 @@ export function DailyExpenseChart() {
     const label = (parts[0]?.slice(0, 3) ?? '') + '/' + (parts[1]?.slice(2) ?? '')
     return (
       <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-        <text x={0} y={0} dy={14} textAnchor="middle" fill="var(--text-3)" fontSize={12}>
+        <text x={0} y={0} dy={14} textAnchor="middle" fill="var(--text-3)" fontSize={fs.tick}>
           {label}
         </text>
       </g>
@@ -487,7 +508,7 @@ export function DailyExpenseChart() {
     const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
     const hasDiscount = !!discountBrlSet[key]
     const cx = (x ?? 0) + (width ?? 0) / 2
-    const fs = viewMode === 'day' ? 11 : 12
+    const labelFs = fs.dataLabel
     const fw = 14; const fh = fw * 0.667
     return (
       <g>
@@ -503,7 +524,7 @@ export function DailyExpenseChart() {
           <polygon points={`${fw/2},${fh*0.08} ${fw*0.95},${fh/2} ${fw/2},${fh*0.92} ${fw*0.05},${fh/2}`} fill="#FFDF00" />
           <circle cx={fw / 2} cy={fh / 2} r={fw * 0.15} fill="#002776" />
         </g>
-        <text x={cx} y={(y ?? 0) - 4} textAnchor="middle" fontSize={fs}
+        <text x={cx} y={(y ?? 0) - 4} textAnchor="middle" fontSize={labelFs}
           fill="var(--text-2)" fontFamily="var(--font-mono, monospace)">{fmtBrl(value)}</text>
       </g>
     )
@@ -516,7 +537,7 @@ export function DailyExpenseChart() {
     const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
     const hasDiscount = !!discountEurSet[key]
     const cx = (x ?? 0) + (width ?? 0) / 2
-    const fs = viewMode === 'day' ? 11 : 12
+    const labelFs = fs.dataLabel
     const fw = 14; const fh = fw * 0.667
     return (
       <g>
@@ -531,7 +552,7 @@ export function DailyExpenseChart() {
           <rect width={fw} height={fh} fill="#c60b1e" rx="1" />
           <rect y={fh / 4} width={fw} height={fh / 2} fill="#ffc400" />
         </g>
-        <text x={cx} y={(y ?? 0) - 4} textAnchor="middle" fontSize={fs}
+        <text x={cx} y={(y ?? 0) - 4} textAnchor="middle" fontSize={labelFs}
           fill="var(--text-2)" fontFamily="var(--font-mono, monospace)">{fmtEur(value)}</text>
       </g>
     )
@@ -551,12 +572,40 @@ export function DailyExpenseChart() {
               : 'Total mensal por categoria nos anos selecionados'}
           </p>
         </div>
-        <button type="button" onClick={() => doLoad(AVAILABLE_YEARS)} disabled={loading}
-          className="flex-shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-          style={{ color: 'var(--text-3)', background: 'var(--bg-3)', border: '1px solid var(--border-1)', opacity: loading ? 0.5 : 1 }}>
-          {loading ? <Spinner size={12} /> : <RefreshCw size={12} />}
-          {loading ? 'Carregando...' : 'Atualizar'}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Toggle tamanho de fonte */}
+          <div className="flex items-center gap-0.5">
+            {(['compact', 'normal', 'large'] as ChartSize[]).map((size, i) => {
+              const active = chartSize === size
+              const labelFontSize = [10, 13, 16][i]
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  title={['Compacto', 'Normal', 'Ampliado'][i]}
+                  onClick={() => handleSizeChange(size)}
+                  className="flex items-center justify-center w-8 h-7 rounded-md transition-all"
+                  style={{
+                    background: active ? 'var(--bg-5)' : 'transparent',
+                    border: `1px solid ${active ? 'var(--border-2)' : 'var(--border-1)'}`,
+                    color: active ? 'var(--text-1)' : 'var(--text-3)',
+                    fontSize: labelFontSize,
+                    fontWeight: 600,
+                    lineHeight: 1,
+                  }}
+                >
+                  A
+                </button>
+              )
+            })}
+          </div>
+          <button type="button" onClick={() => doLoad(AVAILABLE_YEARS)} disabled={loading}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+            style={{ color: 'var(--text-3)', background: 'var(--bg-3)', border: '1px solid var(--border-1)', opacity: loading ? 0.5 : 1 }}>
+            {loading ? <Spinner size={12} /> : <RefreshCw size={12} />}
+            {loading ? 'Carregando...' : 'Atualizar'}
+          </button>
+        </div>
       </div>
 
       {/* Toggle Por Mês / Por Dia */}
@@ -861,7 +910,7 @@ export function DailyExpenseChart() {
                 height={viewMode === 'day' ? 52 : 28}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: 'var(--text-3)' }}
+                tick={{ fontSize: fs.yAxis, fill: 'var(--text-3)' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={formatTickY}

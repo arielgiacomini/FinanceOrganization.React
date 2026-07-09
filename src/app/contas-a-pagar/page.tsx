@@ -2,8 +2,8 @@
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { billsToPayApi, accountsApi } from '@/lib/api'
-import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
+import { billsToPayApi, accountsApi, cashReceivableApi, walletApi } from '@/lib/api'
+import { formatCurrency, formatDate, formatYearMonth, currentYearMonth, DEFAULT_SALDO_CONTAS } from '@/lib/utils'
 import { loadSaldoFinalYm } from '@/lib/wallet'
 import type { BillToPay, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
@@ -22,6 +22,19 @@ import {
   ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
   Search, X, Square, SquareCheck, ReceiptText,
 } from 'lucide-react'
+
+function purchaseDateTag(dateStr?: string | null): { label: string; color: string; bg: string; border: string } | null {
+  if (!dateStr) return null
+  const datePart = dateStr.split('T')[0]   // garante só "YYYY-MM-DD" mesmo se vier ISO completo
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = new Date(datePart + 'T12:00:00'); d.setHours(0, 0, 0, 0)
+  if (isNaN(d.getTime())) return null
+  const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000)
+  if (diff === 0) return { label: 'Hoje',      color: 'var(--amber)',  bg: 'var(--amber-dim)',   border: 'rgba(251,191,36,0.35)' }
+  if (diff === 1) return { label: 'Ontem',     color: 'var(--blue)',   bg: 'var(--blue-dim)',    border: 'rgba(96,165,250,0.35)' }
+  if (diff === 2) return { label: 'Anteontem', color: 'var(--text-2)', bg: 'var(--bg-4)',        border: 'var(--border-2)' }
+  return null
+}
 
 function sortBills(data: BillToPay[]): BillToPay[] {
   const byDueThenPurchase = (a: BillToPay, b: BillToPay) => {
@@ -62,6 +75,38 @@ function ContasAPagarPageInner() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   const [deleting, setDeleting] = useState(false)
+
+  // Saldo em Contas a Receber da conta selecionada
+  const [saldoContas, setSaldoContas] = useState<string[]>([...DEFAULT_SALDO_CONTAS])
+  const [accountSaldo, setAccountSaldo] = useState<number | null>(null)
+  const [accountSaldoLoading, setAccountSaldoLoading] = useState(false)
+
+  useEffect(() => {
+    walletApi.search()
+      .then(res => {
+        const rec = res.output?.data?.find(r => r.walletKey === 'finance_saldo_contas')
+        if (rec?.walletValue) {
+          try { setSaldoContas(JSON.parse(rec.walletValue)) } catch {}
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const match = saldoContas.some(s => s.trim().toLowerCase() === accountFilter.trim().toLowerCase())
+    if (!match) { setAccountSaldo(null); return }
+    setAccountSaldoLoading(true)
+    cashReceivableApi.search({ yearMonth: ym })
+      .then(res => {
+        const records = res.output?.data ?? []
+        const saldo = records
+          .filter(r => r.account?.trim().toLowerCase() === accountFilter.trim().toLowerCase() && !r.hasReceived)
+          .reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+        setAccountSaldo(saldo)
+      })
+      .catch(() => setAccountSaldo(null))
+      .finally(() => setAccountSaldoLoading(false))
+  }, [accountFilter, ym, saldoContas])
 
   // Mede a altura do bloco de filtros sticky para fixar o cabeçalho da tabela logo abaixo dele
   const filtersRef = useRef<HTMLDivElement>(null)
@@ -264,6 +309,27 @@ function ContasAPagarPageInner() {
         }))}
       />
 
+      {/* Saldo disponível em Contas a Receber — aparece para contas configuradas em Configurações */}
+      {saldoContas.some(s => s.trim().toLowerCase() === accountFilter.trim().toLowerCase()) && (accountSaldoLoading || accountSaldo !== null) && (
+        <div
+          className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl"
+          style={{ background: 'var(--green-dim)', border: '1px solid var(--green-border)' }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--green-400)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--green-400)' }}>
+              Saldo disponível em Contas a Receber
+            </span>
+            <span className="text-xs" style={{ color: 'var(--text-3)' }}>· {accountFilter}</span>
+          </div>
+          <span className="ml-auto font-mono font-semibold text-sm" style={{ color: 'var(--green-400)' }}>
+            {accountSaldoLoading
+              ? <Spinner size={14} />
+              : formatCurrency(accountSaldo ?? 0, 'Brasil')}
+          </span>
+        </div>
+      )}
+
       {/* Bulk selection bar */}
       {Object.keys(selected).length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 rounded-xl" style={{ background: 'var(--bg-3)', border: '1px solid rgba(96,165,250,0.3)' }}>
@@ -424,23 +490,34 @@ function ContasAPagarPageInner() {
               const onlySpain = accBills.length > 0 && accBills.every(b => b.country?.trim() === 'Espanha')
               const accCurr = onlySpain ? 'Espanha' : 'Brasil'
               return (
-                <button
-                  key={acc}
-                  type="button"
-                  onClick={() => setAccountFilter(active ? 'Todos' : acc)}
-                  className="text-xs px-3 py-1 rounded-full border transition-colors flex items-center gap-1.5"
-                  style={{
-                    background: active ? (hex ? `${hex}22` : 'var(--bg-5)') : 'transparent',
-                    border: `1px solid ${active ? (hex ?? 'var(--border-3)') : 'var(--border-1)'}`,
-                    color: active ? (hex ?? 'var(--text-1)') : 'var(--text-3)',
-                  }}
-                >
-                  {hex && <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />}
-                  {acc}
-                  <span className="font-mono ml-0.5" style={{ opacity: active ? 1 : 0.6 }}>
-                    {formatCurrency(accTotal, accCurr)}
-                  </span>
-                </button>
+                <div key={acc} className="flex flex-col items-start gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setAccountFilter(active ? 'Todos' : acc)}
+                    className="text-xs px-3 py-1 rounded-full border transition-colors flex items-center gap-1.5"
+                    style={{
+                      background: active ? (hex ? `${hex}22` : 'var(--bg-5)') : 'transparent',
+                      border: `1px solid ${active ? (hex ?? 'var(--border-3)') : 'var(--border-1)'}`,
+                      color: active ? (hex ?? 'var(--text-1)') : 'var(--text-3)',
+                    }}
+                  >
+                    {hex && <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />}
+                    {acc}
+                    <span className="font-mono ml-0.5" style={{ opacity: active ? 1 : 0.6 }}>
+                      {formatCurrency(accTotal, accCurr)}
+                    </span>
+                  </button>
+                  {active && saldoContas.some(s => s.trim().toLowerCase() === acc.trim().toLowerCase()) && (accountSaldoLoading || accountSaldo !== null) && (
+                    <span
+                      className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full"
+                      style={{ background: 'var(--green-dim)', color: 'var(--green-400)', border: '1px solid var(--green-border)' }}
+                    >
+                      {accountSaldoLoading
+                        ? <><Spinner size={10} /> Saldo disponível atual...</>
+                        : <>Saldo disponível atual:<span className="font-mono font-semibold">{formatCurrency(accountSaldo ?? 0, 'Brasil')}</span></>}
+                    </span>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -523,8 +600,14 @@ function ContasAPagarPageInner() {
                   Venc. {formatDate(b.dueDate)}
                 </span>
                 {b.purchaseDate && (
-                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
                     Compra {formatDate(b.purchaseDate)}
+                    {(() => { const t = purchaseDateTag(b.purchaseDate); return t ? (
+                      <span className="px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ color: t.color, background: t.bg, border: `1px solid ${t.border}`, fontSize: 10 }}>
+                        {t.label}
+                      </span>
+                    ) : null })()}
                   </span>
                 )}
                 {b.hasPay && b.payDay && (
@@ -646,7 +729,19 @@ function ContasAPagarPageInner() {
                 </span>
               </Td>
               <Td className="text-xs">{formatDate(b.dueDate)}</Td>
-              <Td className="text-xs">{formatDate(b.purchaseDate)}</Td>
+              <Td className="text-xs">
+                {b.purchaseDate ? (
+                  <span className="flex items-center gap-1.5">
+                    {formatDate(b.purchaseDate)}
+                    {(() => { const t = purchaseDateTag(b.purchaseDate); return t ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-xs font-medium"
+                        style={{ color: t.color, background: t.bg, border: `1px solid ${t.border}`, fontSize: 10 }}>
+                        {t.label}
+                      </span>
+                    ) : null })()}
+                  </span>
+                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+              </Td>
               <Td className="text-xs">{formatDate(b.payDay)}</Td>
               <Td>
                 {b.hasPay

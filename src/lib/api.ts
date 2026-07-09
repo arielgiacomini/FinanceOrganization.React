@@ -165,9 +165,25 @@ export const cashReceivableApi = {
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
+export interface RegisterAccountViewModel {
+  name: string
+  dueDate?: number
+  closingDay?: number
+  considerPaid?: boolean
+  accountAgency?: string
+  accountNumber?: string
+  accountDigit?: string
+  cardNumber?: string
+  commissionPercentage?: number
+  enable: boolean
+}
+
 export const accountsApi = {
   searchAll: () =>
     request<SearchAccountOutput>('/v1/account/search-all', 'GET'),
+
+  register: (vm: RegisterAccountViewModel) =>
+    request<unknown>('/v1/account/register', 'POST', vm),
 }
 
 // ─── Date ────────────────────────────────────────────────────────────────────

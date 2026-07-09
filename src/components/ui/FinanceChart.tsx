@@ -32,6 +32,14 @@ interface ChartPoint {
   saldoBrasil: number
 }
 
+type ChartSize = 'compact' | 'normal' | 'large'
+const CHART_SIZE_KEY = 'finance_chart_size'
+const FONT_SIZES: Record<ChartSize, { tick: number; axisLabel: number; dataLabel: number; refLabel: number }> = {
+  compact: { tick: 10, axisLabel: 11, dataLabel: 10, refLabel: 11 },
+  normal:  { tick: 12, axisLabel: 13, dataLabel: 11, refLabel: 12 },
+  large:   { tick: 14, axisLabel: 15, dataLabel: 13, refLabel: 14 },
+}
+
 const MONTHS: Record<string, number> = {
   Janeiro: 0, Fevereiro: 1, Março: 2, Abril: 3, Maio: 4, Junho: 5,
   Julho: 6, Agosto: 7, Setembro: 8, Outubro: 9, Novembro: 10, Dezembro: 11,
@@ -537,6 +545,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [filterMode, setFilterMode] = useState<'next6' | 'custom'>('next6')
   const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
 
+  // Preferência de tamanho de fonte do gráfico — persiste em localStorage
+  const [chartSize, setChartSize] = useState<ChartSize>('normal')
+  useEffect(() => {
+    const stored = localStorage.getItem(CHART_SIZE_KEY) as ChartSize | null
+    if (stored && stored in FONT_SIZES) setChartSize(stored)
+  }, [])
+
   // Filtra pontos conforme slicers — DEVE ficar antes de qualquer early return (regra de hooks)
   const filteredData = useMemo(() => {
     if (filterMode === 'next6') {
@@ -650,6 +665,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     )
   }
 
+  const fs = FONT_SIZES[chartSize]
+
+  function handleSizeChange(size: ChartSize) {
+    setChartSize(size)
+    localStorage.setItem(CHART_SIZE_KEY, size)
+  }
+
   // Anos disponíveis: do ano do saldoFinalYm configurado até +5 anos
   const sfYmForYears = loadSaldoFinalYm()
   const baseYear = sfYmForYears ? parseInt(sfYmForYears.split('/')[1]) : new Date().getFullYear()
@@ -711,7 +733,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     const isBrl = dataKey === 'saldoBrasil'
     const label = isBrl ? `R$${value.toFixed(2)}` : `€${value.toFixed(2)}`
     return (
-      <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={10} fill={value < 0 ? '#dc2626' : '#9ca3af'}>
+      <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={fs.dataLabel} fill={value < 0 ? '#dc2626' : '#9ca3af'}>
         {label}
       </text>
     )
@@ -753,13 +775,42 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
   return (
     <div className="card p-4 lg:p-5">
-      <div className="mb-3">
-        <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-          Evolução Financeira
-        </h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-          Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : 'período personalizado'}
-        </p>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+            Evolução Financeira
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+            Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : 'período personalizado'}
+          </p>
+        </div>
+        {/* Toggle de tamanho de fonte */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {(['compact', 'normal', 'large'] as ChartSize[]).map((size, i) => {
+            const active = chartSize === size
+            const labelFontSize = [10, 13, 16][i]
+            const titles = ['Compacto', 'Normal', 'Ampliado']
+            return (
+              <button
+                key={size}
+                type="button"
+                title={titles[i]}
+                onClick={() => handleSizeChange(size)}
+                className="flex items-center justify-center w-8 h-7 rounded-md transition-all"
+                style={{
+                  background: active ? 'var(--bg-5)' : 'transparent',
+                  border: `1px solid ${active ? 'var(--border-2)' : 'var(--border-1)'}`,
+                  color: active ? 'var(--text-1)' : 'var(--text-3)',
+                  fontSize: labelFontSize,
+                  fontWeight: 600,
+                  lineHeight: 1,
+                }}
+              >
+                A
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Alerta de saldo negativo com opção de ajuste via investimentos */}
@@ -806,24 +857,24 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-1)" opacity={0.4} />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: 10, fill: 'var(--text-3)' }}
+              tick={{ fontSize: fs.tick, fill: 'var(--text-3)' }}
               stroke="var(--border-2)"
               interval="preserveStartEnd"
             />
             <YAxis
               yAxisId="left"
-              tick={{ fontSize: 10, fill: 'var(--text-3)' }}
+              tick={{ fontSize: fs.tick, fill: 'var(--text-3)' }}
               stroke="var(--border-2)"
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toString()}
-              label={{ value: '€', angle: 0, position: 'insideTopLeft', fill: 'var(--text-3)', fontSize: 11 }}
+              label={{ value: '€', angle: 0, position: 'insideTopLeft', fill: 'var(--text-3)', fontSize: fs.axisLabel }}
             />
             <YAxis
               yAxisId="right"
               orientation="right"
-              tick={{ fontSize: 10, fill: 'var(--text-3)' }}
+              tick={{ fontSize: fs.tick, fill: 'var(--text-3)' }}
               stroke="var(--border-2)"
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toString()}
-              label={{ value: 'R$', angle: 0, position: 'insideTopRight', fill: 'var(--text-3)', fontSize: 11 }}
+              label={{ value: 'R$', angle: 0, position: 'insideTopRight', fill: 'var(--text-3)', fontSize: fs.axisLabel }}
             />
             <Tooltip content={<CustomTooltip />} />
 
@@ -879,7 +930,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                   value: `${espanhaZeroPin.meses} ${espanhaZeroPin.meses === 1 ? 'mês' : 'meses'}`,
                   position: 'insideTopRight',
                   fill: '#dc2626',
-                  fontSize: 11,
+                  fontSize: fs.refLabel,
                   fontWeight: 700,
                   offset: 4,
                 }}
