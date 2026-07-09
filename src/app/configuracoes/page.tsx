@@ -1,7 +1,7 @@
 'use client'
 
 import { AppLayout } from '@/components/layout/AppLayout'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { PageHeader, Spinner, Modal } from '@/components/ui'
 import type { Account } from '@/types'
 import {
@@ -12,9 +12,10 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
+  Pencil, Trash2,
 } from 'lucide-react'
 import { walletApi, accountsApi } from '@/lib/api'
-import type { WalletRecord, RegisterAccountViewModel } from '@/lib/api'
+import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { currentYearMonth } from '@/lib/utils'
 
@@ -141,7 +142,55 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   )
 }
 
-// ─── Account register modal ───────────────────────────────────────────────────
+// ─── Color picker field ───────────────────────────────────────────────────────
+
+function ColorPickerField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const validForPicker = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#ffffff'
+
+  return (
+    <div className="space-y-1.5">
+      <label className="label">{label}</label>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          title="Abrir seletor de cor"
+          onClick={() => ref.current?.click()}
+          className="w-9 h-9 rounded-lg flex-shrink-0 transition-transform hover:scale-105"
+          style={{
+            background: validForPicker,
+            border: '2px solid var(--border-2)',
+            boxShadow: '0 0 0 1px var(--border-1)',
+          }}
+        />
+        <input
+          ref={ref}
+          type="color"
+          value={validForPicker}
+          onChange={e => onChange(e.target.value.toUpperCase())}
+          style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+        />
+        <input
+          className="input flex-1 font-mono text-sm"
+          value={value}
+          onChange={e => onChange(e.target.value.toUpperCase())}
+          placeholder="#FFFFFF"
+          maxLength={7}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Account form modal (create + edit) ──────────────────────────────────────
 
 const EMPTY_FORM: RegisterAccountViewModel = {
   name: '',
@@ -154,11 +203,65 @@ const EMPTY_FORM: RegisterAccountViewModel = {
   accountDigit: '',
   cardNumber: '',
   commissionPercentage: undefined,
+  colors: undefined,
 }
 
-function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<RegisterAccountViewModel>({ ...EMPTY_FORM })
-  const [isCreditCard, setIsCreditCard] = useState(false)
+function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer select-none">
+      <div
+        className="w-9 h-5 rounded-full relative transition-colors"
+        style={{ background: on ? 'var(--green-500)' : 'var(--bg-5)' }}
+        onClick={onToggle}
+      >
+        <span
+          className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+          style={{
+            background: 'var(--text-1)',
+            transform: on ? 'translateX(1.1rem)' : 'translateX(0.125rem)',
+          }}
+        />
+      </div>
+      <span className="text-sm" style={{ color: 'var(--text-2)' }}>{label}</span>
+    </label>
+  )
+}
+
+function AccountFormModal({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account?: Account
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = !!account
+
+  const [form, setForm] = useState<RegisterAccountViewModel>(() => {
+    if (!account) return { ...EMPTY_FORM }
+    return {
+      name:                account.name,
+      enable:              account.enable,
+      considerPaid:        account.considerPaid ?? false,
+      dueDate:             account.dueDate,
+      closingDay:          account.closingDay,
+      accountAgency:       account.accountAgency ?? '',
+      accountNumber:       account.accountNumber ?? '',
+      accountDigit:        account.accountDigit ?? '',
+      cardNumber:          account.cardNumber ?? '',
+      commissionPercentage: account.commissionPercentage,
+      colors: account.colors
+        ? {
+            backgroundColorHexadecimal: account.colors.backgroundColorHexadecimal,
+            fonteColorHexadecimal:      account.colors.fonteColorHexadecimal,
+          }
+        : undefined,
+    }
+  })
+
+  const [isCreditCard, setIsCreditCard] = useState(account?.isCreditCard ?? false)
+  const [hasColors, setHasColors] = useState(!!account?.colors)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -166,32 +269,51 @@ function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSav
     setForm(f => ({ ...f, [key]: value }))
   }
 
+  function toggleColors(on: boolean) {
+    setHasColors(on)
+    if (!on) set('colors', undefined)
+    else set('colors', { backgroundColorHexadecimal: '#FFFFFF', fonteColorHexadecimal: '#000000' })
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
+    if (hasColors && form.colors) {
+      const { backgroundColorHexadecimal: bg, fonteColorHexadecimal: fg } = form.colors
+      if (!bg.match(/^#[0-9A-Fa-f]{3,6}$/) || !fg.match(/^#[0-9A-Fa-f]{3,6}$/)) {
+        setError('Cores devem estar no formato hexadecimal, ex: #FF5500.'); return
+      }
+    }
     setSaving(true)
     setError('')
     try {
       const payload: RegisterAccountViewModel = {
-        name: form.name.trim(),
-        enable: form.enable,
+        name:         form.name.trim(),
+        enable:       form.enable,
         considerPaid: form.considerPaid,
+        colors:       hasColors ? form.colors : undefined,
       }
       if (isCreditCard) {
-        if (form.cardNumber)             payload.cardNumber             = form.cardNumber
-        if (form.dueDate)                payload.dueDate                = Number(form.dueDate)
-        if (form.closingDay)             payload.closingDay             = Number(form.closingDay)
-        if (form.commissionPercentage)   payload.commissionPercentage   = Number(form.commissionPercentage)
+        if (form.cardNumber)           payload.cardNumber           = form.cardNumber
+        if (form.dueDate)              payload.dueDate              = Number(form.dueDate)
+        if (form.closingDay)           payload.closingDay           = Number(form.closingDay)
+        if (form.commissionPercentage) payload.commissionPercentage = Number(form.commissionPercentage)
       } else {
-        if (form.accountAgency)  payload.accountAgency  = form.accountAgency
-        if (form.accountNumber)  payload.accountNumber  = form.accountNumber
-        if (form.accountDigit)   payload.accountDigit   = form.accountDigit
+        if (form.accountAgency) payload.accountAgency = form.accountAgency
+        if (form.accountNumber) payload.accountNumber = form.accountNumber
+        if (form.accountDigit)  payload.accountDigit  = form.accountDigit
       }
-      await accountsApi.register(payload)
+
+      if (isEdit) {
+        const editPayload: EditAccountViewModel = { ...payload, id: account!.id }
+        await accountsApi.edit(editPayload)
+      } else {
+        await accountsApi.register(payload)
+      }
       onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao cadastrar conta.')
+      setError(err instanceof Error ? err.message : `Erro ao ${isEdit ? 'editar' : 'cadastrar'} conta.`)
     } finally {
       setSaving(false)
     }
@@ -204,38 +326,42 @@ function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSav
     </div>
   )
 
+  const typeLabel = isCreditCard ? 'Cartão de Crédito' : 'Conta Bancária'
+
   return (
-    <Modal open title={isCreditCard ? 'Nova conta — Cartão de Crédito' : 'Nova conta — Conta Bancária'} onClose={onClose}>
+    <Modal open title={isEdit ? `Editar — ${account!.name}` : `Nova conta — ${typeLabel}`} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Tipo */}
-        <div
-          className="flex rounded-lg p-1 gap-1"
-          style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}
-        >
-          {[
-            { label: 'Conta Bancária', icon: Building2, value: false },
-            { label: 'Cartão de Crédito', icon: CreditCard, value: true },
-          ].map(({ label, icon: Icon, value }) => (
-            <button
-              key={String(value)}
-              type="button"
-              onClick={() => setIsCreditCard(value)}
-              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all"
-              style={isCreditCard === value ? {
-                background: 'var(--bg-5)',
-                color: 'var(--text-1)',
-                border: '1px solid var(--border-2)',
-              } : {
-                color: 'var(--text-3)',
-                border: '1px solid transparent',
-              }}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Tipo (somente em criação) */}
+        {!isEdit && (
+          <div
+            className="flex rounded-lg p-1 gap-1"
+            style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}
+          >
+            {[
+              { label: 'Conta Bancária',    icon: Building2,  value: false },
+              { label: 'Cartão de Crédito', icon: CreditCard, value: true  },
+            ].map(({ label, icon: Icon, value }) => (
+              <button
+                key={String(value)}
+                type="button"
+                onClick={() => setIsCreditCard(value)}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all"
+                style={isCreditCard === value ? {
+                  background: 'var(--bg-5)',
+                  color: 'var(--text-1)',
+                  border: '1px solid var(--border-2)',
+                } : {
+                  color: 'var(--text-3)',
+                  border: '1px solid transparent',
+                }}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Nome */}
         <Field label="Nome *">
@@ -324,27 +450,43 @@ function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSav
 
         {/* Toggles */}
         <div className="flex flex-wrap gap-4 pt-1">
-          {[
-            { label: 'Conta ativa', key: 'enable' as const },
-            { label: 'Considerar como pago', key: 'considerPaid' as const },
-          ].map(({ label, key }) => (
-            <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
-              <div
-                className="w-9 h-5 rounded-full relative transition-colors"
-                style={{ background: form[key] ? 'var(--green-500)' : 'var(--bg-5)' }}
-                onClick={() => set(key, !form[key])}
-              >
-                <span
-                  className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
-                  style={{
-                    background: 'var(--text-1)',
-                    transform: form[key] ? 'translateX(1.1rem)' : 'translateX(0.125rem)',
-                  }}
+          <Toggle on={!!form.enable}       onToggle={() => set('enable', !form.enable)}             label="Conta ativa" />
+          <Toggle on={!!form.considerPaid} onToggle={() => set('considerPaid', !form.considerPaid)} label="Considerar como pago" />
+        </div>
+
+        {/* Cores (opcional) */}
+        <div className="space-y-4" style={{ borderTop: '1px solid var(--border-1)', paddingTop: '1rem' }}>
+          <Toggle on={hasColors} onToggle={() => toggleColors(!hasColors)} label="Definir cores personalizadas" />
+          {hasColors && form.colors && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <ColorPickerField
+                  label="Cor de fundo"
+                  value={form.colors.backgroundColorHexadecimal}
+                  onChange={v => set('colors', { ...form.colors!, backgroundColorHexadecimal: v })}
+                />
+                <ColorPickerField
+                  label="Cor do texto"
+                  value={form.colors.fonteColorHexadecimal}
+                  onChange={v => set('colors', { ...form.colors!, fonteColorHexadecimal: v })}
                 />
               </div>
-              <span className="text-sm" style={{ color: 'var(--text-2)' }}>{label}</span>
-            </label>
-          ))}
+              {/* Preview */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>Preview:</span>
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full"
+                  style={{
+                    background: form.colors.backgroundColorHexadecimal,
+                    color: form.colors.fonteColorHexadecimal,
+                    border: '1px solid var(--border-1)',
+                  }}
+                >
+                  {form.name || 'Nome da conta'}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {error && (
@@ -360,7 +502,7 @@ function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSav
           </button>
           <button type="submit" disabled={saving} className="btn-primary">
             {saving ? <Spinner size={14} /> : <Check size={14} />}
-            {saving ? 'Salvando…' : 'Cadastrar conta'}
+            {saving ? 'Salvando…' : isEdit ? 'Salvar alterações' : 'Cadastrar conta'}
           </button>
         </div>
       </form>
@@ -370,7 +512,15 @@ function AccountRegisterModal({ onClose, onSaved }: { onClose: () => void; onSav
 
 // ─── Account row ─────────────────────────────────────────────────────────────
 
-function AccountRow({ account: a }: { account: Account }) {
+function AccountRow({
+  account: a,
+  onEdit,
+  onDelete,
+}: {
+  account: Account
+  onEdit: (a: Account) => void
+  onDelete: (a: Account) => void
+}) {
   const dot = a.colors?.backgroundColorHexadecimal
   const isWhite = dot?.toUpperCase() === '#FFFFFF' || dot?.toUpperCase() === '#FFF'
 
@@ -384,7 +534,7 @@ function AccountRow({ account: a }: { account: Account }) {
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3"
+      className="group flex items-center gap-3 px-4 py-3"
       style={{ borderBottom: '1px solid var(--border-1)' }}
     >
       {/* Color dot */}
@@ -427,6 +577,32 @@ function AccountRow({ account: a }: { account: Account }) {
       <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>
         {a.isCreditCard ? <CreditCard size={13} /> : <Building2 size={13} />}
       </span>
+
+      {/* Action buttons — visíveis ao hover */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => onEdit(a)}
+          title="Editar"
+          className="p-1.5 rounded-md transition-colors"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--blue)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(a)}
+          title="Excluir"
+          className="p-1.5 rounded-md transition-colors"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -471,6 +647,10 @@ function ConfiguracoesInner() {
   const [accountsLoading,   setAccountsLoading]   = useState(false)
   const [availableAccounts, setAvailableAccounts] = useState<string[]>([])
   const [registerOpen,      setRegisterOpen]      = useState(false)
+  const [editTarget,        setEditTarget]        = useState<Account | null>(null)
+  const [deleteTarget,      setDeleteTarget]      = useState<Account | null>(null)
+  const [deleteLoading,     setDeleteLoading]     = useState(false)
+  const [deleteError,       setDeleteError]       = useState('')
   const [showInactive,      setShowInactive]      = useState(false)
 
   const [plrName,                  setPlrName]                  = useState('')
@@ -482,6 +662,21 @@ function ConfiguracoesInner() {
   const [chartRecords,             setChartRecords]             = useState<WalletRecord[]>([])
 
   const [saved, setSaved] = useState(false)
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    setDeleteError('')
+    try {
+      await accountsApi.delete(deleteTarget.id)
+      setDeleteTarget(null)
+      loadAccounts()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Erro ao excluir conta.')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   function loadAccounts() {
     setAccountsLoading(true)
@@ -757,7 +952,14 @@ function ConfiguracoesInner() {
                                 Cartões de Crédito
                               </span>
                             </div>
-                            {cards.map(a => <AccountRow key={a.id} account={a} />)}
+                            {cards.map(a => (
+                              <AccountRow
+                                key={a.id}
+                                account={a}
+                                onEdit={setEditTarget}
+                                onDelete={setDeleteTarget}
+                              />
+                            ))}
                           </>
                         )}
                         {/* Contas bancárias */}
@@ -770,7 +972,14 @@ function ConfiguracoesInner() {
                                 Contas Bancárias
                               </span>
                             </div>
-                            {banks.map(a => <AccountRow key={a.id} account={a} />)}
+                            {banks.map(a => (
+                              <AccountRow
+                                key={a.id}
+                                account={a}
+                                onEdit={setEditTarget}
+                                onDelete={setDeleteTarget}
+                              />
+                            ))}
                           </>
                         )}
                         {visible.length === 0 && (
@@ -785,10 +994,60 @@ function ConfiguracoesInner() {
               </div>
 
               {registerOpen && (
-                <AccountRegisterModal
+                <AccountFormModal
                   onClose={() => setRegisterOpen(false)}
                   onSaved={loadAccounts}
                 />
+              )}
+
+              {editTarget && (
+                <AccountFormModal
+                  account={editTarget}
+                  onClose={() => setEditTarget(null)}
+                  onSaved={() => { setEditTarget(null); loadAccounts() }}
+                />
+              )}
+
+              {deleteTarget && (
+                <Modal
+                  open
+                  title="Excluir conta"
+                  onClose={() => { setDeleteTarget(null); setDeleteError('') }}
+                >
+                  <div className="space-y-4">
+                    <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+                      Tem certeza que deseja excluir a conta{' '}
+                      <strong style={{ color: 'var(--text-1)' }}>{deleteTarget.name}</strong>?
+                      Esta ação não pode ser desfeita.
+                    </p>
+                    {deleteError && (
+                      <p className="text-xs px-3 py-2 rounded-lg"
+                        style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>
+                        {deleteError}
+                      </p>
+                    )}
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget(null); setDeleteError('') }}
+                        className="btn-secondary"
+                        disabled={deleteLoading}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={deleteLoading}
+                        className="btn-primary"
+                        style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
+                      >
+                        {deleteLoading ? <Spinner size={14} /> : <Trash2 size={14} />}
+                        {deleteLoading ? 'Excluindo…' : 'Excluir'}
+                      </button>
+                    </div>
+                  </div>
+                </Modal>
               )}
             </>
           )}
