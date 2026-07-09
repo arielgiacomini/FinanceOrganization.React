@@ -126,3 +126,8 @@ export function saveRegistrationTypes(list: string[]) {
 // Manter retrocompatibilidade
 export const FREQUENCES = DEFAULT_FREQUENCES
 export const REGISTRATION_TYPES = DEFAULT_REGISTRATION_TYPES
+
+// ─── Contas com Saldo Disponível ──────────────────────────────────────────────
+
+/** Fallback usado quando o registro ainda não existe na wallet API. */
+export const DEFAULT_SALDO_CONTAS = ['Vale Refeição iFood Beneficios']
