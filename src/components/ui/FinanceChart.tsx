@@ -510,12 +510,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
           const saldoBrasil = (receitaBR + (isConfiguredMonth ? saldoFinal : 0) + valeRefeicaoBR) - despesaBR
 
+          const r2 = (n: number) => Math.round(n * 100) / 100
           return {
             yearMonth: ym,
             label: shortLabel(ym),
-            despesaEspanha,
-            investAcumEspanha,
-            saldoBrasil,
+            despesaEspanha:    r2(despesaEspanha),
+            investAcumEspanha: r2(investAcumEspanha),
+            saldoBrasil:       r2(saldoBrasil),
           }
         })
 
@@ -611,7 +612,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const adjustInfo = useMemo(() => {
     if (!calcBase?.saldoFinalYm) return null
     const configuredPoint = data.find(d => d.yearMonth === calcBase.saldoFinalYm)
-    if (!configuredPoint || configuredPoint.saldoBrasil >= 0) return null
+    const roundedSaldo = Math.round((configuredPoint?.saldoBrasil ?? 0) * 100) / 100
+    if (!configuredPoint || roundedSaldo >= 0) return null
     const investimento = loadInvestimentoTotal()
     if (investimento.brl <= 0) return null
     return {
@@ -729,11 +731,12 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }
 
   function CustomLabel({ x, y, value, dataKey }: any) {
-    if (!value || value === 0) return null
+    const rounded = Math.round((value ?? 0) * 100) / 100
+    if (rounded === 0) return null
     const isBrl = dataKey === 'saldoBrasil'
     const label = isBrl ? `R$${value.toFixed(2)}` : `€${value.toFixed(2)}`
     return (
-      <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={fs.dataLabel} fill={value < 0 ? '#dc2626' : '#9ca3af'}>
+      <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={fs.dataLabel} fill={rounded < 0 ? '#dc2626' : '#9ca3af'}>
         {label}
       </text>
     )
@@ -1071,7 +1074,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                   </div>
                   <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid rgba(59,130,246,0.3)' }}>
                     <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Saldo projetado</p>
-                    <p className="font-mono font-bold" style={{ color: (calc.contasBancariasEspanha - calc.despesaEspanhaTotal) >= 0 ? '#3b82f6' : 'var(--red)' }}>
+                    <p className="font-mono font-bold" style={{ color: Math.round((calc.contasBancariasEspanha - calc.despesaEspanhaTotal) * 100) / 100 >= 0 ? '#3b82f6' : 'var(--red)' }}>
                       = {formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}
                     </p>
                   </div>
@@ -1104,7 +1107,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                     <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
                       Saldo Final{calc.saldoFinalYm ? ` (${calc.saldoFinalYm})` : ''}
                     </p>
-                    <p className="font-mono font-bold" style={{ color: calc.saldoFinal >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                    <p className="font-mono font-bold" style={{ color: Math.round(calc.saldoFinal * 100) / 100 >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
                       = {formatBrl(calc.saldoFinal)}
                     </p>
                   </div>
