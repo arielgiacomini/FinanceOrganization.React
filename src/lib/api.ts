@@ -328,8 +328,9 @@ export const dashboardApi = {
     )
   },
 
-  dailyExpenseByCategoryAccount: (months: number[], years: number[], category?: string) => {
-    const params = new URLSearchParams({ months: months.join(','), years: years.join(',') })
+  dailyExpenseByCategoryAccount: (months: number[], years: number[] | null, category?: string) => {
+    const params = new URLSearchParams({ months: months.join(',') })
+    if (years !== null) params.set('years', years.join(','))
     if (category) params.set('category', category)
     return requestAuth<DailyExpenseRecord[]>(
       `/v1/dashboard/daily-expense-category-account-date?${params}`,

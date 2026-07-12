@@ -48,8 +48,7 @@ function ContasAReceberPageInner() {
   const [receiveTarget, setReceiveTarget] = useState<CashReceivable | null>(null)
   const [showDetails, setShowDetails] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Recebido' | 'Não recebido'>('Todos')
-  const [catGroup, setCatGroup] = useState('')
-  const [catSub, setCatSub] = useState('')
+  const [catPath, setCatPath] = useState<string[]>([])
 
   // Mede a altura do bloco de filtros sticky para fixar o cabeçalho da tabela logo abaixo dele
   const filtersRef = useRef<HTMLDivElement>(null)
@@ -108,14 +107,15 @@ function ContasAReceberPageInner() {
       const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
       result = result.filter(r => getCountry(r.country) === countryFilter)
     }
-    if (catGroup) {
-      result = result.filter(r => matchesCategory(r.category, catGroup, catSub))
+    if (catPath.length) {
+      result = result.filter(r => matchesCategory(r.category, catPath))
     }
     if (statusFilter !== 'Todos') {
       result = result.filter(r => statusFilter === 'Recebido' ? r.hasReceived : !r.hasReceived)
     }
     return result
-  }, [items, countryFilter, catGroup, catSub, statusFilter])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, countryFilter, catPath.join(':'), statusFilter])
 
   const byCountry = (country: string) => items.filter(r => normalizeCountry(r.country) === country)
   const sumValues = (arr: typeof items) => arr.reduce((s, r) => s + r.value, 0)
@@ -209,12 +209,10 @@ function ContasAReceberPageInner() {
 
         <CategoryFilter
           categories={items.map(r => r.category ?? '').filter(Boolean)}
-          selectedGroup={catGroup}
-          selectedSub={catSub}
-          onGroupChange={setCatGroup}
-          onSubChange={setCatSub}
+          selectedPath={catPath}
+          onPathChange={setCatPath}
         />
-        {catGroup && (() => {
+        {catPath.length > 0 && (() => {
           const brItems = filtered.filter(r => normalizeCountry(r.country) !== 'Espanha')
           const esItems = filtered.filter(r => normalizeCountry(r.country) === 'Espanha')
           const brValue   = brItems.reduce((s, r) => s + (r.value ?? 0), 0)
