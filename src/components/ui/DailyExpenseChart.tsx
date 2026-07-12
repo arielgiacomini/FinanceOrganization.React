@@ -105,6 +105,8 @@ export function DailyExpenseChart() {
   const [barSelection, setBarSelection] = useState<{ yearMonth: string | null; day: number | null } | null>(null)
   // ref para que loadDetailBills leia o filtro sem precisar estar nas deps
   const barFilterRef = useRef<{ yearMonth: string | null; day: number | null }>({ yearMonth: null, day: null })
+  const accountFilterRef = useRef(accountFilter)
+  accountFilterRef.current = accountFilter
   const [sortCol, setSortCol] = useState<string>('purchaseDate')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
@@ -180,13 +182,14 @@ export function DailyExpenseChart() {
     const seen: Record<string, boolean> = {}
     const list: string[] = []
     allData.forEach(d => {
-      if (d.account && d.value > 0 && !seen[d.account]) {
+      if (d.account && d.value > 0 && !seen[d.account] &&
+          (!catGroup || matchesCategory(d.category, catGroup, catSub))) {
         seen[d.account] = true
         list.push(d.account)
       }
     })
     return list
-  }, [allData])
+  }, [allData, catGroup, catSub])
 
   useEffect(() => {
     if (!catGroup || !hasLoaded) return
@@ -286,6 +289,25 @@ export function DailyExpenseChart() {
   const qty = positiveRows.reduce((s, d) => s + d.quantity, 0)
   const unitLabel = viewMode === 'day' ? 'dia' : 'mês'
 
+  const selectedBarPoint = useMemo(() => {
+    if (!barSelection) return null
+    if (viewMode === 'day' && barSelection.day !== null)
+      return chartData.find(p => p.day === barSelection.day) ?? null
+    if (viewMode === 'month' && barSelection.yearMonth)
+      return chartData.find(p => p.monthYear === barSelection.yearMonth) ?? null
+    return null
+  }, [barSelection, chartData, viewMode])
+
+  const selectedBarQty = useMemo(() => {
+    if (!barSelection) return null
+    const rows = viewMode === 'day' && barSelection.day !== null
+      ? filteredData.filter(d => d.day === barSelection.day)
+      : viewMode === 'month' && barSelection.yearMonth
+        ? filteredData.filter(d => d.monthYear === barSelection.yearMonth)
+        : []
+    return rows.reduce((s, d) => s + d.quantity, 0)
+  }, [barSelection, filteredData, viewMode])
+
   const fs = DAILY_FONT_SIZES[chartSize]
 
   function handleSizeChange(size: ChartSize) {
@@ -361,15 +383,24 @@ export function DailyExpenseChart() {
   }
 
   const loadDetailBills = useCallback(async () => {
-    if (!catGroup) return
+    const { yearMonth, day } = barFilterRef.current
+    // Sem categoria e sem mês selecionado: volume indeterminado — não busca
+    if (!catGroup && !yearMonth) {
+      setDetailsBills([])
+      return
+    }
     setDetailsLoading(true)
     try {
-      const category = catSub ? `${catGroup}:${catSub}` : catGroup
-      const { yearMonth, day } = barFilterRef.current
-      const res = await billsToPayApi.search({ category, ...(yearMonth ? { yearMonth } : {}) })
+      const category = catGroup ? (catSub ? `${catGroup}:${catSub}` : catGroup) : undefined
+      const res = await billsToPayApi.search({
+        ...(category ? { category } : {}),
+        ...(yearMonth ? { yearMonth } : {}),
+      })
       let data = res.output?.data ?? []
-      // Garante o mesmo filtro de categoria que o gráfico usa (matchesCategory = prefixo)
-      data = data.filter(b => matchesCategory(b.category, catGroup, catSub))
+      if (catGroup) data = data.filter(b => matchesCategory(b.category, catGroup, catSub))
+      if (accountFilterRef.current !== 'Todos') {
+        data = data.filter(b => b.account === accountFilterRef.current)
+      }
       if (day !== null) {
         data = data.filter(b => {
           const raw = b.purchaseDate ?? b.dueDate
@@ -488,11 +519,47 @@ export function DailyExpenseChart() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catGroup, catSub])
 
+  // Reseta filtro de conta quando a conta selecionada não existe na categoria atual
+  useEffect(() => {
+    if (accountFilter !== 'Todos' && !accounts.includes(accountFilter)) {
+      setAccountFilter('Todos')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts])
+
+  // Recarrega detalhes quando filtro de conta muda
+  useEffect(() => {
+    if (detailsOpen) loadDetailBills()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountFilter])
+
   const brlBarColor = (pt: ChartPoint) => {
     if (viewMode !== 'day') return '#dc2626'
     if (pt.holiday) return '#a78bfa'
     if (pt.weekend) return 'var(--amber)'
     return '#dc2626'
+  }
+
+  // Shapes customizados que expandem a barra para o centro quando a moeda irmã é zero no mesmo ponto
+  const BrlBarShape = (props: any) => {
+    const { x, y, width, height, fill } = props
+    if (!height || height <= 0) return <g />
+    const isAlone = hasEur && !(props.payload?.valueEur > 0)
+    const w = isAlone ? width * 2 + 2 : width
+    const cr = Math.min(2, w / 2, height)
+    const path = `M${x+cr},${y} h${w-2*cr} a${cr},${cr} 0 0 1 ${cr},${cr} v${height-cr} H${x} V${y+cr} a${cr},${cr} 0 0 1 ${cr},${-cr} z`
+    return <path d={path} fill={fill} />
+  }
+
+  const EurBarShape = (props: any) => {
+    const { x, y, width, height, fill } = props
+    if (!height || height <= 0) return <g />
+    const isAlone = hasBrl && !(props.payload?.valueBrl > 0)
+    const w = isAlone ? width * 2 + 2 : width
+    const xPos = isAlone ? x - width - 2 : x
+    const cr = Math.min(2, w / 2, height)
+    const path = `M${xPos+cr},${y} h${w-2*cr} a${cr},${cr} 0 0 1 ${cr},${cr} v${height-cr} H${xPos} V${y+cr} a${cr},${cr} 0 0 1 ${cr},${-cr} z`
+    return <path d={path} fill={fill} />
   }
 
   const labelStyle = (fontSize: number, color: string) => ({
@@ -507,7 +574,9 @@ export function DailyExpenseChart() {
     const pt = chartData[index]
     const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
     const hasDiscount = !!discountBrlSet[key]
-    const cx = (x ?? 0) + (width ?? 0) / 2
+    const isAlone = hasEur && !(pt?.valueEur > 0)
+    const effectiveWidth = isAlone ? (width ?? 0) * 2 + 2 : (width ?? 0)
+    const cx = (x ?? 0) + effectiveWidth / 2
     const labelFs = fs.dataLabel
     const fw = 14; const fh = fw * 0.667
     return (
@@ -536,7 +605,10 @@ export function DailyExpenseChart() {
     const pt = chartData[index]
     const key = viewMode === 'day' ? String(pt?.day ?? '') : (pt?.monthYear ?? '')
     const hasDiscount = !!discountEurSet[key]
-    const cx = (x ?? 0) + (width ?? 0) / 2
+    const isAlone = hasBrl && !(pt?.valueBrl > 0)
+    const effectiveWidth = isAlone ? (width ?? 0) * 2 + 2 : (width ?? 0)
+    const xStart = isAlone ? (x ?? 0) - (width ?? 0) - 2 : (x ?? 0)
+    const cx = xStart + effectiveWidth / 2
     const labelFs = fs.dataLabel
     const fw = 14; const fh = fw * 0.667
     return (
@@ -608,19 +680,86 @@ export function DailyExpenseChart() {
         </div>
       </div>
 
-      {/* Toggle Por Mês / Por Dia */}
-      <div className="flex flex-wrap gap-1.5">
-        {(['month', 'day'] as const).map(mode => (
-          <button key={mode} type="button" onClick={() => switchMode(mode)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: viewMode === mode ? 'var(--green-400)' : 'var(--bg-3)',
-              color: viewMode === mode ? '#fff' : 'var(--text-2)',
-              border: `1px solid ${viewMode === mode ? 'var(--green-400)' : 'var(--border-1)'}`,
-            }}>
-            {mode === 'day' ? 'Por Dia' : 'Por Mês'}
-          </button>
-        ))}
+      {/* Toggle Por Mês / Por Dia + Resumo inline */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="flex gap-1.5">
+          {(['month', 'day'] as const).map(mode => (
+            <button key={mode} type="button" onClick={() => switchMode(mode)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: viewMode === mode ? 'var(--green-400)' : 'var(--bg-3)',
+                color: viewMode === mode ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${viewMode === mode ? 'var(--green-400)' : 'var(--border-1)'}`,
+              }}>
+              {mode === 'day' ? 'Por Dia' : 'Por Mês'}
+            </button>
+          ))}
+        </div>
+        {!loading && chartData.length > 0 && (
+          <div className="flex flex-wrap items-start gap-x-5 gap-y-1">
+            {/* Badge de período selecionado */}
+            {selectedBarPoint && barFilterLabel && (
+              <div className="flex flex-col justify-between self-stretch gap-1">
+                <span
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid rgba(251,191,36,0.25)', whiteSpace: 'nowrap' }}>
+                  ▲ {barFilterLabel}
+                </span>
+                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>selecionado</p>
+              </div>
+            )}
+
+            {/* R$ — total ou barra selecionada */}
+            {(selectedBarPoint ? selectedBarPoint.valueBrl > 0 : hasBrl) && (
+              <div>
+                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  {selectedBarPoint ? `R$ — ${barFilterLabel}` : 'Total R$'}
+                </p>
+                <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatCurrency(selectedBarPoint ? selectedBarPoint.valueBrl : totalBrl, 'Brasil')}
+                </p>
+              </div>
+            )}
+
+            {/* € — total ou barra selecionada */}
+            {(selectedBarPoint ? selectedBarPoint.valueEur > 0 : hasEur) && (
+              <div>
+                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                  {selectedBarPoint ? `€ — ${barFilterLabel}` : 'Total €'}
+                </p>
+                <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatCurrency(selectedBarPoint ? selectedBarPoint.valueEur : totalEur, 'Espanha')}
+                </p>
+              </div>
+            )}
+
+            {/* Lançamentos — total ou barra selecionada */}
+            <div>
+              <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
+              <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+                {selectedBarPoint ? (selectedBarQty ?? 0) : qty}
+              </p>
+            </div>
+
+            {/* Maior mês — só quando sem barra selecionada */}
+            {!selectedBarPoint && hasBrl && !hasEur && maxBrl > 0 && (
+              <div>
+                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} R$</p>
+                <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatCurrency(maxBrl, 'Brasil')}
+                </p>
+              </div>
+            )}
+            {!selectedBarPoint && hasEur && !hasBrl && maxEur > 0 && (
+              <div>
+                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} €</p>
+                <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatCurrency(maxEur, 'Espanha')}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Filtro de categoria */}
@@ -785,106 +924,50 @@ export function DailyExpenseChart() {
       {/* Sem dados */}
       {hasLoaded && !loading && chartData.length === 0 && (
         <p className="text-sm text-center py-10" style={{ color: 'var(--text-3)' }}>
-          {!catGroup
-            ? 'Selecione uma categoria para visualizar os dados.'
-            : 'Nenhum dado para os filtros selecionados.'}
+          Nenhum dado para os filtros selecionados.
         </p>
       )}
 
       {/* Resultados */}
       {!loading && chartData.length > 0 && (
         <>
-          {/* Cards de resumo — separados por moeda */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {hasBrl && (
-              <div className="card px-3 py-2">
-                <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Total R$ (Brasil)</p>
-                <p className="text-sm font-semibold font-mono" style={{ color: '#dc2626' }}>
-                  {formatCurrency(totalBrl, 'Brasil')}
-                </p>
-              </div>
-            )}
-            {hasEur && (
-              <div className="card px-3 py-2">
-                <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Total € (Espanha)</p>
-                <p className="text-sm font-semibold font-mono" style={{ color: '#b91c1c' }}>
-                  {formatCurrency(totalEur, 'Espanha')}
-                </p>
-              </div>
-            )}
-            <div className="card px-3 py-2">
-              <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Qtd. lançamentos</p>
-              <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-2)' }}>{qty}</p>
+          {/* Título da categoria selecionada + período */}
+          {(catGroup || barFilterLabel) && (
+            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
+              {catGroup && (
+                <div>
+                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Categoria
+                  </p>
+                  <h2 className="font-bold tracking-tight leading-none mt-1"
+                    style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', color: 'var(--text-1)' }}>
+                    {catGroup}
+                    {catSub && (
+                      <span className="font-semibold" style={{ fontSize: '0.72em', color: 'var(--text-2)' }}> · {catSub}</span>
+                    )}
+                  </h2>
+                </div>
+              )}
+              {barFilterLabel && (
+                <div className="mb-0.5">
+                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Período selecionado
+                  </p>
+                  <p className="font-bold tracking-tight leading-none mt-1"
+                    style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)', color: 'var(--amber)' }}>
+                    {barFilterLabel}
+                    <button
+                      type="button"
+                      onClick={clearBarFilter}
+                      className="ml-2 text-base font-normal opacity-50 hover:opacity-100 transition-opacity"
+                      title="Limpar seleção">
+                      ✕
+                    </button>
+                  </p>
+                </div>
+              )}
             </div>
-            {hasBrl && !hasEur && (
-              <>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} (R$)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: '#dc2626' }}>
-                    {formatCurrency(maxBrl, 'Brasil')}
-                  </p>
-                  {maxBrlPoint && (
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, marginTop: 2 }}>
-                      {viewMode === 'day' ? `Dia ${maxBrlPoint.day}` : maxBrlPoint.monthYear}
-                    </p>
-                  )}
-                </div>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Média por {unitLabel} (R$)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: 'var(--amber)' }}>
-                    {formatCurrency(avgBrl, 'Brasil')}
-                  </p>
-                </div>
-              </>
-            )}
-            {hasEur && !hasBrl && (
-              <>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} (€)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: '#b91c1c' }}>
-                    {formatCurrency(maxEur, 'Espanha')}
-                  </p>
-                  {maxEurPoint && (
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, marginTop: 2 }}>
-                      {viewMode === 'day' ? `Dia ${maxEurPoint.day}` : maxEurPoint.monthYear}
-                    </p>
-                  )}
-                </div>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Média por {unitLabel} (€)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: 'var(--amber)' }}>
-                    {formatCurrency(avgEur, 'Espanha')}
-                  </p>
-                </div>
-              </>
-            )}
-            {hasBrl && hasEur && (
-              <>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} (R$)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: '#dc2626' }}>
-                    {formatCurrency(maxBrl, 'Brasil')}
-                  </p>
-                  {maxBrlPoint && (
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, marginTop: 2 }}>
-                      {viewMode === 'day' ? `Dia ${maxBrlPoint.day}` : maxBrlPoint.monthYear}
-                    </p>
-                  )}
-                </div>
-                <div className="card px-3 py-2">
-                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} (€)</p>
-                  <p className="text-sm font-semibold font-mono" style={{ color: '#b91c1c' }}>
-                    {formatCurrency(maxEur, 'Espanha')}
-                  </p>
-                  {maxEurPoint && (
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, marginTop: 2 }}>
-                      {viewMode === 'day' ? `Dia ${maxEurPoint.day}` : maxEurPoint.monthYear}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          )}
 
           <ResponsiveContainer width="100%" height={viewMode === 'day' ? 360 : 320}>
             <BarChart
@@ -947,7 +1030,7 @@ export function DailyExpenseChart() {
               />
               {/* Barra R$ (Brasil) */}
               {hasBrl && (
-                <Bar dataKey="valueBrl" name="valueBrl" radius={[3, 3, 0, 0]} minPointSize={3}>
+                <Bar dataKey="valueBrl" name="valueBrl" shape={BrlBarShape}>
                   {chartData.map((pt, i) => {
                     const sel = barSelection
                     const isSelected = sel
@@ -962,7 +1045,7 @@ export function DailyExpenseChart() {
               )}
               {/* Barra € (Espanha) */}
               {hasEur && (
-                <Bar dataKey="valueEur" name="valueEur" radius={[3, 3, 0, 0]} minPointSize={3}>
+                <Bar dataKey="valueEur" name="valueEur" shape={EurBarShape}>
                   {chartData.map((pt, i) => {
                     const sel = barSelection
                     const isSelected = sel
