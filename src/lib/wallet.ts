@@ -79,6 +79,10 @@ export function loadSaldoFinalYm(): string {
   return readPlrConfig().saldoFinalYm ?? ''
 }
 
+export function loadGraficoMesAnoInicial(): string {
+  return readPlrConfig().graficoMesAnoInicial ?? ''
+}
+
 export function loadValeCategoria(): string {
   return readPlrConfig().valeCategoria ?? 'Vale Alimentação/Refeição'
 }
