@@ -655,6 +655,7 @@ function ConfiguracoesInner() {
 
   const [plrName,                  setPlrName]                  = useState('')
   const [saldoFinalYm,             setSaldoFinalYm]             = useState('')
+  const [graficoMesAnoInicial,     setGraficoMesAnoInicial]     = useState('')
   const [valeCategoria,            setValeCategoria]            = useState('')
   const [nomeGrupoEspanha,         setNomeGrupoEspanha]         = useState('')
   const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
@@ -696,6 +697,7 @@ function ConfiguracoesInner() {
     const c = loadPlrConfig()
     setPlrName(c.name ?? 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)')
     setSaldoFinalYm(c.saldoFinalYm ?? '')
+    setGraficoMesAnoInicial(c.graficoMesAnoInicial ?? '')
     setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
@@ -712,6 +714,7 @@ function ConfiguracoesInner() {
           savePlrConfigAll(p)
           setPlrName(p.name ?? '')
           setSaldoFinalYm(p.saldoFinalYm ?? '')
+          setGraficoMesAnoInicial(p.graficoMesAnoInicial ?? '')
           setValeCategoria(p.valeCategoria ?? '')
           setNomeGrupoEspanha(p.nomeGrupoEspanha ?? '')
           setNomeGrupoInvestimento(p.nomeGrupoInvestimento ?? 'Investimentos')
@@ -747,7 +750,7 @@ function ConfiguracoesInner() {
       .catch(() => {})
 
     // Gráfico → localStorage + API
-    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
+    const data = { name: plrName, saldoFinalYm, graficoMesAnoInicial, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
     savePlrConfigAll(data)
     const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
     const plrPromise = existing
@@ -1095,6 +1098,14 @@ function ConfiguracoesInner() {
                     Mês em que o Saldo Final da Carteira entra na receita Brasil.
                   </p>
                   <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
+                </div>
+
+                <div>
+                  <label className="label">Mês/Ano inicial do gráfico</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    A partir de qual mês o filtro Personalizar do gráfico passa a listar os anos.
+                  </p>
+                  <YearMonthSelector value={graficoMesAnoInicial || currentYearMonth()} onChange={setGraficoMesAnoInicial} />
                 </div>
 
                 <div>

@@ -6,6 +6,7 @@ import type { MonthlyCashflowItem } from '@/lib/api'
 import {
   loadPlrName,
   loadSaldoFinalYm,
+  loadGraficoMesAnoInicial,
   loadValeCategoria,
   loadNomeGrupoEspanha,
   loadContasBancariasTotal,
@@ -18,6 +19,7 @@ import {
   transferBetweenBoxes,
 } from '@/lib/wallet'
 import { Modal, Spinner } from '@/components/ui'
+import { FlagBrasil, FlagEspanha, FlagGlobe } from '@/components/ui/Flags'
 import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
@@ -28,8 +30,9 @@ interface ChartPoint {
   yearMonth: string
   label: string
   despesaEspanha: number
-  investAcumEspanha: number
+  investAcumEspanha: number | null
   saldoBrasil: number
+  despesaBrasil: number
 }
 
 type ChartSize = 'compact' | 'normal' | 'large'
@@ -392,6 +395,25 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [configYm, setConfigYm] = useState<string>('')
+  const [filterMode, setFilterMode] = useState<'next6' | 'last12' | 'custom'>('next6')
+  const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
+
+  // Anos efetivamente selecionados pelo usuário no filtro Personalizar
+  const customYearsForFetch = useMemo(() => {
+    if (filterMode !== 'custom') return [] as number[]
+    const years = new Set<number>()
+    selectedYearMonths.forEach(key => years.add(parseInt(key.split('-')[0])))
+    return Array.from(years).sort((a, b) => a - b)
+  }, [filterMode, selectedYearMonths])
+
+  // Só dispara nova busca quando o range relevante à API muda: entrar/sair de
+  // "últimos 12 meses", ou mudar os anos selecionados em "Personalizar".
+  // "Próximos 6 meses" sempre usa o mesmo range de busca padrão.
+  const fetchRangeMode = filterMode === 'last12'
+    ? 'last12'
+    : filterMode === 'custom'
+      ? `custom:${customYearsForFetch.join(',')}`
+      : 'default'
 
   useEffect(() => {
     let cancelled = false
@@ -425,24 +447,41 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         const now = new Date()
         const curYm = now.getFullYear() * 12 + now.getMonth()
 
-        // Ponto de início: saldoFinalYm configurado ou 3 meses atrás
+        // Ponto de início (âncora do acumulado Espanha): saldoFinalYm configurado ou 3 meses atrás
         const sfYmStr = saldoFinalYm
         const startYm = sfYmStr ? ymToNum(sfYmStr) : curYm - 3
         // Range: até 5 anos a frente do ponto de início
         const endYm = startYm + 12 * 5
 
-        // ── Meses do gráfico ──────────────────────────────────────────────────
-        const monthList: string[] = []
-        for (let n = startYm; n <= endYm; n++) {
-          monthList.push(numToYm(n))
-        }
-
-        // Anos e meses únicos para o endpoint (produto cartesiano no backend)
+        // Anos/meses a buscar na API — depende do filtro de período ativo:
+        // "Últimos 12 meses" pede exatamente os anos que compõem essa janela;
+        // "Personalizar" pede exatamente os anos que o usuário selecionou em tela;
+        // "Próximos 6 meses" (ou Personalizar sem seleção ainda) usa o range de projeção padrão.
         const yearsSet = new Set<number>()
         const monthsSet = new Set<number>()
-        for (let n = startYm; n <= endYm; n++) {
-          yearsSet.add(Math.floor(n / 12))
-          monthsSet.add((n % 12) + 1) // backend usa 1-12
+        const monthNumsSet = new Set<number>()
+
+        if (filterMode === 'last12') {
+          const last12Start = curYm - 11
+          for (let n = last12Start; n <= curYm; n++) {
+            yearsSet.add(Math.floor(n / 12))
+            monthsSet.add((n % 12) + 1) // backend usa 1-12
+            monthNumsSet.add(n)
+          }
+        } else if (filterMode === 'custom' && customYearsForFetch.length > 0) {
+          for (const y of customYearsForFetch) {
+            yearsSet.add(y)
+            for (let m = 0; m < 12; m++) {
+              monthsSet.add(m + 1) // backend usa 1-12
+              monthNumsSet.add(y * 12 + m)
+            }
+          }
+        } else {
+          for (let n = startYm; n <= endYm; n++) {
+            yearsSet.add(Math.floor(n / 12))
+            monthsSet.add((n % 12) + 1) // backend usa 1-12
+            monthNumsSet.add(n)
+          }
         }
         const years = Array.from(yearsSet).sort((a, b) => a - b)
         const months = Array.from(monthsSet).sort((a, b) => a - b)
@@ -452,6 +491,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           .catch(() => [] as MonthlyCashflowItem[])
 
         if (cancelled) return
+
+        // ── Meses do gráfico ──────────────────────────────────────────────────
+        // União do range buscado com os meses que a API efetivamente retornou.
+        // Nunca inventamos meses que a API não trouxe — se não veio dado, o mês
+        // simplesmente não aparece no gráfico.
+        for (const item of cashflow) monthNumsSet.add(ymToNum(item.monthYear))
+        const monthList = Array.from(monthNumsSet).sort((a, b) => a - b).map(numToYm)
 
         const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
 
@@ -480,17 +526,34 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
         const points: ChartPoint[] = monthList.map((ym) => {
           const items = byMonth[ym] ?? []
+          const nYm = ymToNum(ym)
 
-          // Despesa Espanha = type 1 + Espanha + hasPay=false
-          const despesaEspanha = items
+          // Despesa Espanha exibida no gráfico = type 1 + Espanha, pagas ou não
+          const despesaEspanhaExibicao = items
+            .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry))
+            .reduce((s, i) => s + (i.value ?? 0), 0)
+
+          // Despesa Espanha pendente — usada apenas na projeção do acumulado
+          // (não pode contar despesas já pagas, senão duplicaria o desconto do saldo atual)
+          const despesaEspanhaPendente = items
             .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
             .reduce((s, i) => s + (i.value ?? 0), 0)
 
-          despesaEspanhaAcum += despesaEspanha
-          const investAcumEspanha = contasBancariasEspanha - despesaEspanhaAcum
+          // Acumulado só é calculado a partir da âncora (startYm) — meses anteriores
+          // são histórico puro e não têm base conhecida para projetar o acumulado
+          let investAcumEspanha: number | null = null
+          if (nYm >= startYm) {
+            despesaEspanhaAcum += despesaEspanhaPendente
+            investAcumEspanha = contasBancariasEspanha - despesaEspanhaAcum
+          }
 
-          // Despesa Brasil = type 1 + Brasil + hasPay=false
-          const despesaBR = items
+          // Despesa Brasil exibida no gráfico = type 1 + Brasil, pagas ou não
+          const despesaBRExibicao = items
+            .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry))
+            .reduce((s, i) => s + (i.value ?? 0), 0)
+
+          // Despesa Brasil pendente — usada apenas no cálculo do Saldo Brasil (não altera)
+          const despesaBRPendente = items
             .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry) && i.hasPay === false)
             .reduce((s, i) => s + (i.value ?? 0), 0)
 
@@ -508,15 +571,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
             : 0
 
-          const saldoBrasil = (receitaBR + (isConfiguredMonth ? saldoFinal : 0) + valeRefeicaoBR) - despesaBR
+          const saldoBrasil = (receitaBR + (isConfiguredMonth ? saldoFinal : 0) + valeRefeicaoBR) - despesaBRPendente
 
           const r2 = (n: number) => Math.round(n * 100) / 100
           return {
             yearMonth: ym,
             label: shortLabel(ym),
-            despesaEspanha:    r2(despesaEspanha),
-            investAcumEspanha: r2(investAcumEspanha),
+            despesaEspanha:    r2(despesaEspanhaExibicao),
+            investAcumEspanha: investAcumEspanha === null ? null : r2(investAcumEspanha),
             saldoBrasil:       r2(saldoBrasil),
+            despesaBrasil:     r2(despesaBRExibicao),
           }
         })
 
@@ -540,11 +604,10 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
     load()
     return () => { cancelled = true }
-  }, [monthsRange, reloadKey])
+  }, [monthsRange, reloadKey, fetchRangeMode])
 
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
-  const [filterMode, setFilterMode] = useState<'next6' | 'custom'>('next6')
-  const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
+  const [countryFilter, setCountryFilter] = useState<'todos' | 'brasil' | 'espanha'>('todos')
 
   // Preferência de tamanho de fonte do gráfico — persiste em localStorage
   const [chartSize, setChartSize] = useState<ChartSize>('normal')
@@ -562,6 +625,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       return data.filter(d => {
         const n = ymToNum(d.yearMonth)
         return n >= baseNum && n < baseNum + 6
+      })
+    }
+    if (filterMode === 'last12') {
+      const nowNum = new Date().getFullYear() * 12 + new Date().getMonth()
+      return data.filter(d => {
+        const n = ymToNum(d.yearMonth)
+        return n <= nowNum && n > nowNum - 12
       })
     }
     if (selectedYearMonths.size === 0) return data
@@ -628,14 +698,14 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   // Detecta o primeiro mês em que o Acumulado Invest. Espanha fica negativo
   // Conta meses a partir do pico (último ponto antes de começar a descer)
   const espanhaZeroPin = useMemo(() => {
-    const negIdx = filteredData.findIndex(d => d.investAcumEspanha < 0)
+    const negIdx = filteredData.findIndex(d => (d.investAcumEspanha ?? 0) < 0)
     if (negIdx < 0) return null
     const negPoint = filteredData[negIdx]
 
     // Encontra o pico: último ponto estável antes de começar a descer
     let peakIdx = 0
     for (let i = 1; i < filteredData.length; i++) {
-      if (filteredData[i].investAcumEspanha >= filteredData[peakIdx].investAcumEspanha) {
+      if ((filteredData[i].investAcumEspanha ?? 0) >= (filteredData[peakIdx].investAcumEspanha ?? 0)) {
         peakIdx = i
       } else {
         break
@@ -674,10 +744,17 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     localStorage.setItem(CHART_SIZE_KEY, size)
   }
 
-  // Anos disponíveis: do ano do saldoFinalYm configurado até +5 anos
-  const sfYmForYears = loadSaldoFinalYm()
-  const baseYear = sfYmForYears ? parseInt(sfYmForYears.split('/')[1]) : new Date().getFullYear()
-  const availableYears = Array.from({ length: 6 }, (_, i) => baseYear + i)
+  // Anos disponíveis no filtro Personalizar: do "Mês/Ano inicial do gráfico"
+  // configurado (Configurações → Gráfico) até o ano atual + 5. Independente
+  // da âncora do Saldo Final, que segue controlando o acumulado/projeção.
+  const currentYearForList = new Date().getFullYear()
+  const graficoInicioYm = loadGraficoMesAnoInicial()
+  const parsedStartYear = graficoInicioYm ? parseInt(graficoInicioYm.split('/')[1]) : NaN
+  const startYearForList = !isNaN(parsedStartYear) ? parsedStartYear : 2018
+  const availableYears = Array.from(
+    { length: currentYearForList + 5 - startYearForList + 1 },
+    (_, i) => startYearForList + i,
+  )
   const MONTH_NAMES = Object.keys(MONTHS)
 
   function toggleYear(y: number) {
@@ -713,12 +790,12 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
       >
         <p className="font-semibold mb-1.5" style={{ color: 'var(--text-1)' }}>{label}</p>
-        {payload.map((p: any) => (
+        {payload.filter((p: any) => p.value != null).map((p: any) => (
           <div key={p.dataKey} className="flex items-center gap-2 my-0.5">
             <span style={{ width: 8, height: 8, background: p.color, borderRadius: '50%', display: 'inline-block' }} />
             <span style={{ color: 'var(--text-3)' }}>{p.name}:</span>
             <span className="font-mono font-medium" style={{ color: 'var(--text-1)' }}>
-              {p.dataKey === 'saldoBrasil' ? formatBrl(p.value) : formatEur(p.value)}
+              {p.dataKey === 'saldoBrasil' || p.dataKey === 'despesaBrasil' ? formatBrl(p.value) : formatEur(p.value)}
             </span>
           </div>
         ))}
@@ -733,8 +810,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   function CustomLabel({ x, y, value, dataKey }: any) {
     const rounded = Math.round((value ?? 0) * 100) / 100
     if (rounded === 0) return null
-    const isBrl = dataKey === 'saldoBrasil'
-    const label = isBrl ? `R$${value.toFixed(2)}` : `€${value.toFixed(2)}`
+    const isBrl = dataKey === 'saldoBrasil' || dataKey === 'despesaBrasil'
+    const label = isBrl ? formatBrl(value) : formatEur(value)
     return (
       <text x={x} y={Number(y) - 6} textAnchor="middle" fontSize={fs.dataLabel} fill={rounded < 0 ? '#dc2626' : '#9ca3af'}>
         {label}
@@ -743,27 +820,39 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }
 
   const LINES = [
-    { key: 'despesaEspanha',    name: 'Despesa Espanha (€)',          color: '#dc2626' },
-    { key: 'investAcumEspanha', name: 'Acumulado Invest. Espanha (€)', color: '#3b82f6' },
-    { key: 'saldoBrasil',       name: 'Saldo Brasil (R$)',             color: '#16a34a' },
+    { key: 'despesaEspanha',    name: 'Despesa Espanha (€)',          color: '#dc2626', country: 'espanha' as const },
+    { key: 'investAcumEspanha', name: 'Acumulado Invest. Espanha (€)', color: '#3b82f6', country: 'espanha' as const },
+    { key: 'saldoBrasil',       name: 'Saldo Brasil (R$)',             color: '#16a34a', country: 'brasil' as const },
+    { key: 'despesaBrasil',     name: 'Despesa Brasil (R$)',           color: '#f87171', country: 'brasil' as const },
   ]
+
+  // Visibilidade efetiva de uma linha: combina o toggle manual da legenda
+  // com o filtro de país (Todos / Brasil / Espanha)
+  function isLineVisible(key: string) {
+    if (hiddenLines[key]) return false
+    if (countryFilter === 'todos') return true
+    const line = LINES.find(l => l.key === key)
+    return line?.country === countryFilter
+  }
 
   function CustomLegend() {
     return (
       <div className="flex flex-wrap justify-center gap-3 pt-3">
-        {LINES.map(({ key, name, color }) => {
-          const hidden = !!hiddenLines[key]
+        {LINES.map(({ key, name, color, country }) => {
+          const hidden = !isLineVisible(key)
+          const disabledByCountry = countryFilter !== 'todos' && country !== countryFilter
           return (
             <button
               key={key}
               type="button"
+              disabled={disabledByCountry}
               onClick={() => toggleLine(key)}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-opacity"
               style={{
                 background: 'var(--bg-3)',
                 border: `1px solid ${hidden ? 'var(--border-1)' : color}`,
                 opacity: hidden ? 0.4 : 1,
-                cursor: 'pointer',
+                cursor: disabledByCountry ? 'default' : 'pointer',
                 color: 'var(--text-2)',
               }}
             >
@@ -784,7 +873,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             Evolução Financeira
           </h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-            Despesa Espanha (€), Investimento Acumulado (€) e Saldo Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : 'período personalizado'}
+            Despesa Espanha (€), Investimento Acumulado (€), Saldo Brasil (R$) e Despesa Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : filterMode === 'last12' ? 'últimos 12 meses' : 'período personalizado'}
           </p>
         </div>
         {/* Toggle de tamanho de fonte */}
@@ -814,6 +903,32 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             )
           })}
         </div>
+      </div>
+
+      {/* Filtro de país — restringe as linhas exibidas ao país selecionado */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {([
+          { key: 'todos', label: 'Todos', Icon: FlagGlobe },
+          { key: 'brasil', label: 'Brasil', Icon: FlagBrasil },
+          { key: 'espanha', label: 'Espanha', Icon: FlagEspanha },
+        ] as const).map(({ key, label, Icon }) => {
+          const active = countryFilter === key
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setCountryFilter(key)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: active ? 'var(--green-400)' : 'var(--bg-3)',
+                color: active ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
+              }}>
+              <Icon size={14} />
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Alerta de saldo negativo com opção de ajuste via investimentos */}
@@ -881,7 +996,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             />
             <Tooltip content={<CustomTooltip />} />
 
-            {!hiddenLines['despesaEspanha'] && (
+            {isLineVisible('despesaEspanha') && (
               <Area
                 yAxisId="left"
                 type="monotone"
@@ -894,7 +1009,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 label={<CustomLabel dataKey="despesaEspanha" />}
               />
             )}
-            {!hiddenLines['investAcumEspanha'] && (
+            {isLineVisible('investAcumEspanha') && (
               <Line
                 yAxisId="left"
                 type="monotone"
@@ -907,7 +1022,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 label={<CustomLabel dataKey="investAcumEspanha" />}
               />
             )}
-            {!hiddenLines['saldoBrasil'] && (
+            {isLineVisible('saldoBrasil') && (
               <Line
                 yAxisId="right"
                 type="monotone"
@@ -920,9 +1035,22 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 label={<CustomLabel dataKey="saldoBrasil" />}
               />
             )}
+            {isLineVisible('despesaBrasil') && (
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="despesaBrasil"
+                name="Despesa Brasil (R$)"
+                stroke="#f87171"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                label={<CustomLabel dataKey="despesaBrasil" />}
+              />
+            )}
 
             {/* Linha vertical + label no topo: primeiro mês negativo Espanha */}
-            {espanhaZeroPin && !hiddenLines['investAcumEspanha'] && (
+            {espanhaZeroPin && isLineVisible('investAcumEspanha') && (
               <ReferenceLine
                 yAxisId="left"
                 x={espanhaZeroPin.label}
@@ -948,6 +1076,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         {/* Presets */}
         <div className="flex flex-wrap gap-1.5">
           <button type="button"
+            onClick={() => setFilterMode('last12')}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: filterMode === 'last12' ? 'var(--green-400)' : 'var(--bg-3)',
+              color: filterMode === 'last12' ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filterMode === 'last12' ? 'var(--green-400)' : 'var(--border-1)'}`,
+            }}>
+            Últimos 12 meses
+          </button>
+          <button type="button"
             onClick={() => setFilterMode('next6')}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
@@ -965,6 +1103,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                   const now = new Date()
                   const initial = new Set<string>()
                   for (let m = 0; m < 12; m++) {
+                    initial.add(`${now.getFullYear() - 1}-${m}`)
                     initial.add(`${now.getFullYear()}-${m}`)
                     initial.add(`${now.getFullYear() + 1}-${m}`)
                   }
