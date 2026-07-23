@@ -12,12 +12,13 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2,
+  Pencil, Trash2, Bell,
 } from 'lucide-react'
 import { walletApi, accountsApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { currentYearMonth } from '@/lib/utils'
+import { STALE_ALERT_DEFAULT_MENSAGEM, STALE_ALERT_DEFAULT_INTERVALO_MINUTOS, DESPESA_MES_DEFAULT_CATEGORIA } from '@/lib/wallet'
 
 // ─── Chip list ────────────────────────────────────────────────────────────────
 
@@ -623,14 +624,47 @@ function savePlrConfigAll(data: Record<string, string>) {
   localStorage.setItem(PLR_CONFIG_KEY, JSON.stringify(data))
 }
 
+// ─── Alerta de dados desatualizados — localStorage ────────────────────────────
+
+const STALE_ALERT_CONFIG_KEY = 'finance_stale_alert_config'
+
+function loadStaleAlertConfigLocal(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(STALE_ALERT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function saveStaleAlertConfigLocal(data: Record<string, string>) {
+  localStorage.setItem(STALE_ALERT_CONFIG_KEY, JSON.stringify(data))
+}
+
+// ─── Despesas por Mês/Ano — filtro padrão — localStorage ──────────────────────
+
+const DESPESA_MES_CONFIG_KEY = 'finance_despesa_mes_config'
+
+function loadDespesaMesConfigLocal(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(DESPESA_MES_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function saveDespesaMesConfigLocal(data: Record<string, string>) {
+  localStorage.setItem(DESPESA_MES_CONFIG_KEY, JSON.stringify(data))
+}
+
 // ─── Tabs definition ──────────────────────────────────────────────────────────
 
-type TabId = 'formularios' | 'contas' | 'grafico'
+type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas'
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'formularios', label: 'Formulários',   Icon: SlidersHorizontal },
   { id: 'contas',      label: 'Contas',         Icon: Building2         },
   { id: 'grafico',     label: 'Gráfico',        Icon: TrendingUp        },
+  { id: 'alertas',     label: 'Alertas',        Icon: Bell              },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -661,6 +695,15 @@ function ConfiguracoesInner() {
   const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
   const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
   const [chartRecords,             setChartRecords]             = useState<WalletRecord[]>([])
+
+  const [staleAlertAtivo,            setStaleAlertAtivo]            = useState(true)
+  const [staleAlertMensagem,         setStaleAlertMensagem]         = useState(STALE_ALERT_DEFAULT_MENSAGEM)
+  const [staleAlertIntervaloMinutos, setStaleAlertIntervaloMinutos] = useState(String(STALE_ALERT_DEFAULT_INTERVALO_MINUTOS))
+  const [staleAlertRecord,           setStaleAlertRecord]           = useState<WalletRecord | null>(null)
+
+  const [despesaMesFiltrarAnoAtual,  setDespesaMesFiltrarAnoAtual]  = useState(true)
+  const [despesaMesCategoriaPadrao,  setDespesaMesCategoriaPadrao]  = useState(DESPESA_MES_DEFAULT_CATEGORIA)
+  const [despesaMesRecord,           setDespesaMesRecord]           = useState<WalletRecord | null>(null)
 
   const [saved, setSaved] = useState(false)
 
@@ -703,6 +746,15 @@ function ConfiguracoesInner() {
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
     setInvestimentoAnosProjecao(c.investimentoAnosProjecao ?? '5')
 
+    const sa = loadStaleAlertConfigLocal()
+    setStaleAlertAtivo(sa.ativo !== 'false')
+    setStaleAlertMensagem(sa.mensagem ?? STALE_ALERT_DEFAULT_MENSAGEM)
+    setStaleAlertIntervaloMinutos(sa.intervaloMinutos ?? String(STALE_ALERT_DEFAULT_INTERVALO_MINUTOS))
+
+    const dm = loadDespesaMesConfigLocal()
+    setDespesaMesFiltrarAnoAtual(dm.filtrarAnoAtual !== 'false')
+    setDespesaMesCategoriaPadrao(dm.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
+
     walletApi.search().then(res => {
       const records = res.output?.data ?? []
       setChartRecords(records)
@@ -726,6 +778,29 @@ function ConfiguracoesInner() {
       setSaldoContasRecord(saldoRec ?? null)
       if (saldoRec?.walletValue) {
         try { setSaldoContas(JSON.parse(saldoRec.walletValue)) } catch {}
+      }
+
+      const staleRec = records.find(r => r.walletKey === 'finance_stale_alert_config')
+      setStaleAlertRecord(staleRec ?? null)
+      if (staleRec?.walletValue) {
+        try {
+          const s = JSON.parse(staleRec.walletValue)
+          saveStaleAlertConfigLocal(s)
+          setStaleAlertAtivo(s.ativo !== 'false')
+          setStaleAlertMensagem(s.mensagem ?? STALE_ALERT_DEFAULT_MENSAGEM)
+          setStaleAlertIntervaloMinutos(s.intervaloMinutos ?? String(STALE_ALERT_DEFAULT_INTERVALO_MINUTOS))
+        } catch {}
+      }
+
+      const despesaMesRec = records.find(r => r.walletKey === 'finance_despesa_mes_config')
+      setDespesaMesRecord(despesaMesRec ?? null)
+      if (despesaMesRec?.walletValue) {
+        try {
+          const d = JSON.parse(despesaMesRec.walletValue)
+          saveDespesaMesConfigLocal(d)
+          setDespesaMesFiltrarAnoAtual(d.filtrarAnoAtual !== 'false')
+          setDespesaMesCategoriaPadrao(d.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
+        } catch {}
       }
     }).catch(() => {})
   }, [])
@@ -757,6 +832,38 @@ function ConfiguracoesInner() {
       ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
       : walletApi.register('finance_plr_config', JSON.stringify(data))
     plrPromise.catch(() => {})
+
+    // Alerta de dados desatualizados → localStorage + API
+    const staleData = { ativo: String(staleAlertAtivo), mensagem: staleAlertMensagem, intervaloMinutos: staleAlertIntervaloMinutos }
+    saveStaleAlertConfigLocal(staleData)
+    const staleVal = JSON.stringify(staleData)
+    const stalePromise = staleAlertRecord
+      ? walletApi.edit(staleAlertRecord.id, 'finance_stale_alert_config', staleVal, staleAlertRecord.creationDate)
+      : walletApi.register('finance_stale_alert_config', staleVal)
+    stalePromise
+      .then(res => {
+        if (!staleAlertRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setStaleAlertRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
+    // Despesas por Mês/Ano — filtro padrão → localStorage + API
+    const despesaMesData = { filtrarAnoAtual: String(despesaMesFiltrarAnoAtual), categoriaPadrao: despesaMesCategoriaPadrao }
+    saveDespesaMesConfigLocal(despesaMesData)
+    const despesaMesVal = JSON.stringify(despesaMesData)
+    const despesaMesPromise = despesaMesRecord
+      ? walletApi.edit(despesaMesRecord.id, 'finance_despesa_mes_config', despesaMesVal, despesaMesRecord.creationDate)
+      : walletApi.register('finance_despesa_mes_config', despesaMesVal)
+    despesaMesPromise
+      .then(res => {
+        if (!despesaMesRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setDespesaMesRecord(newRec)
+        }
+      })
+      .catch(() => {})
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -1160,6 +1267,132 @@ function ConfiguracoesInner() {
                     value={investimentoAnosProjecao}
                     onChange={e => setInvestimentoAnosProjecao(e.target.value)}
                     placeholder="5"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Despesas por Mês/Ano */}
+          {activeTab === 'grafico' && (
+            <div
+              className="card overflow-hidden"
+              style={{ border: '1px solid var(--border-1)' }}
+            >
+              <div
+                className="px-5 py-4"
+                style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={15} style={{ color: 'var(--green-400)' }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                        Despesas por Mês/Ano
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                        Filtro padrão aplicado ao abrir esse gráfico no Dashboard
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={despesaMesFiltrarAnoAtual}
+                      onChange={e => setDespesaMesFiltrarAnoAtual(e.target.checked)}
+                      className="w-4 h-4 rounded accent-green-500"
+                    />
+                    <span className="text-xs font-medium" style={{ color: despesaMesFiltrarAnoAtual ? 'var(--green-400)' : 'var(--text-3)' }}>
+                      Filtrar ano atual
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="p-5">
+                <label className="label">Categoria padrão</label>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                  Categoria pré-selecionada ao abrir o gráfico. Deixe em branco para não filtrar nenhuma.
+                </p>
+                <input
+                  className="input w-full"
+                  value={despesaMesCategoriaPadrao}
+                  onChange={e => setDespesaMesCategoriaPadrao(e.target.value)}
+                  placeholder={DESPESA_MES_DEFAULT_CATEGORIA}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Alertas */}
+          {activeTab === 'alertas' && (
+            <div
+              className="card overflow-hidden"
+              style={{ border: '1px solid var(--border-1)' }}
+            >
+              <div
+                className="px-5 py-4"
+                style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-3)' }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Bell size={15} style={{ color: 'var(--green-400)' }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                        Dados desatualizados
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                        Pop-up exibido quando o alerta de "registros pendentes de cadastro" some do topo da tela
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={staleAlertAtivo}
+                      onChange={e => setStaleAlertAtivo(e.target.checked)}
+                      className="w-4 h-4 rounded accent-green-500"
+                    />
+                    <span className="text-xs font-medium" style={{ color: staleAlertAtivo ? 'var(--green-400)' : 'var(--text-3)' }}>
+                      {staleAlertAtivo ? 'Ativado' : 'Desativado'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div
+                className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5"
+                style={{ opacity: staleAlertAtivo ? 1 : 0.5, pointerEvents: staleAlertAtivo ? 'auto' : 'none' }}
+              >
+                <div className="sm:col-span-2">
+                  <label className="label">Mensagem do pop-up</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Texto exibido pedindo para o usuário atualizar a tela.
+                  </p>
+                  <textarea
+                    className="input w-full"
+                    rows={3}
+                    value={staleAlertMensagem}
+                    onChange={e => setStaleAlertMensagem(e.target.value)}
+                    placeholder={STALE_ALERT_DEFAULT_MENSAGEM}
+                    disabled={!staleAlertAtivo}
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Repetir a cada (minutos)</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Se o usuário optar por não atualizar agora, o pop-up volta a aparecer após esse intervalo.
+                  </p>
+                  <input
+                    className="input w-full"
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={staleAlertIntervaloMinutos}
+                    onChange={e => setStaleAlertIntervaloMinutos(e.target.value)}
+                    placeholder={String(STALE_ALERT_DEFAULT_INTERVALO_MINUTOS)}
+                    disabled={!staleAlertAtivo}
                   />
                 </div>
               </div>
