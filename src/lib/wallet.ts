@@ -6,6 +6,11 @@
 
 const WALLET_KEY = 'finance_wallet'
 const PLR_CONFIG_KEY = 'finance_plr_config'
+const STALE_ALERT_CONFIG_KEY = 'finance_stale_alert_config'
+
+export const STALE_ALERT_DEFAULT_MENSAGEM =
+  'Os dados desta tela podem estar desatualizados. Recomendamos atualizar a página para ver as informações mais recentes.'
+export const STALE_ALERT_DEFAULT_INTERVALO_MINUTOS = 5
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +103,50 @@ export function loadNomeGrupoInvestimento(): string {
 export function loadInvestimentoAnosProjecao(): number {
   const v = parseInt(readPlrConfig().investimentoAnosProjecao)
   return !isNaN(v) && v > 0 ? v : 5
+}
+
+// ─── Alerta de dados desatualizados ───────────────────────────────────────────
+
+function readStaleAlertConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(STALE_ALERT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadStaleAlertMensagem(): string {
+  return readStaleAlertConfig().mensagem ?? STALE_ALERT_DEFAULT_MENSAGEM
+}
+
+export function loadStaleAlertIntervaloMinutos(): number {
+  const v = parseInt(readStaleAlertConfig().intervaloMinutos)
+  return !isNaN(v) && v > 0 ? v : STALE_ALERT_DEFAULT_INTERVALO_MINUTOS
+}
+
+export function loadStaleAlertAtivo(): boolean {
+  return readStaleAlertConfig().ativo !== 'false'
+}
+
+// ─── Despesas por Mês/Ano — filtro padrão ─────────────────────────────────────
+
+const DESPESA_MES_CONFIG_KEY = 'finance_despesa_mes_config'
+export const DESPESA_MES_DEFAULT_CATEGORIA = 'Alimentação'
+
+function readDespesaMesConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(DESPESA_MES_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadDespesaMesFiltrarAnoAtual(): boolean {
+  return readDespesaMesConfig().filtrarAnoAtual !== 'false'
+}
+
+export function loadDespesaMesCategoriaPadrao(): string {
+  return readDespesaMesConfig().categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA
 }
 
 export function loadInvestimentoTotal(): { brl: number; eur: number } {

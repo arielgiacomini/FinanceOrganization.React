@@ -11,6 +11,7 @@ import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
+import { loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao } from '@/lib/wallet'
 import type { BillToPay } from '@/types'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -83,11 +84,16 @@ export function DailyExpenseChart() {
 
   const [chartSize, setChartSize] = useState<ChartSize>('normal')
   const [viewMode, setViewMode] = useState<ViewMode>('month')
-  const [selectedYears, setSelectedYears] = useState<number[]>([...AVAILABLE_YEARS])
+  const [selectedYears, setSelectedYears] = useState<number[]>(
+    () => loadDespesaMesFiltrarAnoAtual() ? [currentYear] : [...AVAILABLE_YEARS]
+  )
   const [dayYear, setDayYear] = useState(currentYear)
   const [dayMonth, setDayMonth] = useState(now.getMonth() + 1)
 
-  const [catPath, setCatPath] = useState<string[]>([])
+  const [catPath, setCatPath] = useState<string[]>(() => {
+    const categoriaPadrao = loadDespesaMesCategoriaPadrao()
+    return categoriaPadrao ? [categoriaPadrao] : []
+  })
 
   const [categories, setCategories] = useState<string[]>([])
   const [allData, setAllData] = useState<DailyExpenseRecord[]>([])
