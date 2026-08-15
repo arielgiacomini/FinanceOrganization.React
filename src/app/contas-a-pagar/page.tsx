@@ -4,7 +4,8 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { billsToPayApi, accountsApi, cashReceivableApi, walletApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth, DEFAULT_SALDO_CONTAS } from '@/lib/utils'
-import { loadSaldoFinalYm } from '@/lib/wallet'
+import { loadSaldoFinalYm, loadContasPagarSortCol, loadContasPagarSortDir } from '@/lib/wallet'
+import type { ContasPagarSortCol } from '@/lib/wallet'
 import type { BillToPay, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -13,6 +14,8 @@ import type { CountryFilter } from '@/components/ui/CountryTabs'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { CategoryFilter, matchesCategory } from '@/components/ui/CategoryFilter'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
+import { QuickBillToPayForm } from '@/components/forms/QuickBillToPayForm'
+import type { QuickBillPrefill, BillToPayQuickValues } from '@/components/forms/QuickBillToPayForm'
 import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BulkPayModal } from '@/components/ui/BulkPayModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
@@ -36,7 +39,7 @@ function purchaseDateTag(dateStr?: string | null): { label: string; color: strin
   return null
 }
 
-function sortBills(data: BillToPay[]): BillToPay[] {
+function sortBillsDefault(data: BillToPay[]): BillToPay[] {
   const byDueThenPurchase = (a: BillToPay, b: BillToPay) => {
     const dueDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
     if (dueDiff !== 0) return dueDiff
@@ -51,6 +54,27 @@ function sortBills(data: BillToPay[]): BillToPay[] {
   ]
 }
 
+/** Ordena a lista pela coluna clicada pelo usuário (ou pelo padrão configurado). */
+function sortBillsBy(data: BillToPay[], col: ContasPagarSortCol, dir: 'asc' | 'desc'): BillToPay[] {
+  if (col === 'default') return sortBillsDefault(data)
+  const d = dir === 'asc' ? 1 : -1
+  const toTime = (v?: string | null) => v ? new Date(v).getTime() : 0
+  return [...data].sort((a, b) => {
+    switch (col) {
+      case 'name':         return d * (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR')
+      case 'country':      return d * (a.country ?? '').localeCompare(b.country ?? '', 'pt-BR')
+      case 'account':      return d * (a.account ?? '').localeCompare(b.account ?? '', 'pt-BR')
+      case 'category':     return d * (a.category ?? '').localeCompare(b.category ?? '', 'pt-BR')
+      case 'value':        return d * (a.value - b.value)
+      case 'dueDate':      return d * (toTime(a.dueDate) - toTime(b.dueDate))
+      case 'purchaseDate': return d * (toTime(a.purchaseDate) - toTime(b.purchaseDate))
+      case 'payDay':       return d * (toTime(a.payDay) - toTime(b.payDay))
+      case 'status':       return d * ((a.hasPay ? 1 : 0) - (b.hasPay ? 1 : 0))
+      default:             return 0
+    }
+  })
+}
+
 function ContasAPagarPageInner() {
   const [ym, setYm] = useState(currentYearMonth())
   const [configLoaded, setConfigLoaded] = useState(false)
@@ -63,8 +87,18 @@ function ContasAPagarPageInner() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Pago' | 'Pendente'>('Todos')
   const [catPath, setCatPath] = useState<string[]>([])
+  const [sortCol, setSortCol] = useState<ContasPagarSortCol>(() => loadContasPagarSortCol())
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => loadContasPagarSortDir())
+
+  function handleSort(col: ContasPagarSortCol) {
+    if (col === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
 
   const [createOpen, setCreateOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<'quick' | 'full'>('quick')
+  const [fullPrefill, setFullPrefill] = useState<QuickBillPrefill | undefined>(undefined)
+  const [quickPrefill, setQuickPrefill] = useState<BillToPayQuickValues | undefined>(undefined)
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
   const [payTarget, setPayTarget] = useState<BillToPay | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
@@ -141,7 +175,7 @@ function ContasAPagarPageInner() {
     setLoading(true)
     try {
       const res = await billsToPayApi.search({ yearMonth: ym, showDetails: true })
-      setBills(sortBills(res.output?.data ?? []))
+      setBills(res.output?.data ?? [])
     } finally {
       setLoading(false)
     }
@@ -186,6 +220,12 @@ function ContasAPagarPageInner() {
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bills, countryFilter, accountFilter, search, catPath.join(':'), statusFilter])
+
+  // Ordenação exibida na tabela — coluna clicada pelo usuário (ou o padrão configurado)
+  const sortedFiltered = useMemo(
+    () => sortBillsBy(filtered, sortCol, sortDir),
+    [filtered, sortCol, sortDir]
+  )
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -286,7 +326,7 @@ function ContasAPagarPageInner() {
             <button className="btn-secondary flex items-center gap-1.5" onClick={() => setBulkPayOpen(true)}>
               <CreditCard size={15} /> Pagar em Massa
             </button>
-            <button className="btn-primary" onClick={() => setCreateOpen(true)}>
+            <button className="btn-primary" onClick={() => { setCreateMode('quick'); setFullPrefill(undefined); setQuickPrefill(undefined); setCreateOpen(true) }}>
               <Plus size={16} /> Nova conta
             </button>
           </div>
@@ -529,9 +569,9 @@ function ContasAPagarPageInner() {
       <div className="flex flex-col gap-3 sm:hidden">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner size={28} /></div>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--text-3)' }}>Nenhum registro encontrado.</div>
-        ) : filtered.map((b) => {
+        ) : sortedFiltered.map((b) => {
           const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const toRgb = (h: string) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
@@ -661,12 +701,28 @@ function ContasAPagarPageInner() {
       {/* Tabela desktop */}
       <div className="hidden sm:block">
       <Table
-        headers={['', 'Nome', 'País', 'Qtd Compras', 'Conta', 'Categoria', 'Valor', 'Vencimento', 'Dt. Compra', 'Pago em', 'Status', 'Ações']}
+        headers={[
+          '',
+          { label: 'Nome',        sortKey: 'name' },
+          { label: 'País',        sortKey: 'country' },
+          'Qtd Compras',
+          { label: 'Conta',       sortKey: 'account' },
+          { label: 'Categoria',   sortKey: 'category' },
+          { label: 'Valor',       sortKey: 'value' },
+          { label: 'Vencimento',  sortKey: 'dueDate' },
+          { label: 'Dt. Compra',  sortKey: 'purchaseDate' },
+          { label: 'Pago em',     sortKey: 'payDay' },
+          { label: 'Status',      sortKey: 'status' },
+          'Ações',
+        ]}
         loading={loading}
         empty={!loading && filtered.length === 0}
         headerOffset={headerOffset}
+        sortCol={sortCol}
+        sortDir={sortDir}
+        onSort={(key) => handleSort(key as ContasPagarSortCol)}
       >
-        {filtered.map((b) => {
+        {sortedFiltered.map((b) => {
           const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const isRowSelected = !!selected[b.id]
@@ -775,8 +831,28 @@ function ContasAPagarPageInner() {
       </div>
 
       {/* Modals */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Nova Conta a Pagar" size="lg">
-        <BillToPayForm onSuccess={() => { setCreateOpen(false); load() }} onCancel={() => setCreateOpen(false)} />
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={createMode === 'quick' ? 'Nova Conta a Pagar — Cadastro Rápido' : 'Nova Conta a Pagar — Formulário Completo'}
+        size={createMode === 'quick' ? 'md' : 'lg'}
+      >
+        {createMode === 'quick' ? (
+          <QuickBillToPayForm
+            initialValues={quickPrefill}
+            onSaved={load}
+            onDone={() => setCreateOpen(false)}
+            onSwitchFull={(prefill) => { setFullPrefill(prefill); setCreateMode('full') }}
+            onCancel={() => setCreateOpen(false)}
+          />
+        ) : (
+          <BillToPayForm
+            prefill={fullPrefill}
+            onSuccess={() => { setCreateOpen(false); load() }}
+            onCancel={() => setCreateOpen(false)}
+            onSwitchQuick={(values) => { setQuickPrefill(values); setCreateMode('quick') }}
+          />
+        )}
       </Modal>
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Editar Conta a Pagar" size="lg">
         {editTarget && <BillToPayForm initial={editTarget} onSuccess={() => { setEditTarget(null); load() }} onCancel={() => setEditTarget(null)} />}

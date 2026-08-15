@@ -145,15 +145,24 @@ export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
 
 // ─── Table ────────────────────────────────────────────────────────────────────
 
+export interface TableHeader {
+  label: string
+  /** Quando definido junto com `onSort`, o cabeçalho vira clicável para ordenação. */
+  sortKey?: string
+}
+
 interface TableProps {
-  headers: string[]
+  headers: (string | TableHeader)[]
   children: React.ReactNode
   loading?: boolean
   empty?: boolean
   headerOffset?: number
+  sortCol?: string
+  sortDir?: 'asc' | 'desc'
+  onSort?: (key: string) => void
 }
 
-export function Table({ headers, children, loading, empty, headerOffset = 0 }: TableProps) {
+export function Table({ headers, children, loading, empty, headerOffset = 0, sortCol, sortDir, onSort }: TableProps) {
   return (
     <div
       className="overflow-hidden sm:overflow-visible rounded-xl"
@@ -163,15 +172,37 @@ export function Table({ headers, children, loading, empty, headerOffset = 0 }: T
         <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-2)' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
-              {headers.map((h) => (
-                <th
-                  key={h}
-                  className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:z-20"
-                  style={{ color: 'var(--text-3)', background: 'var(--bg-2)', boxShadow: 'inset 0 -1px 0 var(--border-1)', top: headerOffset }}
-                >
-                  {h}
-                </th>
-              ))}
+              {headers.map((h) => {
+                const label = typeof h === 'string' ? h : h.label
+                const sortKey = typeof h === 'string' ? undefined : h.sortKey
+                const sortable = !!sortKey && !!onSort
+                const active = sortable && sortCol === sortKey
+                return (
+                  <th
+                    key={label}
+                    className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:z-20"
+                    style={{
+                      color: active ? 'var(--text-1)' : 'var(--text-3)',
+                      background: 'var(--bg-2)',
+                      boxShadow: 'inset 0 -1px 0 var(--border-1)',
+                      top: headerOffset,
+                      cursor: sortable ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onClick={() => sortable && onSort!(sortKey!)}
+                  >
+                    {sortable ? (
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        <span style={{ fontSize: 10, opacity: active ? 1 : 0.3 }}>
+                          {active ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                        </span>
+                      </span>
+                    ) : label}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>

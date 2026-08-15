@@ -12,13 +12,21 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2, Bell,
+  Pencil, Trash2, Bell, ArrowUpDown, Zap,
 } from 'lucide-react'
-import { walletApi, accountsApi } from '@/lib/api'
+import { walletApi, accountsApi, categoriesApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { currentYearMonth } from '@/lib/utils'
-import { STALE_ALERT_DEFAULT_MENSAGEM, STALE_ALERT_DEFAULT_INTERVALO_MINUTOS, DESPESA_MES_DEFAULT_CATEGORIA } from '@/lib/wallet'
+import {
+  STALE_ALERT_DEFAULT_MENSAGEM, STALE_ALERT_DEFAULT_INTERVALO_MINUTOS,
+  DESPESA_MES_DEFAULT_CATEGORIA,
+  CONTAS_PAGAR_SORT_COLUMNS, CONTAS_RECEBER_SORT_COLUMNS,
+  QUICK_BILL_FIELDS, QUICK_BILL_ENABLED_DEFAULT, QUICK_BILL_VALUE_DEFAULT,
+  loadQuickBillEnabledFields, loadQuickBillDefaultValues,
+} from '@/lib/wallet'
+import type { ContasPagarSortCol, ContasReceberSortCol, QuickBillFieldKey } from '@/lib/wallet'
 
 // ─── Chip list ────────────────────────────────────────────────────────────────
 
@@ -656,15 +664,65 @@ function saveDespesaMesConfigLocal(data: Record<string, string>) {
   localStorage.setItem(DESPESA_MES_CONFIG_KEY, JSON.stringify(data))
 }
 
+// ─── Contas a Pagar — ordenação padrão da tabela — localStorage ───────────────
+
+const CONTAS_PAGAR_SORT_CONFIG_KEY = 'finance_contas_pagar_sort_config'
+
+function loadContasPagarSortConfigLocal(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTAS_PAGAR_SORT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function saveContasPagarSortConfigLocal(data: Record<string, string>) {
+  localStorage.setItem(CONTAS_PAGAR_SORT_CONFIG_KEY, JSON.stringify(data))
+}
+
+// ─── Contas a Receber — ordenação padrão da tabela — localStorage ─────────────
+
+const CONTAS_RECEBER_SORT_CONFIG_KEY = 'finance_contas_receber_sort_config'
+
+function loadContasReceberSortConfigLocal(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTAS_RECEBER_SORT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function saveContasReceberSortConfigLocal(data: Record<string, string>) {
+  localStorage.setItem(CONTAS_RECEBER_SORT_CONFIG_KEY, JSON.stringify(data))
+}
+
+// ─── Cadastro Rápido — Contas a Pagar — localStorage ───────────────────────────
+
+const QUICK_BILL_CONFIG_KEY = 'finance_quick_bill_config'
+
+function loadQuickBillConfigLocal(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(QUICK_BILL_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+function saveQuickBillConfigLocal(data: Record<string, string>) {
+  localStorage.setItem(QUICK_BILL_CONFIG_KEY, JSON.stringify(data))
+}
+
 // ─── Tabs definition ──────────────────────────────────────────────────────────
 
-type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas'
+type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao' | 'cadastro-rapido'
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
-  { id: 'formularios', label: 'Formulários',   Icon: SlidersHorizontal },
-  { id: 'contas',      label: 'Contas',         Icon: Building2         },
-  { id: 'grafico',     label: 'Gráfico',        Icon: TrendingUp        },
-  { id: 'alertas',     label: 'Alertas',        Icon: Bell              },
+  { id: 'formularios',     label: 'Formulários',              Icon: SlidersHorizontal },
+  { id: 'contas',          label: 'Contas',                    Icon: Building2         },
+  { id: 'grafico',         label: 'Gráfico',                   Icon: TrendingUp        },
+  { id: 'alertas',         label: 'Alertas',                   Icon: Bell              },
+  { id: 'ordenacao',       label: 'Contas a Pagar/Receber',     Icon: ArrowUpDown       },
+  { id: 'cadastro-rapido', label: 'Cadastro Rápido',            Icon: Zap               },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -704,6 +762,19 @@ function ConfiguracoesInner() {
   const [despesaMesFiltrarAnoAtual,  setDespesaMesFiltrarAnoAtual]  = useState(true)
   const [despesaMesCategoriaPadrao,  setDespesaMesCategoriaPadrao]  = useState(DESPESA_MES_DEFAULT_CATEGORIA)
   const [despesaMesRecord,           setDespesaMesRecord]           = useState<WalletRecord | null>(null)
+
+  const [contasPagarSortCol,         setContasPagarSortCol]         = useState<ContasPagarSortCol>('default')
+  const [contasPagarSortDir,         setContasPagarSortDir]         = useState<'asc' | 'desc'>('asc')
+  const [contasPagarSortRecord,      setContasPagarSortRecord]      = useState<WalletRecord | null>(null)
+
+  const [contasReceberSortCol,       setContasReceberSortCol]       = useState<ContasReceberSortCol>('default')
+  const [contasReceberSortDir,       setContasReceberSortDir]       = useState<'asc' | 'desc'>('asc')
+  const [contasReceberSortRecord,    setContasReceberSortRecord]    = useState<WalletRecord | null>(null)
+
+  const [quickBillEnabled, setQuickBillEnabled] = useState<Record<QuickBillFieldKey, boolean>>({ ...QUICK_BILL_ENABLED_DEFAULT })
+  const [quickBillDefaults, setQuickBillDefaults] = useState<Record<QuickBillFieldKey, string>>({ ...QUICK_BILL_VALUE_DEFAULT })
+  const [quickBillRecord, setQuickBillRecord] = useState<WalletRecord | null>(null)
+  const [quickBillCategories, setQuickBillCategories] = useState<string[]>([])
 
   const [saved, setSaved] = useState(false)
 
@@ -755,6 +826,19 @@ function ConfiguracoesInner() {
     setDespesaMesFiltrarAnoAtual(dm.filtrarAnoAtual !== 'false')
     setDespesaMesCategoriaPadrao(dm.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
 
+    const cp = loadContasPagarSortConfigLocal()
+    setContasPagarSortCol((CONTAS_PAGAR_SORT_COLUMNS.some(c => c.value === cp.sortCol) ? cp.sortCol : 'default') as ContasPagarSortCol)
+    setContasPagarSortDir(cp.sortDir === 'desc' ? 'desc' : 'asc')
+
+    const cr = loadContasReceberSortConfigLocal()
+    setContasReceberSortCol((CONTAS_RECEBER_SORT_COLUMNS.some(c => c.value === cr.sortCol) ? cr.sortCol : 'default') as ContasReceberSortCol)
+    setContasReceberSortDir(cr.sortDir === 'desc' ? 'desc' : 'asc')
+
+    setQuickBillEnabled(loadQuickBillEnabledFields())
+    setQuickBillDefaults(loadQuickBillDefaultValues())
+
+    categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }).then(cats => setQuickBillCategories(cats ?? [])).catch(() => {})
+
     walletApi.search().then(res => {
       const records = res.output?.data ?? []
       setChartRecords(records)
@@ -800,6 +884,47 @@ function ConfiguracoesInner() {
           saveDespesaMesConfigLocal(d)
           setDespesaMesFiltrarAnoAtual(d.filtrarAnoAtual !== 'false')
           setDespesaMesCategoriaPadrao(d.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
+        } catch {}
+      }
+
+      const contasPagarSortRec = records.find(r => r.walletKey === 'finance_contas_pagar_sort_config')
+      setContasPagarSortRecord(contasPagarSortRec ?? null)
+      if (contasPagarSortRec?.walletValue) {
+        try {
+          const c = JSON.parse(contasPagarSortRec.walletValue)
+          saveContasPagarSortConfigLocal(c)
+          setContasPagarSortCol((CONTAS_PAGAR_SORT_COLUMNS.some(x => x.value === c.sortCol) ? c.sortCol : 'default') as ContasPagarSortCol)
+          setContasPagarSortDir(c.sortDir === 'desc' ? 'desc' : 'asc')
+        } catch {}
+      }
+
+      const contasReceberSortRec = records.find(r => r.walletKey === 'finance_contas_receber_sort_config')
+      setContasReceberSortRecord(contasReceberSortRec ?? null)
+      if (contasReceberSortRec?.walletValue) {
+        try {
+          const c = JSON.parse(contasReceberSortRec.walletValue)
+          saveContasReceberSortConfigLocal(c)
+          setContasReceberSortCol((CONTAS_RECEBER_SORT_COLUMNS.some(x => x.value === c.sortCol) ? c.sortCol : 'default') as ContasReceberSortCol)
+          setContasReceberSortDir(c.sortDir === 'desc' ? 'desc' : 'asc')
+        } catch {}
+      }
+
+      const quickBillRec = records.find(r => r.walletKey === 'finance_quick_bill_config')
+      setQuickBillRecord(quickBillRec ?? null)
+      if (quickBillRec?.walletValue) {
+        try {
+          const q = JSON.parse(quickBillRec.walletValue)
+          saveQuickBillConfigLocal(q)
+          const enabled = { ...QUICK_BILL_ENABLED_DEFAULT }
+          const vals = { ...QUICK_BILL_VALUE_DEFAULT }
+          for (const f of QUICK_BILL_FIELDS) {
+            const rawEnabled = q[`enabled_${f.value}`]
+            if (rawEnabled === 'true' || rawEnabled === 'false') enabled[f.value] = rawEnabled === 'true'
+            const rawVal = q[`default_${f.value}`]
+            if (rawVal !== undefined) vals[f.value] = rawVal
+          }
+          setQuickBillEnabled(enabled)
+          setQuickBillDefaults(vals)
         } catch {}
       }
     }).catch(() => {})
@@ -865,8 +990,112 @@ function ConfiguracoesInner() {
       })
       .catch(() => {})
 
+    // Contas a Pagar — ordenação padrão da tabela → localStorage + API
+    const contasPagarSortData = { sortCol: contasPagarSortCol, sortDir: contasPagarSortDir }
+    saveContasPagarSortConfigLocal(contasPagarSortData)
+    const contasPagarSortVal = JSON.stringify(contasPagarSortData)
+    const contasPagarSortPromise = contasPagarSortRecord
+      ? walletApi.edit(contasPagarSortRecord.id, 'finance_contas_pagar_sort_config', contasPagarSortVal, contasPagarSortRecord.creationDate)
+      : walletApi.register('finance_contas_pagar_sort_config', contasPagarSortVal)
+    contasPagarSortPromise
+      .then(res => {
+        if (!contasPagarSortRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setContasPagarSortRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
+    // Contas a Receber — ordenação padrão da tabela → localStorage + API
+    const contasReceberSortData = { sortCol: contasReceberSortCol, sortDir: contasReceberSortDir }
+    saveContasReceberSortConfigLocal(contasReceberSortData)
+    const contasReceberSortVal = JSON.stringify(contasReceberSortData)
+    const contasReceberSortPromise = contasReceberSortRecord
+      ? walletApi.edit(contasReceberSortRecord.id, 'finance_contas_receber_sort_config', contasReceberSortVal, contasReceberSortRecord.creationDate)
+      : walletApi.register('finance_contas_receber_sort_config', contasReceberSortVal)
+    contasReceberSortPromise
+      .then(res => {
+        if (!contasReceberSortRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setContasReceberSortRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
+    // Cadastro Rápido — Contas a Pagar → localStorage + API
+    const quickBillData: Record<string, string> = {}
+    for (const f of QUICK_BILL_FIELDS) {
+      quickBillData[`enabled_${f.value}`] = String(quickBillEnabled[f.value])
+      quickBillData[`default_${f.value}`] = quickBillDefaults[f.value] ?? ''
+    }
+    saveQuickBillConfigLocal(quickBillData)
+    const quickBillVal = JSON.stringify(quickBillData)
+    const quickBillPromise = quickBillRecord
+      ? walletApi.edit(quickBillRecord.id, 'finance_quick_bill_config', quickBillVal, quickBillRecord.creationDate)
+      : walletApi.register('finance_quick_bill_config', quickBillVal)
+    quickBillPromise
+      .then(res => {
+        if (!quickBillRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setQuickBillRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
+  }
+
+  function setQuickDefault(key: QuickBillFieldKey, value: string) {
+    setQuickBillDefaults(q => ({ ...q, [key]: value }))
+  }
+
+  function renderQuickDefaultInput(key: QuickBillFieldKey) {
+    const val = quickBillDefaults[key]
+    switch (key) {
+      case 'account':
+        return (
+          <select className="input w-full text-sm" value={val} onChange={e => setQuickDefault(key, e.target.value)}>
+            <option value="">Selecione...</option>
+            {accounts.filter(a => a.enable).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+          </select>
+        )
+      case 'category':
+        return <SearchableSelect value={val} options={quickBillCategories} onChange={v => setQuickDefault(key, v)} />
+      case 'country':
+        return (
+          <div className="flex gap-2 max-w-xs">
+            {['Brasil', 'Espanha'].map(c => (
+              <button key={c} type="button" onClick={() => setQuickDefault(key, c)}
+                className="flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all"
+                style={{
+                  background: val === c ? 'var(--green-dim)' : 'var(--bg-3)',
+                  border: `1px solid ${val === c ? 'var(--green-border)' : 'var(--border-1)'}`,
+                  color: val === c ? 'var(--green-400)' : 'var(--text-2)',
+                }}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )
+      case 'frequence':
+        return (
+          <select className="input w-full text-sm" value={val} onChange={e => setQuickDefault(key, e.target.value)}>
+            {frequences.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        )
+      case 'registrationType':
+        return (
+          <select className="input w-full text-sm" value={val} onChange={e => setQuickDefault(key, e.target.value)}>
+            {regTypes.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )
+      case 'additionalMessage':
+        return (
+          <input className="input w-full text-sm" value={val} onChange={e => setQuickDefault(key, e.target.value)}
+            placeholder="Observação padrão (opcional)" />
+        )
+    }
   }
 
   return (
@@ -1396,6 +1625,128 @@ function ConfiguracoesInner() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Contas a Pagar/Receber — ordenação padrão das tabelas */}
+          {activeTab === 'ordenacao' && (
+            <>
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Ordenação da tabela — Contas a Pagar"
+                  subtitle="Ordem aplicada por padrão ao abrir a tela. O usuário ainda pode clicar em qualquer coluna da tabela para reordenar naquela sessão."
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Coluna</label>
+                      <select
+                        className="input w-full"
+                        value={contasPagarSortCol}
+                        onChange={e => setContasPagarSortCol(e.target.value as ContasPagarSortCol)}
+                      >
+                        {CONTAS_PAGAR_SORT_COLUMNS.map(c => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {contasPagarSortCol !== 'default' && (
+                      <div>
+                        <label className="label">Direção</label>
+                        <select
+                          className="input w-full"
+                          value={contasPagarSortDir}
+                          onChange={e => setContasPagarSortDir(e.target.value as 'asc' | 'desc')}
+                        >
+                          <option value="asc">Crescente</option>
+                          <option value="desc">Decrescente</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              </div>
+
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Ordenação da tabela — Contas a Receber"
+                  subtitle="Ordem aplicada por padrão ao abrir a tela. O usuário ainda pode clicar em qualquer coluna da tabela para reordenar naquela sessão."
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Coluna</label>
+                      <select
+                        className="input w-full"
+                        value={contasReceberSortCol}
+                        onChange={e => setContasReceberSortCol(e.target.value as ContasReceberSortCol)}
+                      >
+                        {CONTAS_RECEBER_SORT_COLUMNS.map(c => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {contasReceberSortCol !== 'default' && (
+                      <div>
+                        <label className="label">Direção</label>
+                        <select
+                          className="input w-full"
+                          value={contasReceberSortDir}
+                          onChange={e => setContasReceberSortDir(e.target.value as 'asc' | 'desc')}
+                        >
+                          <option value="asc">Crescente</option>
+                          <option value="desc">Decrescente</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              </div>
+            </>
+          )}
+
+          {/* Cadastro Rápido — Contas a Pagar */}
+          {activeTab === 'cadastro-rapido' && (
+            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+              <Section
+                title="Cadastro Rápido — Contas a Pagar"
+                subtitle="Campos que aparecem no formulário simplificado ao clicar em 'Nova conta'. Campos desligados não são perguntados — usam o valor padrão definido abaixo."
+              >
+                <div>
+                  {QUICK_BILL_FIELDS.map(f => {
+                    const on = quickBillEnabled[f.value]
+                    return (
+                      <div
+                        key={f.value}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3"
+                        style={{ borderBottom: '1px solid var(--border-1)' }}
+                      >
+                        <label className="flex items-center gap-2 cursor-pointer select-none sm:w-52 flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={e => setQuickBillEnabled(q => ({ ...q, [f.value]: e.target.checked }))}
+                            className="w-4 h-4 rounded accent-green-500"
+                          />
+                          <span className="text-sm font-medium" style={{ color: on ? 'var(--text-1)' : 'var(--text-2)' }}>
+                            {f.label}
+                          </span>
+                        </label>
+                        <div className="flex-1 min-w-0">
+                          {on ? (
+                            <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                              Aparece no cadastro rápido
+                            </span>
+                          ) : (
+                            <div className="max-w-xs">
+                              <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Valor padrão usado</p>
+                              {renderQuickDefaultInput(f.value)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Section>
             </div>
           )}
 

@@ -33,10 +33,11 @@ src/
 ├── components/
 │   ├── layout/
 │   │   ├── AppLayout.tsx           # Layout principal (usado em todas as páginas)
-│   │   ├── Sidebar.tsx             # Menu lateral — contém APP_VERSION
+│   │   ├── Sidebar.tsx             # Menu lateral — exibe AppVersionBadge
 │   │   └── AuthGuard.tsx
 │   ├── forms/
-│   │   ├── BillToPayForm.tsx       # Criação/edição contas a pagar
+│   │   ├── BillToPayForm.tsx       # Formulário completo — criação/edição contas a pagar
+│   │   ├── QuickBillToPayForm.tsx  # Cadastro rápido (padrão ao criar) — campos configuráveis em Configurações
 │   │   └── CashReceivableForm.tsx
 │   └── ui/
 │       ├── index.tsx               # Modal, Table, TRow, Td, Spinner, Empty
@@ -120,11 +121,16 @@ src/
 ## Versão da aplicação
 
 ```tsx
-// src/components/layout/Sidebar.tsx
+// src/lib/version.ts
 export const APP_VERSION = 'v212'
+export const APP_VERSION_DATE = '2026-07-23'   // yyyy-mm-dd, data da entrega
 ```
 
-Aparece ao lado do botão "Sair". **Incrementar a cada alteração entregue.**
+Renderizada via `<AppVersionBadge />` (`src/components/ui/AppVersionBadge.tsx`), usada no
+Sidebar (ao lado do botão "Sair") e na tela de Login. Mostra automaticamente uma tag
+**NEW** por 7 dias a partir de `APP_VERSION_DATE`.
+
+**Incrementar `APP_VERSION` e atualizar `APP_VERSION_DATE` a cada alteração entregue.**
 
 ---
 
@@ -238,7 +244,7 @@ Usar `Record<string, boolean>` + `forEach` em vez de `Set<string>` onde o TS rec
 ## Checklist antes de qualquer alteração entregue
 
 - [ ] Todos os `<TRow>` têm apenas `<Td>` como filhos (sem `<td>` cru)
-- [ ] `APP_VERSION` incrementado em `Sidebar.tsx`
+- [ ] `APP_VERSION`/`APP_VERSION_DATE` incrementados em `src/lib/version.ts`
 - [ ] esbuild validado em **todos** os arquivos alterados
 - [ ] Zero e negativo funcionam onde aplicável
 - [ ] Hooks antes de qualquer early return
