@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  CreditCard, ChevronRight, Menu, X, LogOut, Settings, Wallet,
+  ChevronRight, ChevronLeft, Menu, X, LogOut, Settings, Wallet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
@@ -19,7 +19,12 @@ const nav = [
   { href: '/configuracoes',      label: 'Configurações',    icon: Settings        },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean
+  onToggleCollapsed: () => void
+}
+
+export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   const path = usePathname()
   const [open, setOpen] = useState(false)
   function logout() {
@@ -36,7 +41,7 @@ export function Sidebar() {
     return () => { document.body.style.overflow = '' }
   }, [open])
 
-  const NavLinks = () => (
+  const NavLinks = ({ collapsed: iconsOnly = false }: { collapsed?: boolean }) => (
     <>
       {nav.map(({ href, label, icon: Icon }) => {
         const active = href === '/' ? path === '/' || path === '' : path === href || path === href + '/'
@@ -44,16 +49,18 @@ export function Sidebar() {
           <Link
             key={href}
             href={href}
+            title={iconsOnly ? label : undefined}
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group',
+              'flex items-center rounded-lg text-sm transition-all duration-150 group',
+              iconsOnly ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
               active
                 ? 'text-[var(--green-400)] bg-[var(--green-dim)]'
                 : 'text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-[var(--bg-3)]'
             )}
           >
             <Icon size={16} className="flex-shrink-0" />
-            <span className="flex-1 font-medium">{label}</span>
-            {active && <ChevronRight size={14} className="opacity-60" />}
+            {!iconsOnly && <span className="flex-1 font-medium">{label}</span>}
+            {!iconsOnly && active && <ChevronRight size={14} className="opacity-60" />}
           </Link>
         )
       })}
@@ -64,29 +71,49 @@ export function Sidebar() {
     <>
       {/* ── Desktop sidebar ── */}
       <aside
-        className="fixed left-0 top-0 h-screen w-64 flex-col hidden lg:flex"
+        className={cn(
+          'fixed left-0 top-0 h-screen flex-col hidden lg:flex transition-[width] duration-200',
+          collapsed ? 'w-16' : 'w-64'
+        )}
         style={{ background: 'var(--bg-1)', borderRight: '1px solid var(--border-1)' }}
       >
-        <div className="px-6 py-6 border-b" style={{ borderColor: 'var(--border-1)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-black font-bold text-sm"
-              style={{ background: 'var(--green-500)' }}>F</div>
+        {/* Botão colapsar/expandir */}
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          title={collapsed ? 'Expandir menu' : 'Colapsar menu'}
+          className="absolute -right-3 top-6 w-6 h-6 rounded-full flex items-center justify-center transition-colors z-10"
+          style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', color: 'var(--text-2)' }}
+        >
+          {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+        </button>
+
+        <div className={cn('py-6 border-b flex items-center', collapsed ? 'px-0 justify-center' : 'px-6 gap-3')} style={{ borderColor: 'var(--border-1)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-black font-bold text-sm flex-shrink-0"
+            style={{ background: 'var(--green-500)' }}>F</div>
+          {!collapsed && (
             <div>
               <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>Finance</p>
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>Organization</p>
             </div>
-          </div>
+          )}
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-0.5"><NavLinks /></nav>
-        <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
+        <nav className="flex-1 px-3 py-4 space-y-0.5"><NavLinks collapsed={collapsed} /></nav>
+        <div className={cn('py-4 border-t', collapsed ? 'px-2' : 'px-3')} style={{ borderColor: 'var(--border-1)' }}>
           <button onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-[var(--red-dim)]"
+            title={collapsed ? 'Sair' : undefined}
+            className={cn(
+              'w-full flex items-center rounded-lg text-sm transition-colors hover:bg-[var(--red-dim)]',
+              collapsed ? 'justify-center py-2' : 'gap-3 px-3 py-2'
+            )}
             style={{ color: 'var(--text-3)' }}>
             <LogOut size={16} />
-            <span>Sair</span>
-            <AppVersionBadge className="ml-auto" />
+            {!collapsed && <span>Sair</span>}
+            {!collapsed && <AppVersionBadge className="ml-auto" />}
           </button>
-          <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
+          {!collapsed && (
+            <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
+          )}
         </div>
       </aside>
 
