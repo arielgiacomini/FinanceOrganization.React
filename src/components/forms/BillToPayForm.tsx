@@ -5,12 +5,14 @@ import { billsToPayApi, accountsApi, categoriesApi } from '@/lib/api'
 import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth } from '@/lib/utils'
 import type { BillToPay, Account } from '@/types'
 import { Spinner, Modal } from '@/components/ui'
-import { Plus, Minus, RefreshCw, LineChart } from 'lucide-react'
+import { Plus, Minus, RefreshCw, LineChart, Lightbulb, Check } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { FinanceChart } from '@/components/ui/FinanceChart'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import type { QuickBillPrefill, BillToPayQuickValues } from '@/components/forms/QuickBillToPayForm'
+import { loadCategoryHistory, suggestCategoriesForName } from '@/lib/categorySuggestion'
+import type { CategorySuggestion } from '@/lib/categorySuggestion'
 
 interface BillToPayFormProps {
   initial?: BillToPay
@@ -80,6 +82,26 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
   const [adjustOp, setAdjustOp] = useState<'add' | 'sub'>('sub')
   const [adjustAmount, setAdjustAmount] = useState('')
   const [chartOpen, setChartOpen] = useState(false)
+  const [categorySuggestions, setCategorySuggestions] = useState<CategorySuggestion[]>([])
+
+  // Aquece o cache do histórico assim que o formulário abre, pra sugestão sair rápido.
+  useEffect(() => { if (!isEdit) loadCategoryHistory() }, [isEdit])
+
+  // Sugestão de categoria com base no nome digitado — só na criação. Roda de novo a cada
+  // mudança do nome (mesmo já tendo uma categoria escolhida), pré-carregando a de maior
+  // probabilidade e deixando as próximas como alternativa — o usuário pode ajustar a
+  // qualquer momento só continuando a editar o nome.
+  useEffect(() => {
+    if (isEdit) return
+    const t = setTimeout(() => {
+      suggestCategoriesForName(form.name).then(list => {
+        setCategorySuggestions(list)
+        if (list.length) set('category', list[0].category)
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name, isEdit])
 
   useEffect(() => {
     Promise.all([
@@ -201,20 +223,50 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
         </div>
 
         <div>
-          <label className="label">Conta</label>
-          <select className="input" value={form.account} onChange={(e) => set('account', e.target.value)}>
-            <option value="">Selecione...</option>
-            {accounts.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
-          </select>
-        </div>
-
-        <div>
           <label className="label">Categoria</label>
           <SearchableSelect
             value={form.category}
             options={categories}
             onChange={(v) => set('category', v)}
           />
+          {categorySuggestions.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs mb-1 flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                <Lightbulb size={11} className="flex-shrink-0" /> Sugestões com base no nome:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {categorySuggestions.map(s => {
+                  const active = form.category === s.category
+                  return (
+                    <button
+                      key={s.category}
+                      type="button"
+                      onClick={() => set('category', s.category)}
+                      title={`usado em "${s.matchedName}"`}
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                      style={{
+                        background: active ? 'var(--blue-dim)' : 'var(--bg-3)',
+                        color: active ? 'var(--blue)' : 'var(--text-2)',
+                        border: `1px solid ${active ? 'rgba(96,165,250,0.3)' : 'var(--border-1)'}`,
+                      }}
+                    >
+                      {active && <Check size={12} className="flex-shrink-0" />}
+                      <strong>{s.category}</strong>
+                      <span style={{ opacity: 0.75 }}>{s.count}x</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Conta</label>
+          <select className="input" value={form.account} onChange={(e) => set('account', e.target.value)}>
+            <option value="">Selecione...</option>
+            {accounts.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+          </select>
         </div>
 
         <div className={isEdit && adjustOpen ? "col-span-1 sm:col-span-2" : ""}>
