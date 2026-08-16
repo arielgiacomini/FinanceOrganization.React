@@ -706,104 +706,6 @@ export function DailyExpenseChart() {
         ))}
       </div>
 
-      {/* Cards de resumo — centralizados */}
-      {!loading && chartData.length > 0 && (
-        <div className="flex flex-wrap justify-center items-end gap-x-6 gap-y-3">
-          {selectedBarPoint ? (
-            <>
-              {barFilterLabel && (
-                <div className="flex flex-col justify-between self-stretch gap-1">
-                  <span
-                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid rgba(251,191,36,0.25)', whiteSpace: 'nowrap' }}>
-                    ▲ {barFilterLabel}
-                  </span>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>selecionado</p>
-                </div>
-              )}
-              {selectedBarPoint.valueBrl > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`R$ — ${barFilterLabel}`}</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(selectedBarPoint.valueBrl, 'Brasil')}
-                  </p>
-                </div>
-              )}
-              {selectedBarPoint.valueEur > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`€ — ${barFilterLabel}`}</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(selectedBarPoint.valueEur, 'Espanha')}
-                  </p>
-                </div>
-              )}
-              <div>
-                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
-                <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
-                  {selectedBarQty ?? 0}
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              {hasBrl && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total R$</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(totalBrl, 'Brasil')}
-                  </p>
-                </div>
-              )}
-              {hasBrl && avgBrl > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média R$ / {unitLabel}</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
-                    {formatCurrency(avgBrl, 'Brasil')}
-                  </p>
-                </div>
-              )}
-              {hasEur && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total €</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(totalEur, 'Espanha')}
-                  </p>
-                </div>
-              )}
-              {hasEur && avgEur > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média € / {unitLabel}</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
-                    {formatCurrency(avgEur, 'Espanha')}
-                  </p>
-                </div>
-              )}
-              <div>
-                <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
-                <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
-                  {qty}
-                </p>
-              </div>
-              {hasBrl && !hasEur && maxBrl > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} R$</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(maxBrl, 'Brasil')}
-                  </p>
-                </div>
-              )}
-              {hasEur && !hasBrl && maxEur > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} €</p>
-                  <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCurrency(maxEur, 'Espanha')}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
 
       {/* Filtro de categoria */}
       {categories.length > 0 && (
@@ -956,43 +858,133 @@ export function DailyExpenseChart() {
       {/* Resultados */}
       {!loading && chartData.length > 0 && (
         <>
-          {/* Título da categoria selecionada + período */}
-          {(catPath.length > 0 || barFilterLabel) && (
-            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
-              {catPath.length > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-                    Categoria
-                  </p>
-                  <h2 className="font-bold tracking-tight leading-none mt-1"
-                    style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', color: 'var(--text-1)' }}>
-                    {catPath[0]}
-                    {catPath.slice(1).map((seg, i) => (
-                      <span key={i} className="font-semibold" style={{ fontSize: '0.72em', color: 'var(--text-2)' }}> · {seg}</span>
-                    ))}
-                  </h2>
-                </div>
-              )}
-              {barFilterLabel && (
-                <div className="mb-0.5">
-                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-                    Período selecionado
-                  </p>
-                  <p className="font-bold tracking-tight leading-none mt-1"
-                    style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)', color: 'var(--amber)' }}>
-                    {barFilterLabel}
-                    <button
-                      type="button"
-                      onClick={clearBarFilter}
-                      className="ml-2 text-base font-normal opacity-50 hover:opacity-100 transition-opacity"
-                      title="Limpar seleção">
-                      ✕
-                    </button>
-                  </p>
-                </div>
+          {/* Categoria selecionada + período — mesma linha do resumo do filtro */}
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+            {/* Esquerda: categoria + período selecionado */}
+            {(catPath.length > 0 || barFilterLabel) && (
+              <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
+                {catPath.length > 0 && (
+                  <div>
+                    <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                      Categoria
+                    </p>
+                    <h2 className="font-bold tracking-tight leading-none mt-1"
+                      style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', color: 'var(--text-1)' }}>
+                      {catPath[0]}
+                      {catPath.slice(1).map((seg, i) => (
+                        <span key={i} className="font-semibold" style={{ fontSize: '0.72em', color: 'var(--text-2)' }}> · {seg}</span>
+                      ))}
+                    </h2>
+                  </div>
+                )}
+                {barFilterLabel && (
+                  <div className="mb-0.5">
+                    <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                      Período selecionado
+                    </p>
+                    <p className="font-bold tracking-tight leading-none mt-1"
+                      style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)', color: 'var(--amber)' }}>
+                      {barFilterLabel}
+                      <button
+                        type="button"
+                        onClick={clearBarFilter}
+                        className="ml-2 text-base font-normal opacity-50 hover:opacity-100 transition-opacity"
+                        title="Limpar seleção">
+                        ✕
+                      </button>
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Direita: resumo do filtro atual */}
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+              {selectedBarPoint ? (
+                <>
+                  {selectedBarPoint.valueBrl > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`R$ — ${barFilterLabel}`}</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(selectedBarPoint.valueBrl, 'Brasil')}
+                      </p>
+                    </div>
+                  )}
+                  {selectedBarPoint.valueEur > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`€ — ${barFilterLabel}`}</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(selectedBarPoint.valueEur, 'Espanha')}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
+                    <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+                      {selectedBarQty ?? 0}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {hasBrl && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total R$</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(totalBrl, 'Brasil')}
+                      </p>
+                    </div>
+                  )}
+                  {hasBrl && avgBrl > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média R$ / {unitLabel}</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
+                        {formatCurrency(avgBrl, 'Brasil')}
+                      </p>
+                    </div>
+                  )}
+                  {hasEur && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total €</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(totalEur, 'Espanha')}
+                      </p>
+                    </div>
+                  )}
+                  {hasEur && avgEur > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média € / {unitLabel}</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
+                        {formatCurrency(avgEur, 'Espanha')}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
+                    <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
+                      {qty}
+                    </p>
+                  </div>
+                  {hasBrl && !hasEur && maxBrl > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} R$</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(maxBrl, 'Brasil')}
+                      </p>
+                    </div>
+                  )}
+                  {hasEur && !hasBrl && maxEur > 0 && (
+                    <div>
+                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} €</p>
+                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(maxEur, 'Espanha')}
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          )}
+          </div>
 
           <ResponsiveContainer width="100%" height={viewMode === 'day' ? 360 : 320}>
             <BarChart

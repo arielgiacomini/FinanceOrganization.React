@@ -149,6 +149,146 @@ export function loadDespesaMesCategoriaPadrao(): string {
   return readDespesaMesConfig().categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA
 }
 
+// ─── Contas a Pagar — ordenação padrão da tabela ───────────────────────────────
+
+const CONTAS_PAGAR_SORT_CONFIG_KEY = 'finance_contas_pagar_sort_config'
+
+export type ContasPagarSortCol =
+  | 'default' | 'name' | 'country' | 'account' | 'category'
+  | 'value' | 'dueDate' | 'purchaseDate' | 'payDay' | 'status'
+
+export const CONTAS_PAGAR_SORT_COLUMNS: { value: ContasPagarSortCol; label: string }[] = [
+  { value: 'default',      label: 'Padrão (pendente primeiro)' },
+  { value: 'name',         label: 'Nome' },
+  { value: 'country',      label: 'País' },
+  { value: 'account',      label: 'Conta' },
+  { value: 'category',     label: 'Categoria' },
+  { value: 'value',        label: 'Valor' },
+  { value: 'dueDate',      label: 'Vencimento' },
+  { value: 'purchaseDate', label: 'Data de Compra' },
+  { value: 'payDay',       label: 'Pago em' },
+  { value: 'status',       label: 'Status' },
+]
+
+function readContasPagarSortConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTAS_PAGAR_SORT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadContasPagarSortCol(): ContasPagarSortCol {
+  const v = readContasPagarSortConfig().sortCol
+  return (CONTAS_PAGAR_SORT_COLUMNS.some(c => c.value === v) ? v : 'default') as ContasPagarSortCol
+}
+
+export function loadContasPagarSortDir(): 'asc' | 'desc' {
+  return readContasPagarSortConfig().sortDir === 'desc' ? 'desc' : 'asc'
+}
+
+// ─── Contas a Receber — ordenação padrão da tabela ─────────────────────────────
+
+const CONTAS_RECEBER_SORT_CONFIG_KEY = 'finance_contas_receber_sort_config'
+
+export type ContasReceberSortCol =
+  | 'default' | 'name' | 'country' | 'account' | 'category'
+  | 'value' | 'saldo' | 'dueDate' | 'dateReceived' | 'status'
+
+export const CONTAS_RECEBER_SORT_COLUMNS: { value: ContasReceberSortCol; label: string }[] = [
+  { value: 'default',      label: 'Padrão (em aberto primeiro)' },
+  { value: 'name',         label: 'Nome' },
+  { value: 'country',      label: 'País' },
+  { value: 'account',      label: 'Conta' },
+  { value: 'category',     label: 'Categoria' },
+  { value: 'value',        label: 'Valor' },
+  { value: 'saldo',        label: 'Saldo' },
+  { value: 'dueDate',      label: 'Vencimento' },
+  { value: 'dateReceived', label: 'Recebido em' },
+  { value: 'status',       label: 'Status' },
+]
+
+function readContasReceberSortConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTAS_RECEBER_SORT_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadContasReceberSortCol(): ContasReceberSortCol {
+  const v = readContasReceberSortConfig().sortCol
+  return (CONTAS_RECEBER_SORT_COLUMNS.some(c => c.value === v) ? v : 'default') as ContasReceberSortCol
+}
+
+export function loadContasReceberSortDir(): 'asc' | 'desc' {
+  return readContasReceberSortConfig().sortDir === 'desc' ? 'desc' : 'asc'
+}
+
+// ─── Cadastro Rápido — Contas a Pagar ──────────────────────────────────────────
+
+const QUICK_BILL_CONFIG_KEY = 'finance_quick_bill_config'
+
+export type QuickBillFieldKey =
+  | 'account' | 'category' | 'country' | 'frequence' | 'registrationType' | 'additionalMessage'
+
+export const QUICK_BILL_FIELDS: { value: QuickBillFieldKey; label: string }[] = [
+  { value: 'account',           label: 'Conta' },
+  { value: 'category',          label: 'Categoria' },
+  { value: 'country',           label: 'País' },
+  { value: 'frequence',         label: 'Frequência' },
+  { value: 'registrationType',  label: 'Tipo de Registro' },
+  { value: 'additionalMessage', label: 'Observação' },
+]
+
+// Por padrão só Conta e Categoria aparecem no cadastro rápido — os demais
+// campos usam o valor padrão configurado sem perguntar ao usuário.
+export const QUICK_BILL_ENABLED_DEFAULT: Record<QuickBillFieldKey, boolean> = {
+  account: true,
+  category: true,
+  country: false,
+  frequence: false,
+  registrationType: false,
+  additionalMessage: false,
+}
+
+export const QUICK_BILL_VALUE_DEFAULT: Record<QuickBillFieldKey, string> = {
+  account: '',
+  category: '',
+  country: 'Brasil',
+  frequence: 'Livre',
+  registrationType: 'Compra Livre',
+  additionalMessage: '',
+}
+
+function readQuickBillConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(QUICK_BILL_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadQuickBillEnabledFields(): Record<QuickBillFieldKey, boolean> {
+  const c = readQuickBillConfig()
+  const result = { ...QUICK_BILL_ENABLED_DEFAULT }
+  for (const f of QUICK_BILL_FIELDS) {
+    const raw = c[`enabled_${f.value}`]
+    if (raw === 'true' || raw === 'false') result[f.value] = raw === 'true'
+  }
+  return result
+}
+
+export function loadQuickBillDefaultValues(): Record<QuickBillFieldKey, string> {
+  const c = readQuickBillConfig()
+  const result = { ...QUICK_BILL_VALUE_DEFAULT }
+  for (const f of QUICK_BILL_FIELDS) {
+    const v = c[`default_${f.value}`]
+    if (v !== undefined) result[f.value] = v
+  }
+  return result
+}
+
 export function loadInvestimentoTotal(): { brl: number; eur: number } {
   try {
     const wallet = readWallet()

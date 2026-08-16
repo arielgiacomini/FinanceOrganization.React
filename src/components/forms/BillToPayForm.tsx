@@ -10,11 +10,14 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { FinanceChart } from '@/components/ui/FinanceChart'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import type { QuickBillPrefill, BillToPayQuickValues } from '@/components/forms/QuickBillToPayForm'
 
 interface BillToPayFormProps {
   initial?: BillToPay
   onSuccess: () => void
   onCancel: () => void
+  onSwitchQuick?: (values: BillToPayQuickValues) => void
+  prefill?: QuickBillPrefill
 }
 
 const DRAFT_KEY = 'finance_billtopay_draft'
@@ -38,7 +41,7 @@ const COUNTRIES = [
   { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
 ]
 
-export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormProps) {
+export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, prefill }: BillToPayFormProps) {
   const isEdit = !!initial
   const ymOptions = generateYearMonthOptions()
 
@@ -49,22 +52,25 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
   const [frequenceList] = useState(() => getFrequences())
   const [regTypeList] = useState(() => getRegistrationTypes())
 
+  // Draft de sessão fica em segundo plano quando vem de um "Usar formulário
+  // completo" no cadastro rápido — o que o usuário acabou de preencher lá
+  // tem prioridade sobre um rascunho antigo.
   const draft = !initial ? loadDraft() : null
   const [form, setForm] = useState({
-    name: initial?.name ?? draft?.name ?? '',
-    account: initial?.account ?? draft?.account ?? '',
-    category: initial?.category ?? draft?.category ?? '',
-    value: initial?.value?.toString() ?? draft?.value ?? '',
-    frequence: initial?.frequence ?? draft?.frequence ?? 'Livre',
-    registrationType: initial?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
-    purchaseDate: safeDate(initial?.purchaseDate) || (draft?.purchaseDate ?? ''),
+    name: initial?.name ?? prefill?.name ?? draft?.name ?? '',
+    account: initial?.account ?? prefill?.account ?? draft?.account ?? '',
+    category: initial?.category ?? prefill?.category ?? draft?.category ?? '',
+    value: initial?.value?.toString() ?? prefill?.value ?? draft?.value ?? '',
+    frequence: initial?.frequence ?? prefill?.frequence ?? draft?.frequence ?? 'Livre',
+    registrationType: initial?.registrationType ?? prefill?.registrationType ?? draft?.registrationType ?? 'Compra Livre',
+    purchaseDate: safeDate(initial?.purchaseDate) || (prefill?.purchaseDate ?? draft?.purchaseDate ?? ''),
     dueDate: safeDate(initial?.dueDate) || (draft?.dueDate ?? ''),
     payDay: safeDate(initial?.payDay) || (draft?.payDay ?? ''),
-    initialMonthYear: initial?.yearMonth ?? draft?.initialMonthYear ?? currentYearMonth(),
-    fynallyMonthYear: initial?.yearMonth ?? draft?.fynallyMonthYear ?? currentYearMonth(),
-    bestPayDay: draft?.bestPayDay ?? '',
-    additionalMessage: initial?.additionalMessage ?? draft?.additionalMessage ?? '',
-    country: initial?.country ?? draft?.country ?? 'Brasil',
+    initialMonthYear: initial?.yearMonth ?? prefill?.initialMonthYear ?? draft?.initialMonthYear ?? currentYearMonth(),
+    fynallyMonthYear: initial?.yearMonth ?? prefill?.fynallyMonthYear ?? draft?.fynallyMonthYear ?? currentYearMonth(),
+    bestPayDay: prefill?.bestPayDay ?? draft?.bestPayDay ?? '',
+    additionalMessage: initial?.additionalMessage ?? prefill?.additionalMessage ?? draft?.additionalMessage ?? '',
+    country: initial?.country ?? prefill?.country ?? draft?.country ?? 'Brasil',
     hasPay: initial?.hasPay ?? false,
   })
   const hasDraft = !initial && !!draft
@@ -510,12 +516,29 @@ export function BillToPayForm({ initial, onSuccess, onCancel }: BillToPayFormPro
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <div>
+        <div className="flex items-center gap-3">
           {hasDraft && (
             <button type="button" onClick={handleClearDraft}
               className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-[var(--red-dim)]"
               style={{ color: 'var(--text-3)' }}>
               🗑 Limpar rascunho
+            </button>
+          )}
+          {!isEdit && onSwitchQuick && (
+            <button type="button" onClick={() => onSwitchQuick({
+              name: form.name,
+              value: form.value,
+              purchaseDate: form.purchaseDate,
+              account: form.account,
+              category: form.category,
+              country: form.country,
+              frequence: form.frequence,
+              registrationType: form.registrationType,
+              additionalMessage: form.additionalMessage,
+            })}
+              className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--text-3)' }}>
+              ⚡ Usar cadastro rápido
             </button>
           )}
         </div>

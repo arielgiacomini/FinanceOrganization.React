@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { AUTH_USER, AUTH_PASSWORD, createSession, saveSession, isAuthenticated } from '@/lib/auth'
 import { Spinner } from '@/components/ui'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
 import { LogIn, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
@@ -95,6 +96,9 @@ export default function LoginPage() {
         <p className="text-center text-xs mt-6" style={{ color: 'var(--text-3)' }}>
           Sessão expira após 8 horas
         </p>
+        <div className="flex justify-center mt-3">
+          <AppVersionBadge />
+        </div>
       </div>
     </div>
   )

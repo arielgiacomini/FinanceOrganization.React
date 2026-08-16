@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { cashReceivableApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
-import { loadSaldoFinalYm } from '@/lib/wallet'
+import { loadSaldoFinalYm, loadContasReceberSortCol, loadContasReceberSortDir } from '@/lib/wallet'
+import type { ContasReceberSortCol } from '@/lib/wallet'
 import type { CashReceivable, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -18,13 +19,34 @@ import { SummaryCards } from '@/components/ui/SummaryCards'
 import { Plus, CheckCircle2, Pencil, Trash2, Clock, CircleDollarSign, History, ChevronDown, ChevronUp } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 
-function sortReceivables(data: CashReceivable[]): CashReceivable[] {
+function sortReceivablesDefault(data: CashReceivable[]): CashReceivable[] {
   return [...data].sort((a, b) => {
     // Em aberto primeiro; recebidos no fim (mantendo, dentro de cada grupo, a ordem de hoje)
     if (!!a.hasReceived !== !!b.hasReceived) return a.hasReceived ? 1 : -1
     const dueDiff = new Date(a.dueDate ?? '').getTime() - new Date(b.dueDate ?? '').getTime()
     if (dueDiff !== 0) return dueDiff
     return (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR', { sensitivity: 'base' })
+  })
+}
+
+/** Ordena a lista pela coluna clicada pelo usuário (ou pelo padrão configurado). */
+function sortReceivablesBy(data: CashReceivable[], col: ContasReceberSortCol, dir: 'asc' | 'desc'): CashReceivable[] {
+  if (col === 'default') return sortReceivablesDefault(data)
+  const d = dir === 'asc' ? 1 : -1
+  const toTime = (v?: string | null) => v ? new Date(v).getTime() : 0
+  return [...data].sort((a, b) => {
+    switch (col) {
+      case 'name':         return d * (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR')
+      case 'country':      return d * (a.country ?? '').localeCompare(b.country ?? '', 'pt-BR')
+      case 'account':      return d * (a.account ?? '').localeCompare(b.account ?? '', 'pt-BR')
+      case 'category':     return d * (a.category ?? '').localeCompare(b.category ?? '', 'pt-BR')
+      case 'value':        return d * (a.value - b.value)
+      case 'saldo':        return d * (a.manipulatedValue - b.manipulatedValue)
+      case 'dueDate':      return d * (toTime(a.dueDate) - toTime(b.dueDate))
+      case 'dateReceived': return d * (toTime(a.dateReceived) - toTime(b.dateReceived))
+      case 'status':       return d * ((a.hasReceived ? 1 : 0) - (b.hasReceived ? 1 : 0))
+      default:             return 0
+    }
   })
 }
 
@@ -49,6 +71,13 @@ function ContasAReceberPageInner() {
   const [showDetails, setShowDetails] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Recebido' | 'Não recebido'>('Todos')
   const [catPath, setCatPath] = useState<string[]>([])
+  const [sortCol, setSortCol] = useState<ContasReceberSortCol>(() => loadContasReceberSortCol())
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => loadContasReceberSortDir())
+
+  function handleSort(col: ContasReceberSortCol) {
+    if (col === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
 
   // Mede a altura do bloco de filtros sticky para fixar o cabeçalho da tabela logo abaixo dele
   const filtersRef = useRef<HTMLDivElement>(null)
@@ -84,7 +113,7 @@ function ContasAReceberPageInner() {
     setLoading(true)
     try {
       const res = await cashReceivableApi.search({ yearMonth: ym, showDetails: true })
-      setItems(sortReceivables(res.output?.data ?? []))
+      setItems(res.output?.data ?? [])
     } finally {
       setLoading(false)
     }
@@ -116,6 +145,12 @@ function ContasAReceberPageInner() {
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, countryFilter, catPath.join(':'), statusFilter])
+
+  // Ordenação exibida na tabela — coluna clicada pelo usuário (ou o padrão configurado)
+  const sortedFiltered = useMemo(
+    () => sortReceivablesBy(filtered, sortCol, sortDir),
+    [filtered, sortCol, sortDir]
+  )
 
   const byCountry = (country: string) => items.filter(r => normalizeCountry(r.country) === country)
   const sumValues = (arr: typeof items) => arr.reduce((s, r) => s + r.value, 0)
@@ -251,9 +286,9 @@ function ContasAReceberPageInner() {
       <div className="flex flex-col gap-3 sm:hidden">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner size={28} /></div>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--text-3)' }}>Nenhum registro encontrado.</div>
-        ) : filtered.map((r) => {
+        ) : sortedFiltered.map((r) => {
           const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const toRgb = (h: string) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]
@@ -358,12 +393,26 @@ function ContasAReceberPageInner() {
       <div className="hidden sm:block">
             {/* Table */}
       <Table
-        headers={['Nome', 'País', 'Conta', 'Categoria', 'Valor', 'Saldo', 'Vencimento', 'Recebido em', 'Status', 'Ações']}
+        headers={[
+          { label: 'Nome',         sortKey: 'name' },
+          { label: 'País',         sortKey: 'country' },
+          { label: 'Conta',        sortKey: 'account' },
+          { label: 'Categoria',    sortKey: 'category' },
+          { label: 'Valor',        sortKey: 'value' },
+          { label: 'Saldo',        sortKey: 'saldo' },
+          { label: 'Vencimento',   sortKey: 'dueDate' },
+          { label: 'Recebido em',  sortKey: 'dateReceived' },
+          { label: 'Status',       sortKey: 'status' },
+          'Ações',
+        ]}
         loading={loading}
         empty={!loading && filtered.length === 0}
         headerOffset={headerOffset}
+        sortCol={sortCol}
+        sortDir={sortDir}
+        onSort={(key) => handleSort(key as ContasReceberSortCol)}
       >
-        {filtered.map((r) => {
+        {sortedFiltered.map((r) => {
           const acc = r.account ? accountMap[r.account.trim().toLowerCase()] : undefined
           const hex = acc?.colors?.backgroundColorHexadecimal
           const bg = r.hasReceived ? '#1b2e1d' : 'var(--bg-2)'
