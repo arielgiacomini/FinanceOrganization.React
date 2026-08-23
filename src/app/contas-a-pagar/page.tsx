@@ -716,6 +716,11 @@ function ContasAPagarPageInner() {
                 ) : b.account ? (
                   <span className="text-xs" style={{ color: 'var(--text-3)' }}>{b.account}</span>
                 ) : null}
+                {b.category && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ color: 'var(--text-2)', background: 'var(--bg-4)', border: '1px solid var(--border-1)' }}>
+                    {b.category}
+                  </span>
+                )}
                 {b.country && (
                   <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
                     {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={12} /> : <FlagBrasil size={12} />}
@@ -746,12 +751,12 @@ function ContasAPagarPageInner() {
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
                     style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}
                     onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}>
-                    <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''}
+                    <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
                   </button>
                 )}
               </div>
 
-              {/* Linha 3: Ações */}
+              {/* Linha 3: Ações — Editar antes de Histórico, pra facilitar a edição no mobile */}
               <div className="flex items-center gap-1 px-3 pb-3 border-t pt-2"
                 style={{ borderColor: 'var(--border-1)' }}>
                 {!b.hasPay && (
@@ -762,17 +767,17 @@ function ContasAPagarPageInner() {
                     <CircleDollarSign size={14} /> Pagar
                   </button>
                 )}
-                <button type="button" title="Histórico"
+                <button type="button" title="Editar"
                   className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{ background: 'var(--bg-4)', color: 'var(--text-2)' }}
+                  onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
+                  <Pencil size={14} /> Editar
+                </button>
+                <button type="button" title="Histórico"
+                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
                   style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}
                   onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
-                  <History size={14} /> Histórico
-                </button>
-                <button type="button" title="Editar"
-                  className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
-                  style={{ background: 'var(--bg-4)', color: 'var(--text-3)' }}
-                  onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
-                  <Pencil size={15} />
+                  <History size={15} />
                 </button>
                 <button type="button" title="Excluir"
                   className="flex items-center justify-center p-1.5 rounded-lg transition-colors"
@@ -849,7 +854,7 @@ function ContasAPagarPageInner() {
                     title="Ver registros relacionados"
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors"
                     style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}>
-                    <ReceiptText size={11} /> {b.detailsQuantity}
+                    <ReceiptText size={11} /> {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
                   </button>
                 ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
               </Td>

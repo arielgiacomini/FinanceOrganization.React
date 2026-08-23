@@ -12,7 +12,7 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2, Bell, ArrowUpDown, Zap,
+  Pencil, Trash2, Bell, ArrowUpDown,
 } from 'lucide-react'
 import { walletApi, accountsApi, categoriesApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
@@ -714,7 +714,7 @@ function saveQuickBillConfigLocal(data: Record<string, string>) {
 
 // ─── Tabs definition ──────────────────────────────────────────────────────────
 
-type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao' | 'cadastro-rapido'
+type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao'
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'formularios',     label: 'Formulários',              Icon: SlidersHorizontal },
@@ -722,7 +722,6 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'grafico',         label: 'Gráfico',                   Icon: TrendingUp        },
   { id: 'alertas',         label: 'Alertas',                   Icon: Bell              },
   { id: 'ordenacao',       label: 'Contas a Pagar/Receber',     Icon: ArrowUpDown       },
-  { id: 'cadastro-rapido', label: 'Cadastro Rápido',            Icon: Zap               },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -1201,6 +1200,50 @@ function ConfiguracoesInner() {
                     onChange={setRegTypes}
                     onReset={() => setRegTypes([...DEFAULT_REGISTRATION_TYPES])}
                   />
+                </Section>
+              </div>
+
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Cadastro Rápido — Contas a Pagar"
+                  subtitle="Campos que aparecem no formulário simplificado ao clicar em 'Nova conta'. Campos desligados não são perguntados — usam o valor padrão definido abaixo."
+                >
+                  <div>
+                    {QUICK_BILL_FIELDS.map(f => {
+                      const on = quickBillEnabled[f.value]
+                      return (
+                        <div
+                          key={f.value}
+                          className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3"
+                          style={{ borderBottom: '1px solid var(--border-1)' }}
+                        >
+                          <label className="flex items-center gap-2 cursor-pointer select-none sm:w-52 flex-shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={e => setQuickBillEnabled(q => ({ ...q, [f.value]: e.target.checked }))}
+                              className="w-4 h-4 rounded accent-green-500"
+                            />
+                            <span className="text-sm font-medium" style={{ color: on ? 'var(--text-1)' : 'var(--text-2)' }}>
+                              {f.label}
+                            </span>
+                          </label>
+                          <div className="flex-1 min-w-0">
+                            {on ? (
+                              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                                Aparece no cadastro rápido
+                              </span>
+                            ) : (
+                              <div className="max-w-xs">
+                                <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Valor padrão usado</p>
+                                {renderQuickDefaultInput(f.value)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </Section>
               </div>
             </>
@@ -1701,53 +1744,6 @@ function ConfiguracoesInner() {
                 </Section>
               </div>
             </>
-          )}
-
-          {/* Cadastro Rápido — Contas a Pagar */}
-          {activeTab === 'cadastro-rapido' && (
-            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
-              <Section
-                title="Cadastro Rápido — Contas a Pagar"
-                subtitle="Campos que aparecem no formulário simplificado ao clicar em 'Nova conta'. Campos desligados não são perguntados — usam o valor padrão definido abaixo."
-              >
-                <div>
-                  {QUICK_BILL_FIELDS.map(f => {
-                    const on = quickBillEnabled[f.value]
-                    return (
-                      <div
-                        key={f.value}
-                        className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3"
-                        style={{ borderBottom: '1px solid var(--border-1)' }}
-                      >
-                        <label className="flex items-center gap-2 cursor-pointer select-none sm:w-52 flex-shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={e => setQuickBillEnabled(q => ({ ...q, [f.value]: e.target.checked }))}
-                            className="w-4 h-4 rounded accent-green-500"
-                          />
-                          <span className="text-sm font-medium" style={{ color: on ? 'var(--text-1)' : 'var(--text-2)' }}>
-                            {f.label}
-                          </span>
-                        </label>
-                        <div className="flex-1 min-w-0">
-                          {on ? (
-                            <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                              Aparece no cadastro rápido
-                            </span>
-                          ) : (
-                            <div className="max-w-xs">
-                              <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Valor padrão usado</p>
-                              {renderQuickDefaultInput(f.value)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </Section>
-            </div>
           )}
 
         </div>
