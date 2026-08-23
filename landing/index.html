@@ -44,10 +44,8 @@
     .icon-badge{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
     .grid-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;}
     .grid-screens{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;align-items:start;}
-    .grid-novidades{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;}
     @media (max-width:960px){
       .grid-features{grid-template-columns:repeat(2,minmax(0,1fr));}
-      .grid-novidades{grid-template-columns:1fr;}
       .grid-screens{grid-template-columns:1fr;}
       .hero-inner{grid-template-columns:1fr !important;}
       .hero-copy{text-align:left;align-items:flex-start !important;}
@@ -355,37 +353,45 @@
     </div>
   </section>
 
-  <!-- NOVIDADES -->
+  <!-- NOVIDADES / RELEASE NOTES -->
   <section id="novidades" style="padding:100px 0;">
     <div class="container">
       <div style="text-align:center;max-width:640px;margin:0 auto 48px;">
-        <span class="eyebrow" style="margin-bottom:16px;">Na versão v357</span>
-        <h2 class="section-title" style="font-size:34px;font-weight:700;letter-spacing:-0.01em;margin:14px 0;">O que chegou de novo</h2>
-        <p style="font-size:15.5px;color:var(--text-2);line-height:1.6;">Três atualizações pensadas pra tirar o app do caminho e deixar registrar um gasto tão rápido quanto pagar ele.</p>
+        <span class="eyebrow" style="margin-bottom:16px;">Changelog</span>
+        <h2 class="section-title" style="font-size:34px;font-weight:700;letter-spacing:-0.01em;margin:14px 0;">Registro de novidades</h2>
+        <p style="font-size:15.5px;color:var(--text-2);line-height:1.6;">O que mudou em cada entrega recente do Finance Organization.</p>
       </div>
 
-      <div class="grid-novidades">
-        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
-          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:760px;margin:0 auto;">
+
+        <!-- v357 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v357</span>
+            <span style="font-size:12.5px;color:var(--text-3);">23 ago 2026</span>
           </div>
-          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Offline-first de verdade</h3>
-          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">Service Worker próprio + fila local: lançamentos criados sem sinal ficam guardados no aparelho e são reenviados automaticamente, com deduplicação contra a API.</p>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Melhorias de layout e usabilidade no mobile</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Cadastro Rápido reorganizado dentro da aba Formulários, em Configurações</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Ações reordenadas nos cards de Contas a Pagar no mobile — Editar fica mais acessível</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Valor total das compras relacionadas visível direto na lista, sem abrir o detalhe</li>
+          </ul>
         </div>
-        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
-          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+
+        <!-- v347 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v347</span>
+            <span style="font-size:12.5px;color:var(--text-3);">16 ago 2026</span>
           </div>
-          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Lançamento por link</h3>
-          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">A tela de Lançamento Rápido aceita nome, valor e conta direto na URL — um atalho na tela inicial já abre com o gasto quase pronto.</p>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Offline-first, lançamento por link e sugestão de categoria</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Service Worker próprio + fila local: lançamentos sem sinal sincronizam sozinhos quando a conexão volta</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Lançamento Rápido aceita nome, valor e conta direto na URL, pra atalhos na tela inicial do celular</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Sugestão automática de categoria com base no histórico dos últimos 6 meses</li>
+          </ul>
         </div>
-        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
-          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 1.6 4.8L18 9.5l-4.4 1.7L12 16l-1.6-4.8L6 9.5l4.4-1.7Z"/></svg>
-          </div>
-          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Categoria sugerida sozinha</h3>
-          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">O app aprende com os últimos 6 meses de lançamentos e sugere até 3 categorias enquanto você digita o nome do gasto.</p>
-        </div>
+
       </div>
     </div>
   </section>

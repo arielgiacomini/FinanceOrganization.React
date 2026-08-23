@@ -142,11 +142,31 @@ raiz do domínio (`http://arielgiacomini.com.br/`), enquanto o sistema fica em
 `http://app-finance.arielgiacomini.com.br/`. Usa os mesmos tokens de cor/fonte do
 app (dark theme, DM Sans/DM Mono, verde `#22c55e`).
 
-**Sempre que uma funcionalidade nova, visível ao usuário, for entregue:**
-atualizar a seção de funcionalidades (`#funcionalidades`) e, se for algo relevante
-o bastante pra destacar, a seção "O que chegou de novo" (`#novidades`) em
-`landing/index.html`. Não precisa refazer o arquivo do zero — só editar o card ou
-texto correspondente, mantendo os CTAs apontando pro sistema real.
+A seção `#novidades` funciona como **release notes** do produto: é uma lista
+cronológica de entregas (mais recente primeiro), cada uma com badge de versão,
+data e uma lista curta do que mudou — não só "features grandes". Formato de
+cada entrada:
+
+```html
+<div class="card" style="padding:24px 26px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">vXXX</span>
+    <span style="font-size:12.5px;color:var(--text-3);">dd mmm aaaa</span>
+  </div>
+  <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Título curto da entrega</h3>
+  <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+    <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">O que mudou, em 1 linha</li>
+  </ul>
+</div>
+```
+
+**A cada `APP_VERSION` incrementada** (mesmo que seja só ajuste de layout/UX,
+não uma feature nova): adicionar uma entrada no topo dessa lista em
+`landing/index.html` com a versão, data e um resumo de 1-4 linhas do que mudou
+(usar a mensagem do commit e o diff como referência). Se a entrega adicionar uma
+funcionalidade nova visível ao usuário, atualizar também a seção de
+funcionalidades (`#funcionalidades`). Manter só as entradas mais recentes
+relevantes — não precisa reconstruir o histórico completo de versões antigas.
 
 ---
 
@@ -260,7 +280,7 @@ Usar `Record<string, boolean>` + `forEach` em vez de `Set<string>` onde o TS rec
 ## Checklist antes de qualquer alteração entregue
 
 - [ ] Todos os `<TRow>` têm apenas `<Td>` como filhos (sem `<td>` cru)
-- [ ] Se a entrega adiciona/altera uma funcionalidade visível ao usuário, atualizar `landing/index.html`
+- [ ] Adicionar entrada da versão em `landing/index.html` (`#novidades`) — vale pra toda entrega, não só features grandes
 - [ ] `APP_VERSION`/`APP_VERSION_DATE` incrementados em `src/lib/version.ts`
 - [ ] esbuild validado em **todos** os arquivos alterados
 - [ ] Zero e negativo funcionam onde aplicável
