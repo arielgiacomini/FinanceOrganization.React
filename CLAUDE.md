@@ -134,6 +134,22 @@ Sidebar (ao lado do botão "Sair") e na tela de Login. Mostra automaticamente um
 
 ---
 
+## Landing page (marketing)
+
+`landing/index.html` — página estática standalone (sem build, sem dependências do
+Next.js) que apresenta o produto pro público. Deploy separado do sistema: vai na
+raiz do domínio (`http://arielgiacomini.com.br/`), enquanto o sistema fica em
+`http://app-finance.arielgiacomini.com.br/`. Usa os mesmos tokens de cor/fonte do
+app (dark theme, DM Sans/DM Mono, verde `#22c55e`).
+
+**Sempre que uma funcionalidade nova, visível ao usuário, for entregue:**
+atualizar a seção de funcionalidades (`#funcionalidades`) e, se for algo relevante
+o bastante pra destacar, a seção "O que chegou de novo" (`#novidades`) em
+`landing/index.html`. Não precisa refazer o arquivo do zero — só editar o card ou
+texto correspondente, mantendo os CTAs apontando pro sistema real.
+
+---
+
 ## API — endpoints principais
 
 | Método | Verbo | Endpoint |
@@ -244,6 +260,7 @@ Usar `Record<string, boolean>` + `forEach` em vez de `Set<string>` onde o TS rec
 ## Checklist antes de qualquer alteração entregue
 
 - [ ] Todos os `<TRow>` têm apenas `<Td>` como filhos (sem `<td>` cru)
+- [ ] Se a entrega adiciona/altera uma funcionalidade visível ao usuário, atualizar `landing/index.html`
 - [ ] `APP_VERSION`/`APP_VERSION_DATE` incrementados em `src/lib/version.ts`
 - [ ] esbuild validado em **todos** os arquivos alterados
 - [ ] Zero e negativo funcionam onde aplicável

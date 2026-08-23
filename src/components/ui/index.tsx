@@ -149,6 +149,9 @@ export interface TableHeader {
   label: string
   /** Quando definido junto com `onSort`, o cabeçalho vira clicável para ordenação. */
   sortKey?: string
+  /** Ex: "hidden lg:table-cell" — esconde a coluna em telas estreitas. A <Td> da
+   *  mesma coluna em cada linha precisa repetir a mesma classe. */
+  className?: string
 }
 
 interface TableProps {
@@ -171,18 +174,24 @@ export function Table({ headers, children, loading, empty, headerOffset = 0, sor
       style={{ border: '1px solid var(--border-1)', background: 'var(--bg-2)' }}
     >
       <div className="overflow-x-auto sm:overflow-x-visible">
-        <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-2)' }}>
+        {/* border-collapse: separate (não collapse) — o modelo "collapse" tem um bug de
+            repintura no Chromium onde conteúdo de linhas por trás de células sticky "vaza"
+            visualmente durante o scroll (mais visível em zooms fora de 100% exato). Cada
+            <Td>/<th> desenha sua própria borda inferior via box-shadow, então a troca não
+            muda a aparência. */}
+        <table className="w-full text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0, background: 'var(--bg-2)' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
               {headers.map((h) => {
                 const label = typeof h === 'string' ? h : h.label
                 const sortKey = typeof h === 'string' ? undefined : h.sortKey
+                const headerClassName = typeof h === 'string' ? undefined : h.className
                 const sortable = !!sortKey && !!onSort
                 const active = sortable && sortCol === sortKey
                 return (
                   <th
                     key={label}
-                    className="px-4 py-3 text-left text-xs font-medium sm:sticky sm:z-20"
+                    className={cn('px-4 py-3 text-left text-xs font-medium sm:sticky sm:z-20', headerClassName)}
                     style={{
                       color: active ? 'var(--text-1)' : 'var(--text-3)',
                       background: 'var(--bg-2)',
@@ -253,18 +262,24 @@ export function Tr({ children, onClick }: { children: React.ReactNode; onClick?:
 interface TRowProps {
   children: React.ReactNode
   bg?: string
+  /** Cor (com alpha, ex: "#22c55e12") pintada por cima do fundo da linha inteira —
+   *  usada pra dar identidade visual por conta em Contas a Pagar, sem substituir o
+   *  fundo de pago/selecionado, que continua vindo de `bg`. */
+  tint?: string
   style?: React.CSSProperties
   onClick?: () => void
 }
 
-export function TRow({ children, bg = 'var(--bg-2)', style, onClick }: TRowProps) {
+export function TRow({ children, bg = 'var(--bg-2)', tint, style, onClick }: TRowProps) {
   return (
     <tr
       onClick={onClick}
       style={{
-        borderBottom: '1px solid var(--border-1)',
-        // Define a CSS var no <tr> que os <td> filhos consomem
+        // A borda inferior da linha vem do box-shadow de cada <Td> (ver abaixo) — com
+        // border-collapse: separate, borda definida no <tr> não é desenhada pelo navegador.
+        // Define as CSS vars no <tr> que os <td> filhos consomem
         ['--row-bg' as string]: bg,
+        ['--row-tint' as string]: tint ?? 'transparent',
         ...style,
       }}
     >
@@ -273,17 +288,24 @@ export function TRow({ children, bg = 'var(--bg-2)', style, onClick }: TRowProps
   )
 }
 
-export function Td({ children, className, style }: {
+export function Td({ children, className, style, colSpan, title }: {
   children: React.ReactNode
   className?: string
   style?: React.CSSProperties
+  colSpan?: number
+  title?: string
 }) {
   return (
     <td
       className={cn('px-4 py-3 text-sm', className)}
+      colSpan={colSpan}
+      title={title}
       style={{
         color: 'var(--text-1)',
         backgroundColor: 'var(--row-bg, var(--bg-2))',
+        // A 2ª sombra "inunda" a célula com --row-tint por cima do backgroundColor —
+        // é como se compõe a identidade visual da conta sem trocar a cor base da linha.
+        boxShadow: 'inset 0 -1px 0 var(--border-1), inset 0 0 0 999px var(--row-tint, transparent)',
         ...style,
       }}
     >

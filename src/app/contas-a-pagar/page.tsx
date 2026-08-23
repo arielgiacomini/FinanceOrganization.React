@@ -1,11 +1,14 @@
 'use client'
 
 import { AppLayout } from '@/components/layout/AppLayout'
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import { billsToPayApi, accountsApi, cashReceivableApi, walletApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth, DEFAULT_SALDO_CONTAS } from '@/lib/utils'
-import { loadSaldoFinalYm, loadContasPagarSortCol, loadContasPagarSortDir } from '@/lib/wallet'
-import type { ContasPagarSortCol } from '@/lib/wallet'
+import {
+  loadSaldoFinalYm, loadContasPagarSortCol, loadContasPagarSortDir,
+  loadContasPagarColumnsOrder, loadContasPagarColumnsHidden, loadContasPagarAccountStyle,
+} from '@/lib/wallet'
+import type { ContasPagarSortCol, ContasPagarColumnKey, ContasPagarAccountStyle } from '@/lib/wallet'
 import type { BillToPay, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -36,11 +39,33 @@ function purchaseDateDiffDays(dateStr?: string | null): number | null {
   return Math.round((today.getTime() - d.getTime()) / 86_400_000)
 }
 
+const FILTERS_COLLAPSED_KEY = 'finance_contas_pagar_filters_collapsed'
+
 const DAY_FILTERS = ['Todos', 'Hoje', 'Ontem', 'Anteontem'] as const
 type DayFilter = typeof DAY_FILTERS[number]
 // "Todos" não tem pill própria — reaproveita o Todos do filtro de status.
 const DAY_FILTER_OPTIONS = ['Hoje', 'Ontem', 'Anteontem'] as const
 const DAY_FILTER_DIFF: Record<Exclude<DayFilter, 'Todos'>, number> = { Hoje: 0, Ontem: 1, Anteontem: 2 }
+
+// Todas as colunas de dados da tabela desktop são configuráveis (visibilidade + ordem)
+// em Configurações — só o checkbox de seleção e "Ações" ficam fixos, por serem
+// controles de interação e não informação.
+const COLUMN_HEADER_DEFS: Record<ContasPagarColumnKey, { label: string; sortKey: ContasPagarSortCol }> = {
+  name:         { label: 'Nome',       sortKey: 'name' },
+  country:      { label: 'País',       sortKey: 'country' },
+  account:      { label: 'Conta',      sortKey: 'account' },
+  category:     { label: 'Categoria',  sortKey: 'category' },
+  value:        { label: 'Valor',      sortKey: 'value' },
+  dueDate:      { label: 'Vencimento', sortKey: 'dueDate' },
+  purchaseDate: { label: 'Dt. Compra', sortKey: 'purchaseDate' },
+  payDay:       { label: 'Pago em',    sortKey: 'payDay' },
+  status:       { label: 'Status',     sortKey: 'status' },
+}
+
+// Aplicado a toda coluna que não seja Nome — `width: 1%` faz o navegador encolher
+// a coluna ao conteúdo (não distribuir largura extra pra ela) e `whiteSpace: nowrap`
+// evita quebra de linha, então toda a folga de espaço sobra pra coluna Nome.
+const NOWRAP_TIGHT = { width: '1%', whiteSpace: 'nowrap' } as const
 
 function purchaseDateTag(dateStr?: string | null): { label: string; color: string; bg: string; border: string } | null {
   const diff = purchaseDateDiffDays(dateStr)
@@ -93,6 +118,19 @@ function ContasAPagarPageInner() {
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
   const [loading, setLoading] = useState(true)
   const [showDetails, setShowDetails] = useState(false)
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem(FILTERS_COLLAPSED_KEY) === 'true') setFiltersCollapsed(true)
+  }, [])
+
+  function toggleFiltersCollapsed() {
+    setFiltersCollapsed(v => {
+      const next = !v
+      localStorage.setItem(FILTERS_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
   const [search, setSearch] = useState('')
@@ -105,6 +143,19 @@ function ContasAPagarPageInner() {
   function handleSort(col: ContasPagarSortCol) {
     if (col === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
+  }
+
+  // Colunas visíveis/ordem da tabela desktop — configurável em Configurações
+  const [columnsOrder] = useState<ContasPagarColumnKey[]>(() => loadContasPagarColumnsOrder())
+  const [columnsHidden] = useState<Record<ContasPagarColumnKey, boolean>>(() => loadContasPagarColumnsHidden())
+  const visibleColumns = columnsOrder.filter(k => !columnsHidden[k])
+  const [accountStyle] = useState<ContasPagarAccountStyle>(() => loadContasPagarAccountStyle())
+
+  // Clicar na linha expande/colapsa os detalhes completos daquela conta — a seleção
+  // pra ações em massa continua só pelo checkbox (que já tem stopPropagation próprio).
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  function toggleExpanded(id: string) {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -347,6 +398,118 @@ function ContasAPagarPageInner() {
     }
   }
 
+  /** Célula de uma das colunas configuráveis (visíveis/ordem definidas em Configurações). */
+  function renderConfigurableColumnCell(key: ContasPagarColumnKey, b: BillToPay) {
+    switch (key) {
+      case 'name':
+        // Sem width/maxWidth de propósito: é a única coluna que deve crescer e ocupar
+        // todo o espaço que sobrar — as demais ganham `width: 1%` (ver NOWRAP_TIGHT
+        // abaixo), o que faz o navegador encolhê-las ao conteúdo e jogar toda folga
+        // de largura pra cá.
+        return (
+          <Td key="name">
+            <div className="min-w-0">
+              {/* Nome truncado numa linha só (com tooltip) — nomes longos quebrando em
+                  3-4 linhas deixavam as linhas da tabela muito altas e irregulares,
+                  fazendo o cabeçalho sticky "cortar" no meio de uma linha durante o
+                  scroll (mais visível quando a coluna fica mais estreita, ex: 100% de
+                  zoom vs 80%). */}
+              <p className="font-medium truncate" style={{ color: 'var(--text-1)' }} title={b.name}>{b.name}</p>
+              {/* line-clamp (não truncate/nowrap) de propósito: texto com white-space:nowrap
+                  conta como conteúdo "de linha inteira" pro cálculo de largura da tabela,
+                  então uma observação longa forçava a coluna Nome (e a tabela toda) a
+                  estourar a lateral. Com quebra de linha normal + clamp em 2 linhas, o
+                  excesso cresce pra baixo em vez de empurrar a borda direita. */}
+              {showDetails && b.additionalMessage && (
+                <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-3)' }} title={b.additionalMessage}>{b.additionalMessage}</p>
+              )}
+              {/* Qtd Compras: link sutil abaixo do nome em vez de coluna própria */}
+              {(b.detailsQuantity ?? 0) > 0 && (
+                <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}
+                  className="inline-flex items-center gap-1 mt-0.5 truncate max-w-full"
+                  style={{ color: 'var(--blue)', fontSize: 10 }}>
+                  <ReceiptText size={9} /> {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
+                </button>
+              )}
+            </div>
+          </Td>
+        )
+      case 'value':
+        return (
+          <Td key="value" style={NOWRAP_TIGHT}>
+            <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
+              {formatCurrency(b.value, b.country)}
+            </span>
+          </Td>
+        )
+      case 'status':
+        return (
+          <Td key="status" style={NOWRAP_TIGHT}>
+            <span title={b.hasPay ? 'Pago' : 'Pendente'} style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--amber)', display: 'inline-flex' }}>
+              {b.hasPay ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+            </span>
+          </Td>
+        )
+      case 'country':
+        return (
+          <Td key="country" className="text-xs" style={NOWRAP_TIGHT}>
+            {b.country ? (
+              <div className="flex items-center gap-1.5">
+                {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
+                <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{normalizeCountry(b.country)}</span>
+              </div>
+            ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+          </Td>
+        )
+      case 'account': {
+        const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
+        const hex = acc?.colors?.backgroundColorHexadecimal
+        return (
+          <Td key="account" style={{ ...NOWRAP_TIGHT, maxWidth: 160 }}>
+            {b.account && hex ? (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-medium max-w-full"
+                style={{ background: `${hex}22`, border: `1px solid ${hex}66`, color: 'var(--text-2)', fontSize: 10 }}
+                title={b.account}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />
+                <span className="truncate">{b.account}</span>
+              </span>
+            ) : (
+              <span className="truncate block" style={{ color: 'var(--text-3)', fontSize: 10 }} title={b.account ?? undefined}>{b.account ?? '—'}</span>
+            )}
+          </Td>
+        )
+      }
+      case 'category':
+        return <Td key="category" className="text-xs truncate" style={{ ...NOWRAP_TIGHT, maxWidth: 180 }} title={b.category ?? undefined}>{b.category ?? '—'}</Td>
+      case 'dueDate':
+        return <Td key="dueDate" className="text-xs" style={NOWRAP_TIGHT}>{formatDate(b.dueDate)}</Td>
+      case 'purchaseDate':
+        return (
+          <Td key="purchaseDate" className="text-xs" style={NOWRAP_TIGHT}>
+            {b.purchaseDate ? (
+              <span className="flex items-center gap-1.5">
+                {formatDate(b.purchaseDate)}
+                {(() => { const t = purchaseDateTag(b.purchaseDate); return t ? (
+                  <span className="px-1.5 py-0.5 rounded-full text-xs font-medium"
+                    style={{ color: t.color, background: t.bg, border: `1px solid ${t.border}`, fontSize: 10 }}>
+                    {t.label}
+                  </span>
+                ) : null })()}
+              </span>
+            ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+          </Td>
+        )
+      case 'payDay':
+        return <Td key="payDay" className="text-xs" style={NOWRAP_TIGHT}>{formatDate(b.payDay)}</Td>
+    }
+  }
+
+  const tableHeaders = [
+    '',
+    ...visibleColumns.map(k => ({ label: COLUMN_HEADER_DEFS[k].label, sortKey: COLUMN_HEADER_DEFS[k].sortKey })),
+    'Ações',
+  ]
+
   return (
     <div className="space-y-6 animate-slide-up">
       {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll.
@@ -376,10 +539,20 @@ function ContasAPagarPageInner() {
             <button className="btn-primary" onClick={() => { setCreateMode('quick'); setFullPrefill(undefined); setQuickPrefill(undefined); setCreateOpen(true) }}>
               <Plus size={16} /> Nova conta
             </button>
+            <button
+              type="button"
+              title={filtersCollapsed ? 'Mostrar filtros' : 'Ocultar filtros'}
+              className="btn-secondary flex items-center gap-1.5"
+              onClick={toggleFiltersCollapsed}
+            >
+              {filtersCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+              Filtros
+            </button>
           </div>
         }
       />
 
+      {!filtersCollapsed && <>
       {/* Summary com resumo por conta embutido */}
       <SummaryCards
         countryFilter={countryFilter}
@@ -637,6 +810,7 @@ function ContasAPagarPageInner() {
           )}
         </div>
       </div>
+      </>}
       </div>{/* fim do cabeçalho sticky */}
 
       {/* Barra da tabela — mostrar detalhes / contagem, com linha sutil separando dos filtros acima */}
@@ -649,6 +823,35 @@ function ContasAPagarPageInner() {
           {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
         </button>
         <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+      </div>
+
+      {/* Ordenação — só no mobile (no desktop já dá pra clicar no cabeçalho da coluna).
+          Deixa escolher Vencimento ou Data de Compra + mais recente/antigo primeiro,
+          pra não precisar rolar a tela toda procurando um registro específico. */}
+      <div className="flex items-center gap-2 sm:hidden">
+        <select
+          className="input text-xs py-1.5 flex-1"
+          value={sortCol === 'dueDate' || sortCol === 'purchaseDate' ? sortCol : 'default'}
+          onChange={e => {
+            const col = e.target.value as ContasPagarSortCol
+            setSortCol(col)
+            if (col !== 'default') setSortDir('desc')
+          }}
+        >
+          <option value="default">Ordenar por: Padrão</option>
+          <option value="dueDate">Vencimento</option>
+          <option value="purchaseDate">Data de Compra</option>
+        </select>
+        {(sortCol === 'dueDate' || sortCol === 'purchaseDate') && (
+          <select
+            className="input text-xs py-1.5 flex-1"
+            value={sortDir}
+            onChange={e => setSortDir(e.target.value as 'asc' | 'desc')}
+          >
+            <option value="desc">Mais recente primeiro</option>
+            <option value="asc">Mais antigo primeiro</option>
+          </select>
+        )}
       </div>
 
       {/* Desktop: tabela | Mobile: cards */}
@@ -748,7 +951,7 @@ function ContasAPagarPageInner() {
                 )}
                 {(b.detailsQuantity ?? 0) > 0 && (
                   <button type="button"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
                     style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}
                     onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}>
                     <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
@@ -794,20 +997,7 @@ function ContasAPagarPageInner() {
       {/* Tabela desktop */}
       <div className="hidden sm:block">
       <Table
-        headers={[
-          '',
-          { label: 'Nome',        sortKey: 'name' },
-          { label: 'País',        sortKey: 'country' },
-          'Qtd Compras',
-          { label: 'Conta',       sortKey: 'account' },
-          { label: 'Categoria',   sortKey: 'category' },
-          { label: 'Valor',       sortKey: 'value' },
-          { label: 'Vencimento',  sortKey: 'dueDate' },
-          { label: 'Dt. Compra',  sortKey: 'purchaseDate' },
-          { label: 'Pago em',     sortKey: 'payDay' },
-          { label: 'Status',      sortKey: 'status' },
-          'Ações',
-        ]}
+        headers={tableHeaders}
         loading={loading}
         empty={!loading && filtered.length === 0}
         headerOffset={headerOffset}
@@ -816,108 +1006,98 @@ function ContasAPagarPageInner() {
         onSort={(key) => handleSort(key as ContasPagarSortCol)}
       >
         {sortedFiltered.map((b) => {
-          const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
-          const hex = acc?.colors?.backgroundColorHexadecimal
           const isRowSelected = !!selected[b.id]
+          const isExpanded = !!expandedRows[b.id]
           const bg = isRowSelected
             ? 'rgba(96,165,250,0.10)'
             : b.hasPay
               ? '#1b2e1d'
               : 'var(--bg-2)'
+          // Identidade visual por conta — configurável em Configurações (4 modos):
+          // "tint" tinge o fundo da linha inteira, "border" desenha uma faixa na borda
+          // esquerda (só na 1ª célula, que é onde o navegador de fato pinta em tabelas
+          // com border-collapse: separate), "dot" é uma bolinha ao lado do checkbox,
+          // "none" desliga. Nenhum dos três compete com o verde de pago/azul de
+          // selecionado, que continuam vindo de `bg`.
+          const rowAcc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
+          const rowHex = rowAcc?.colors?.backgroundColorHexadecimal
+          const tint = accountStyle === 'tint' && rowHex ? `${rowHex}12` : undefined
+          const firstCellBoxShadow = accountStyle === 'border' && rowHex
+            ? `inset 3px 0 0 ${rowHex}, inset 0 -1px 0 var(--border-1)`
+            : undefined
 
           return (
-            <TRow key={b.id} bg={bg} onClick={() => toggleOne(b.id)} style={{ cursor: 'pointer', outline: isRowSelected ? '1px solid rgba(96,165,250,0.4)' : undefined }}>
-              <Td>
-                <button type="button" onClick={e => { e.stopPropagation(); toggleOne(b.id) }} style={{ color: isRowSelected ? 'var(--blue)' : 'var(--text-3)' }}>
-                  {isRowSelected ? <SquareCheck size={15} /> : <Square size={15} />}
-                </button>
-              </Td>
-              <Td>
-                <div>
-                  <p className="font-medium" style={{ color: 'var(--text-1)' }}>{b.name}</p>
-                  {showDetails && b.additionalMessage && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
-                  )}
-                </div>
-              </Td>
-              <Td>
-                {b.country ? (
+            <Fragment key={b.id}>
+              {/* Clicar na linha expande/colapsa os detalhes — selecionar continua só pelo checkbox */}
+              <TRow bg={bg} tint={tint} onClick={() => toggleExpanded(b.id)} style={{ cursor: 'pointer', outline: isRowSelected ? '1px solid rgba(96,165,250,0.4)' : undefined }}>
+                {/* Checkbox de seleção + chevron indicando expandir/colapsar — os únicos
+                    elementos fixos ao lado de "Ações", já que Nome/Valor/Status agora
+                    também são colunas configuráveis (podem sumir ou mudar de ordem). */}
+                <Td style={firstCellBoxShadow ? { ...NOWRAP_TIGHT, boxShadow: firstCellBoxShadow } : NOWRAP_TIGHT}>
                   <div className="flex items-center gap-1.5">
-                    {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={16} /> : <FlagBrasil size={16} />}
-                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>{normalizeCountry(b.country)}</span>
-                  </div>
-                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
-              </Td>
-              <Td>
-                {(b.detailsQuantity ?? 0) > 0 ? (
-                  <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}
-                    title="Ver registros relacionados"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-colors"
-                    style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}>
-                    <ReceiptText size={11} /> {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
-                  </button>
-                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
-              </Td>
-              <Td className="text-xs">
-                {acc && hex ? (
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{ background: `${hex}22`, border: `1px solid ${hex}66`, color: 'var(--text-2)' }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: hex, display: 'inline-block', flexShrink: 0 }} />
-                    {b.account}
-                  </span>
-                ) : (
-                  <span style={{ color: 'var(--text-3)' }}>{b.account ?? '—'}</span>
-                )}
-              </Td>
-              <Td className="text-xs">{b.category ?? '—'}</Td>
-              <Td>
-                <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
-                  {formatCurrency(b.value, b.country)}
-                </span>
-              </Td>
-              <Td className="text-xs">{formatDate(b.dueDate)}</Td>
-              <Td className="text-xs">
-                {b.purchaseDate ? (
-                  <span className="flex items-center gap-1.5">
-                    {formatDate(b.purchaseDate)}
-                    {(() => { const t = purchaseDateTag(b.purchaseDate); return t ? (
-                      <span className="px-1.5 py-0.5 rounded-full text-xs font-medium"
-                        style={{ color: t.color, background: t.bg, border: `1px solid ${t.border}`, fontSize: 10 }}>
-                        {t.label}
-                      </span>
-                    ) : null })()}
-                  </span>
-                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
-              </Td>
-              <Td className="text-xs">{formatDate(b.payDay)}</Td>
-              <Td>
-                {b.hasPay
-                  ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span>
-                  : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}
-              </Td>
-              <Td>
-                <div className="flex items-center gap-1">
-                  {!b.hasPay && (
-                    <button title="Marcar como pago" className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]" style={{ color: 'var(--green-400)' }}
-                      onClick={e => { e.stopPropagation(); setPayTarget(b) }}>
-                      <CircleDollarSign size={15} />
+                    <button type="button" onClick={e => { e.stopPropagation(); toggleOne(b.id) }} style={{ color: isRowSelected ? 'var(--blue)' : 'var(--text-3)' }}>
+                      {isRowSelected ? <SquareCheck size={15} /> : <Square size={15} />}
                     </button>
-                  )}
-                  <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }}
-                    onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
-                    <History size={15} />
-                  </button>
-                  <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }}
-                    onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
-                    <Pencil size={15} />
-                  </button>
-                  <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }}
-                    onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </Td>
-            </TRow>
+                    {accountStyle === 'dot' && rowHex && (
+                      <span title={b.account ?? undefined} style={{ width: 7, height: 7, borderRadius: '50%', background: rowHex, display: 'inline-block', flexShrink: 0 }} />
+                    )}
+                    <span style={{ color: 'var(--text-3)' }}>
+                      {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </span>
+                  </div>
+                </Td>
+                {visibleColumns.map(key => renderConfigurableColumnCell(key, b))}
+                <Td style={NOWRAP_TIGHT}>
+                  <div className="flex items-center gap-1">
+                    {!b.hasPay && (
+                      <button title="Marcar como pago" className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]" style={{ color: 'var(--green-400)' }}
+                        onClick={e => { e.stopPropagation(); setPayTarget(b) }}>
+                        <CircleDollarSign size={15} />
+                      </button>
+                    )}
+                    <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }}
+                      onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
+                      <History size={15} />
+                    </button>
+                    <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }}
+                      onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
+                      <Pencil size={15} />
+                    </button>
+                    <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }}
+                      onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </Td>
+              </TRow>
+              {/* Linha expandida — detalhe completo, independente das colunas configuradas como visíveis */}
+              {isExpanded && (
+                <TRow bg={bg} tint={tint}>
+                  <Td colSpan={tableHeaders.length}>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-2 text-xs py-1">
+                      <div><span style={{ color: 'var(--text-3)' }}>País: </span><span style={{ color: 'var(--text-2)' }}>{b.country ? normalizeCountry(b.country) : '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Conta: </span><span style={{ color: 'var(--text-2)' }}>{b.account ?? '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Categoria: </span><span style={{ color: 'var(--text-2)' }}>{b.category ?? '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Vencimento: </span><span style={{ color: 'var(--text-2)' }}>{formatDate(b.dueDate)}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Dt. Compra: </span><span style={{ color: 'var(--text-2)' }}>{b.purchaseDate ? formatDate(b.purchaseDate) : '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Pago em: </span><span style={{ color: 'var(--text-2)' }}>{b.hasPay ? formatDate(b.payDay) : '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-3)' }}>Status: </span><span style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--amber)' }}>{b.hasPay ? 'Pago' : 'Pendente'}</span></div>
+                      {(b.detailsQuantity ?? 0) > 0 && (
+                        <div>
+                          <span style={{ color: 'var(--text-3)' }}>Compras: </span>
+                          <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }} style={{ color: 'var(--blue)' }}>
+                            {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
+                          </button>
+                        </div>
+                      )}
+                      {b.additionalMessage && (
+                        <div className="col-span-full"><span style={{ color: 'var(--text-3)' }}>Observação: </span><span style={{ color: 'var(--text-2)' }}>{b.additionalMessage}</span></div>
+                      )}
+                    </div>
+                  </Td>
+                </TRow>
+              )}
+            </Fragment>
           )
         })}
       </Table>

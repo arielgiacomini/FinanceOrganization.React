@@ -655,7 +655,7 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
             <Empty message="Nenhum registro neste filtro." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
+              <table className="w-full text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0, background: 'var(--bg-1)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
                   <th className="px-4 py-3 w-10 sm:sticky sm:top-0 sm:z-10" style={{ background: 'var(--bg-3)', boxShadow: 'inset 0 -1px 0 var(--border-1)' }}>
