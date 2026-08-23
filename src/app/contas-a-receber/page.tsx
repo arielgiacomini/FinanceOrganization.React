@@ -178,11 +178,20 @@ function ContasAReceberPageInner() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll */}
+      {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll.
+          top responsivo: abaixo de lg ainda existe a barra mobile fixa (h-14) por cima,
+          então o bloco precisa colar logo abaixo dela em vez de sob ela (top:0 sempre).
+          -mt/pt cancelam o padding-top do <main> (AppLayout) só para este bloco: sem isso,
+          o cabeçalho nasce ~32px abaixo do topo e "sobe" visivelmente nos primeiros pixels
+          de scroll até grudar — com a margem negativa ele já nasce colado, sem esse deslize. */}
       <div
         ref={filtersRef}
-        className="sm:sticky z-30 space-y-4 sm:pb-3"
-        style={{ top: 0, background: 'var(--bg-1)', marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2 }}
+        className="sm:sticky sm:top-14 lg:top-0 z-30 space-y-4 sm:pb-3 -mt-4 md:-mt-6 lg:-mt-8 pt-4 md:pt-6 lg:pt-8"
+        style={{
+          background: 'var(--bg-1)',
+          marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2,
+          boxShadow: '0 1px 0 var(--bg-1), 0 8px 16px -8px rgba(0,0,0,0.45)',
+        }}
       >
       <PageHeader
         title="Contas a Receber"
@@ -230,16 +239,6 @@ function ContasAReceberPageInner() {
               })}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
-              onClick={() => setShowDetails(v => !v)}
-            >
-              {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
-              {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
-            </button>
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
-          </div>
         </div>
 
         <CategoryFilter
@@ -279,6 +278,18 @@ function ContasAReceberPageInner() {
         })()}
       </div>
       </div>{/* fim do cabeçalho sticky */}
+
+      {/* Barra da tabela — mostrar detalhes / contagem, com linha sutil separando dos filtros acima */}
+      <div className="flex items-center gap-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+        <button
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+          onClick={() => setShowDetails(v => !v)}
+        >
+          {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
+          {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+        </button>
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+      </div>
 
       {/* Desktop: tabela | Mobile: cards */}
 

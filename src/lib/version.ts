@@ -2,8 +2,8 @@
  * Versão da aplicação — deve ser incrementada a cada entrega, junto com a
  * data de lançamento (usada para exibir a tag "NEW" por 7 dias).
  */
-export const APP_VERSION = 'v328'
-export const APP_VERSION_DATE = '2026-08-15'
+export const APP_VERSION = 'v339'
+export const APP_VERSION_DATE = '2026-08-16'
 
 export function isVersionNew(days = 7): boolean {
   const released = new Date(`${APP_VERSION_DATE}T00:00:00`).getTime()

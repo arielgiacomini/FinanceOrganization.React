@@ -8,8 +8,10 @@ import { Spinner } from '@/components/ui'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
-import { Check, Plus, SlidersHorizontal } from 'lucide-react'
+import { Check, Plus, SlidersHorizontal, Lightbulb, CalendarDays } from 'lucide-react'
 import { loadQuickBillEnabledFields, loadQuickBillDefaultValues } from '@/lib/wallet'
+import { loadCategoryHistory, suggestCategoriesForName } from '@/lib/categorySuggestion'
+import type { CategorySuggestion } from '@/lib/categorySuggestion'
 
 const COUNTRIES = [
   { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
@@ -29,6 +31,12 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d)
   r.setDate(r.getDate() + n)
   return r
+}
+
+// Reformatação pura de string (sem passar por Date) — evita qualquer risco de fuso horário.
+function formatDDMMYYYY(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-')
+  return `${d}/${m}/${y}`
 }
 
 // Rascunho de sessão — mantém o que o usuário já preencheu caso o modal seja
@@ -101,6 +109,13 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   const [name, setName] = useState(initialValues?.name ?? draft?.name ?? '')
   const [value, setValue] = useState(initialValues?.value ?? draft?.value ?? '')
   const [purchaseDate, setPurchaseDate] = useState(initialValues?.purchaseDate || draft?.purchaseDate || today)
+  // Calendário só aparece quando o usuário pede ("Informar Data") — se a data inicial não
+  // bate com Hoje/Ontem/Anteontem (ex: veio de um rascunho antigo), já começa no modo manual.
+  const [manualDateMode, setManualDateMode] = useState(() => {
+    const initial = initialValues?.purchaseDate || draft?.purchaseDate || today
+    const quickKeys = [0, -1, -2].map(n => toDateInputValue(addDays(new Date(), n)))
+    return !quickKeys.includes(initial)
+  })
   const [account, setAccount] = useState(initialValues?.account ?? draft?.account ?? defaults.account)
   const [category, setCategory] = useState(initialValues?.category ?? draft?.category ?? defaults.category)
   const [country, setCountry] = useState(initialValues?.country ?? draft?.country ?? defaults.country)
@@ -111,6 +126,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [savedFlash, setSavedFlash] = useState(false)
+  const [categorySuggestions, setCategorySuggestions] = useState<CategorySuggestion[]>([])
 
   // Salva o rascunho a cada alteração (pula o primeiro render para não gravar
   // o estado inicial vazio como se fosse um rascunho de verdade).
@@ -134,10 +150,29 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
     }).catch(() => {})
   }, [])
 
+  // Aquece o cache do histórico assim que o formulário abre, pra sugestão sair rápido.
+  useEffect(() => { if (enabledFields.category) loadCategoryHistory() }, [enabledFields.category])
+
+  // Sugestão de categoria com base no nome digitado — roda de novo a cada mudança do nome
+  // (mesmo já tendo uma categoria escolhida), pré-carregando a de maior probabilidade e
+  // deixando as próximas como alternativa. Assim o usuário pode ajustar a qualquer momento
+  // só continuando a editar o nome.
+  useEffect(() => {
+    if (!enabledFields.category) return
+    const t = setTimeout(() => {
+      suggestCategoriesForName(name).then(list => {
+        setCategorySuggestions(list)
+        if (list.length) setCategory(list[0].category)
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [name, enabledFields.category])
+
   function resetQuickFields() {
     setName('')
     setValue('')
     setPurchaseDate(today)
+    setManualDateMode(false)
   }
 
   function handleClearDraft() {
@@ -145,6 +180,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
     setName('')
     setValue('')
     setPurchaseDate(today)
+    setManualDateMode(false)
     setAccount(defaults.account)
     setCategory(defaults.category)
     setCountry(defaults.country)
@@ -239,6 +275,43 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
         />
       </div>
 
+      {enabledFields.category && (
+        <div>
+          <label className="label">Categoria</label>
+          <SearchableSelect value={category} options={categories} onChange={setCategory} />
+          {categorySuggestions.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs mb-1 flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                <Lightbulb size={11} className="flex-shrink-0" /> Sugestões com base no nome:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {categorySuggestions.map(s => {
+                  const active = category === s.category
+                  return (
+                    <button
+                      key={s.category}
+                      type="button"
+                      onClick={() => setCategory(s.category)}
+                      title={`usado em "${s.matchedName}"`}
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                      style={{
+                        background: active ? 'var(--blue-dim)' : 'var(--bg-3)',
+                        color: active ? 'var(--blue)' : 'var(--text-2)',
+                        border: `1px solid ${active ? 'rgba(96,165,250,0.3)' : 'var(--border-1)'}`,
+                      }}
+                    >
+                      {active && <Check size={12} className="flex-shrink-0" />}
+                      <strong>{s.category}</strong>
+                      <span style={{ opacity: 0.75 }}>{s.count}x</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <label className="label">Valor *</label>
         <CurrencyInput
@@ -254,12 +327,12 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
         <div className="flex flex-wrap gap-2 mb-2">
           {dateChips.map(({ label, date }) => {
             const key = toDateInputValue(date)
-            const active = purchaseDate === key
+            const active = !manualDateMode && purchaseDate === key
             return (
               <button
                 key={label}
                 type="button"
-                onClick={() => setPurchaseDate(key)}
+                onClick={() => { setPurchaseDate(key); setManualDateMode(false) }}
                 className="px-3 py-1.5 rounded-lg border text-sm font-medium transition-all"
                 style={{
                   background: active ? 'var(--green-dim)' : 'var(--bg-3)',
@@ -271,8 +344,24 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
               </button>
             )
           })}
+          <button
+            type="button"
+            onClick={() => setManualDateMode(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all"
+            style={{
+              background: manualDateMode ? 'var(--green-dim)' : 'var(--bg-3)',
+              border: `1px solid ${manualDateMode ? 'var(--green-border)' : 'var(--border-1)'}`,
+              color: manualDateMode ? 'var(--green-400)' : 'var(--text-2)',
+            }}
+          >
+            <CalendarDays size={14} /> Informar Data
+          </button>
         </div>
-        <input className="input w-full" type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+        {manualDateMode ? (
+          <input className="input w-full" type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+        ) : (
+          <p className="text-sm px-1" style={{ color: 'var(--text-3)' }}>{formatDDMMYYYY(purchaseDate)}</p>
+        )}
       </div>
 
       {enabledFields.account && (
@@ -306,13 +395,6 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {enabledFields.category && (
-        <div>
-          <label className="label">Categoria</label>
-          <SearchableSelect value={category} options={categories} onChange={setCategory} />
         </div>
       )}
 

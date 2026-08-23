@@ -64,6 +64,55 @@ function isSpain(r: DailyExpenseRecord) {
   return r.taxCountry === 'Espanha'
 }
 
+interface SummaryStat {
+  label: string
+  value: string
+  color: string
+  /** 'primary' = Total, em destaque. 'secondary' = Média/Maior, discreto — não deve competir com o Total. */
+  emphasis?: 'primary' | 'secondary'
+}
+
+/** Cartão de resumo — usado tanto por país (com bandeira) quanto neutro (Lançamentos). */
+function SummaryStatCard({
+  header, stats, bg = 'var(--bg-3)', border = 'var(--border-1)',
+}: {
+  header?: { Flag: React.ComponentType<{ size?: number }>; label: string; color: string }
+  stats: SummaryStat[]
+  bg?: string
+  border?: string
+}) {
+  return (
+    <div className="w-full sm:w-auto sm:flex-1 sm:min-w-[180px] rounded-xl px-4 py-3" style={{ background: bg, border: `1px solid ${border}` }}>
+      {header && (
+        <div className="flex items-center gap-1.5 mb-2.5">
+          <header.Flag size={16} />
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: header.color, fontSize: 10, letterSpacing: '0.06em' }}>
+            {header.label}
+          </span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1.5">
+        {stats.map(s => {
+          const secondary = s.emphasis === 'secondary'
+          return (
+            <div key={s.label}>
+              <p style={{ color: 'var(--text-3)', fontSize: secondary ? 9 : 10 }}>{s.label}</p>
+              <p className={secondary ? 'font-semibold font-mono leading-tight mt-0.5' : 'font-bold font-mono leading-tight mt-0.5'}
+                style={{
+                  fontSize: secondary ? 'clamp(0.8rem, 1.8vw, 0.9rem)' : 'clamp(1.15rem, 3.2vw, 1.4rem)',
+                  color: secondary ? 'var(--text-3)' : s.color,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                {s.value}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function sortBills(data: BillToPay[]): BillToPay[] {
   const byDue = (a: BillToPay, b: BillToPay) =>
     new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
@@ -858,132 +907,91 @@ export function DailyExpenseChart() {
       {/* Resultados */}
       {!loading && chartData.length > 0 && (
         <>
-          {/* Categoria selecionada + período — mesma linha do resumo do filtro */}
-          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-            {/* Esquerda: categoria + período selecionado */}
-            {(catPath.length > 0 || barFilterLabel) && (
-              <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
-                {catPath.length > 0 && (
-                  <div>
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-                      Categoria
-                    </p>
-                    <h2 className="font-bold tracking-tight leading-none mt-1"
-                      style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', color: 'var(--text-1)' }}>
-                      {catPath[0]}
-                      {catPath.slice(1).map((seg, i) => (
-                        <span key={i} className="font-semibold" style={{ fontSize: '0.72em', color: 'var(--text-2)' }}> · {seg}</span>
-                      ))}
-                    </h2>
-                  </div>
-                )}
-                {barFilterLabel && (
-                  <div className="mb-0.5">
-                    <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-                      Período selecionado
-                    </p>
-                    <p className="font-bold tracking-tight leading-none mt-1"
-                      style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)', color: 'var(--amber)' }}>
-                      {barFilterLabel}
-                      <button
-                        type="button"
-                        onClick={clearBarFilter}
-                        className="ml-2 text-base font-normal opacity-50 hover:opacity-100 transition-opacity"
-                        title="Limpar seleção">
-                        ✕
-                      </button>
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Direita: resumo do filtro atual */}
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-              {selectedBarPoint ? (
-                <>
-                  {selectedBarPoint.valueBrl > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`R$ — ${barFilterLabel}`}</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(selectedBarPoint.valueBrl, 'Brasil')}
-                      </p>
-                    </div>
-                  )}
-                  {selectedBarPoint.valueEur > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>{`€ — ${barFilterLabel}`}</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(selectedBarPoint.valueEur, 'Espanha')}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
-                    <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
-                      {selectedBarQty ?? 0}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {hasBrl && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total R$</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(totalBrl, 'Brasil')}
-                      </p>
-                    </div>
-                  )}
-                  {hasBrl && avgBrl > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média R$ / {unitLabel}</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
-                        {formatCurrency(avgBrl, 'Brasil')}
-                      </p>
-                    </div>
-                  )}
-                  {hasEur && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Total €</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(totalEur, 'Espanha')}
-                      </p>
-                    </div>
-                  )}
-                  {hasEur && avgEur > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Média € / {unitLabel}</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
-                        {formatCurrency(avgEur, 'Espanha')}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Lançamentos</p>
-                    <p className="text-xl font-bold font-mono leading-tight" style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
-                      {qty}
-                    </p>
-                  </div>
-                  {hasBrl && !hasEur && maxBrl > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} R$</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(maxBrl, 'Brasil')}
-                      </p>
-                    </div>
-                  )}
-                  {hasEur && !hasBrl && maxEur > 0 && (
-                    <div>
-                      <p style={{ color: 'var(--text-3)', fontSize: 10 }}>Maior {unitLabel} €</p>
-                      <p className="text-xl font-bold font-mono leading-tight" style={{ color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(maxEur, 'Espanha')}
-                      </p>
-                    </div>
-                  )}
-                </>
+          {/* Categoria selecionada + período */}
+          {(catPath.length > 0 || barFilterLabel) && (
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
+              {catPath.length > 0 && (
+                <div>
+                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Categoria
+                  </p>
+                  <h2 className="font-bold tracking-tight leading-none mt-1"
+                    style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', color: 'var(--text-1)' }}>
+                    {catPath[0]}
+                    {catPath.slice(1).map((seg, i) => (
+                      <span key={i} className="font-semibold" style={{ fontSize: '0.72em', color: 'var(--text-2)' }}> · {seg}</span>
+                    ))}
+                  </h2>
+                </div>
+              )}
+              {barFilterLabel && (
+                <div className="mb-0.5">
+                  <p style={{ color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Período selecionado
+                  </p>
+                  <p className="font-bold tracking-tight leading-none mt-1"
+                    style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)', color: 'var(--amber)' }}>
+                    {barFilterLabel}
+                    <button
+                      type="button"
+                      onClick={clearBarFilter}
+                      className="ml-2 text-base font-normal opacity-50 hover:opacity-100 transition-opacity"
+                      title="Limpar seleção">
+                      ✕
+                    </button>
+                  </p>
+                </div>
               )}
             </div>
+          )}
+
+          {/* Resumo do filtro atual — um cartão por país (bandeira identifica o país de cada valor) */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+            {selectedBarPoint ? (
+              <>
+                {selectedBarPoint.valueBrl > 0 && (
+                  <SummaryStatCard
+                    header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
+                    bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
+                    stats={[{ label: barFilterLabel ?? 'Total', value: formatCurrency(selectedBarPoint.valueBrl, 'Brasil'), color: '#dc2626' }]}
+                  />
+                )}
+                {selectedBarPoint.valueEur > 0 && (
+                  <SummaryStatCard
+                    header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
+                    bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
+                    stats={[{ label: barFilterLabel ?? 'Total', value: formatCurrency(selectedBarPoint.valueEur, 'Espanha'), color: '#b91c1c' }]}
+                  />
+                )}
+                <SummaryStatCard stats={[{ label: 'Lançamentos', value: String(selectedBarQty ?? 0), color: 'var(--text-1)' }]} />
+              </>
+            ) : (
+              <>
+                {hasBrl && (
+                  <SummaryStatCard
+                    header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
+                    bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
+                    stats={[
+                      { label: 'Total', value: formatCurrency(totalBrl, 'Brasil'), color: '#dc2626', emphasis: 'primary' },
+                      ...(avgBrl > 0 ? [{ label: `Média / ${unitLabel}`, value: formatCurrency(avgBrl, 'Brasil'), color: '#dc2626', emphasis: 'secondary' as const }] : []),
+                      ...(maxBrl > 0 ? [{ label: `Maior ${unitLabel}`, value: formatCurrency(maxBrl, 'Brasil'), color: '#dc2626', emphasis: 'secondary' as const }] : []),
+                    ]}
+                  />
+                )}
+                {hasEur && (
+                  <SummaryStatCard
+                    header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
+                    bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
+                    stats={[
+                      { label: 'Total', value: formatCurrency(totalEur, 'Espanha'), color: '#b91c1c', emphasis: 'primary' },
+                      ...(avgEur > 0 ? [{ label: `Média / ${unitLabel}`, value: formatCurrency(avgEur, 'Espanha'), color: '#b91c1c', emphasis: 'secondary' as const }] : []),
+                      ...(maxEur > 0 ? [{ label: `Maior ${unitLabel}`, value: formatCurrency(maxEur, 'Espanha'), color: '#b91c1c', emphasis: 'secondary' as const }] : []),
+                    ]}
+                  />
+                )}
+                <SummaryStatCard stats={[{ label: 'Lançamentos', value: String(qty), color: 'var(--text-1)' }]} />
+              </>
+            )}
           </div>
 
           <ResponsiveContainer width="100%" height={viewMode === 'day' ? 360 : 320}>

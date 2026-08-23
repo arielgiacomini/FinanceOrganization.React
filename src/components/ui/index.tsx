@@ -165,7 +165,9 @@ interface TableProps {
 export function Table({ headers, children, loading, empty, headerOffset = 0, sortCol, sortDir, onSort }: TableProps) {
   return (
     <div
-      className="overflow-hidden sm:overflow-visible rounded-xl"
+      // Abaixo de lg a barra mobile fixa (h-14) soma ao offset do cabeçalho de filtros sticky;
+      // em lg+ não existe barra fixa, então o offset extra vira 0.
+      className="overflow-hidden sm:overflow-visible rounded-xl [--sticky-top-base:3.5rem] lg:[--sticky-top-base:0px]"
       style={{ border: '1px solid var(--border-1)', background: 'var(--bg-2)' }}
     >
       <div className="overflow-x-auto sm:overflow-x-visible">
@@ -185,7 +187,7 @@ export function Table({ headers, children, loading, empty, headerOffset = 0, sor
                       color: active ? 'var(--text-1)' : 'var(--text-3)',
                       background: 'var(--bg-2)',
                       boxShadow: 'inset 0 -1px 0 var(--border-1)',
-                      top: headerOffset,
+                      top: `calc(var(--sticky-top-base) + ${headerOffset}px)`,
                       cursor: sortable ? 'pointer' : 'default',
                       userSelect: 'none',
                       whiteSpace: 'nowrap',

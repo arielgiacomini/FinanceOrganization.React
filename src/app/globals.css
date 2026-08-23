@@ -51,6 +51,11 @@
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
+  /* Reserva o espaço da barra de rolagem sempre — sem isso, o conteúdo (e os
+     grupos flex-wrap dos filtros) recalcula a largura disponível assim que a
+     barra aparece ao carregar dados, dando a impressão de que o cabeçalho fixo
+     "desce" no exato momento em que o usuário começa a rolar a tela. */
+  scrollbar-gutter: stable;
 }
 
 body {

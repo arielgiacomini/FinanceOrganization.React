@@ -26,13 +26,24 @@ import {
   Search, X, Square, SquareCheck, ReceiptText,
 } from 'lucide-react'
 
-function purchaseDateTag(dateStr?: string | null): { label: string; color: string; bg: string; border: string } | null {
+/** Dias corridos entre a data de compra e hoje (0 = hoje, 1 = ontem, 2 = anteontem...). */
+function purchaseDateDiffDays(dateStr?: string | null): number | null {
   if (!dateStr) return null
   const datePart = dateStr.split('T')[0]   // garante só "YYYY-MM-DD" mesmo se vier ISO completo
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const d = new Date(datePart + 'T12:00:00'); d.setHours(0, 0, 0, 0)
   if (isNaN(d.getTime())) return null
-  const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000)
+  return Math.round((today.getTime() - d.getTime()) / 86_400_000)
+}
+
+const DAY_FILTERS = ['Todos', 'Hoje', 'Ontem', 'Anteontem'] as const
+type DayFilter = typeof DAY_FILTERS[number]
+// "Todos" não tem pill própria — reaproveita o Todos do filtro de status.
+const DAY_FILTER_OPTIONS = ['Hoje', 'Ontem', 'Anteontem'] as const
+const DAY_FILTER_DIFF: Record<Exclude<DayFilter, 'Todos'>, number> = { Hoje: 0, Ontem: 1, Anteontem: 2 }
+
+function purchaseDateTag(dateStr?: string | null): { label: string; color: string; bg: string; border: string } | null {
+  const diff = purchaseDateDiffDays(dateStr)
   if (diff === 0) return { label: 'Hoje',      color: 'var(--amber)',  bg: 'var(--amber-dim)',   border: 'rgba(251,191,36,0.35)' }
   if (diff === 1) return { label: 'Ontem',     color: 'var(--blue)',   bg: 'var(--blue-dim)',    border: 'rgba(96,165,250,0.35)' }
   if (diff === 2) return { label: 'Anteontem', color: 'var(--text-2)', bg: 'var(--bg-4)',        border: 'var(--border-2)' }
@@ -86,6 +97,7 @@ function ContasAPagarPageInner() {
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Pago' | 'Pendente'>('Todos')
+  const [dayFilter, setDayFilter] = useState<DayFilter>('Todos')
   const [catPath, setCatPath] = useState<string[]>([])
   const [sortCol, setSortCol] = useState<ContasPagarSortCol>(() => loadContasPagarSortCol())
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => loadContasPagarSortDir())
@@ -217,15 +229,41 @@ function ContasAPagarPageInner() {
     if (statusFilter !== 'Todos') {
       result = result.filter(b => statusFilter === 'Pago' ? b.hasPay : !b.hasPay)
     }
+    if (dayFilter !== 'Todos') {
+      const target = DAY_FILTER_DIFF[dayFilter]
+      result = result.filter(b => purchaseDateDiffDays(b.purchaseDate) === target)
+    }
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bills, countryFilter, accountFilter, search, catPath.join(':'), statusFilter])
+  }, [bills, countryFilter, accountFilter, search, catPath.join(':'), statusFilter, dayFilter])
 
   // Ordenação exibida na tabela — coluna clicada pelo usuário (ou o padrão configurado)
   const sortedFiltered = useMemo(
     () => sortBillsBy(filtered, sortCol, sortDir),
     [filtered, sortCol, sortDir]
   )
+
+  // Valor gasto em cada dia (Hoje/Ontem/Anteontem), separado por país — exibido na própria pill do filtro
+  const dayFilterTotals = useMemo(() => {
+    const result: Record<typeof DAY_FILTER_OPTIONS[number], { brasil: number; espanha: number; hasBrasil: boolean; hasEspanha: boolean }> = {
+      Hoje:      { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
+      Ontem:     { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
+      Anteontem: { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
+    }
+    for (const b of bills) {
+      const diff = purchaseDateDiffDays(b.purchaseDate)
+      const key = diff === 0 ? 'Hoje' : diff === 1 ? 'Ontem' : diff === 2 ? 'Anteontem' : null
+      if (!key) continue
+      if (normalizeCountry(b.country) === 'Espanha') {
+        result[key].espanha += b.value
+        result[key].hasEspanha = true
+      } else {
+        result[key].brasil += b.value
+        result[key].hasBrasil = true
+      }
+    }
+    return result
+  }, [bills])
 
   const byCountry = (country: string) => bills.filter(b => normalizeCountry(b.country) === country)
   const sumValues = (arr: typeof bills) => arr.reduce((s, b) => s + b.value, 0)
@@ -311,11 +349,20 @@ function ContasAPagarPageInner() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll */}
+      {/* Cabeçalho fixo: header, summary e filtros permanecem visíveis no scroll.
+          top responsivo: abaixo de lg ainda existe a barra mobile fixa (h-14) por cima,
+          então o bloco precisa colar logo abaixo dela em vez de sob ela (top:0 sempre).
+          -mt/pt cancelam o padding-top do <main> (AppLayout) só para este bloco: sem isso,
+          o cabeçalho nasce ~32px abaixo do topo e "sobe" visivelmente nos primeiros pixels
+          de scroll até grudar — com a margem negativa ele já nasce colado, sem esse deslize. */}
       <div
         ref={filtersRef}
-        className="sm:sticky z-30 space-y-4 sm:pb-3"
-        style={{ top: 0, background: 'var(--bg-1)', marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2 }}
+        className="sm:sticky sm:top-14 lg:top-0 z-30 space-y-4 sm:pb-3 -mt-4 md:-mt-6 lg:-mt-8 pt-4 md:pt-6 lg:pt-8"
+        style={{
+          background: 'var(--bg-1)',
+          marginLeft: -2, marginRight: -2, paddingLeft: 2, paddingRight: 2,
+          boxShadow: '0 1px 0 var(--bg-1), 0 8px 16px -8px rgba(0,0,0,0.45)',
+        }}
       >
       <PageHeader
         title="Contas a Pagar"
@@ -413,14 +460,14 @@ function ContasAPagarPageInner() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <CountryTabs value={countryFilter} onChange={setCountryFilter} counts={countryCounts} />
-            {/* Status filter ao lado dos países */}
+            {/* Status filter ao lado dos países — "Todos" também reseta o filtro de dia abaixo */}
             <div className="flex items-center gap-1 ml-1 pl-2" style={{ borderLeft: '1px solid var(--border-1)' }}>
               {(['Todos', 'Pendente', 'Pago'] as const).map(s => {
                 const active = statusFilter === s
                 const activeColor = s === 'Pago' ? 'var(--green-400)' : s === 'Pendente' ? 'var(--amber)' : 'var(--blue)'
                 const activeBg = s === 'Pago' ? 'var(--green-dim)' : s === 'Pendente' ? 'rgba(245,158,11,0.1)' : 'var(--blue-dim)'
                 return (
-                  <button key={s} type="button" onClick={() => setStatusFilter(s)}
+                  <button key={s} type="button" onClick={() => { setStatusFilter(s); if (s === 'Todos') setDayFilter('Todos') }}
                     className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
                     style={{
                       background: active ? activeBg : 'var(--bg-3)',
@@ -432,40 +479,47 @@ function ContasAPagarPageInner() {
                 )
               })}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
-              onClick={() => setShowDetails((v) => !v)}
-            >
-              {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
-              {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
-            </button>
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+            {/* Filtro por dia da compra (Hoje/Ontem/Anteontem) — o "Todos" acima também limpa este filtro */}
+            <div className="flex items-center gap-1.5 ml-1 pl-2" style={{ borderLeft: '1px solid var(--border-1)' }}>
+              {DAY_FILTER_OPTIONS.map(d => {
+                const active = dayFilter === d
+                const activeColor = d === 'Hoje' ? 'var(--amber)' : d === 'Ontem' ? 'var(--blue)' : 'var(--text-2)'
+                const activeBg = d === 'Hoje' ? 'rgba(245,158,11,0.1)' : d === 'Ontem' ? 'var(--blue-dim)' : 'var(--bg-4)'
+                const t = dayFilterTotals[d]
+                const hasBoth = t.hasBrasil && t.hasEspanha
+                return (
+                  <button key={d} type="button" onClick={() => setDayFilter(active ? 'Todos' : d)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    style={{
+                      background: active ? activeBg : 'var(--bg-3)',
+                      color: active ? activeColor : 'var(--text-2)',
+                      border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                    }}>
+                    {d}
+                    {(t.hasBrasil || t.hasEspanha) && (
+                      <span className="font-mono" style={{ opacity: active ? 1 : 0.7 }}>
+                        {t.hasBrasil && (
+                          <span className="inline-flex items-center gap-1">
+                            <FlagBrasil size={11} />
+                            {formatCurrency(t.brasil, 'Brasil')}
+                          </span>
+                        )}
+                        {hasBoth && <span style={{ margin: '0 3px' }}>·</span>}
+                        {t.hasEspanha && (
+                          <span className="inline-flex items-center gap-1">
+                            <FlagEspanha size={11} />
+                            {formatCurrency(t.espanha, 'Espanha')}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Search input */}
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-3)' }} />
-          <input
-            type="text"
-            className="input w-full pl-8 text-sm"
-            placeholder="Filtrar por nome, categoria ou observação..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2"
-              style={{ color: 'var(--text-3)' }}
-              onClick={() => setSearch('')}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
         {/* Category filter */}
         <CategoryFilter
           categories={bills.map(b => b.category ?? '').filter(Boolean)}
@@ -560,8 +614,42 @@ function ContasAPagarPageInner() {
             })}
           </div>
         )}
+
+        {/* Search input — sempre o último filtro da barra */}
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-3)' }} />
+          <input
+            type="text"
+            className="input w-full pl-8 text-sm"
+            placeholder="Filtrar por nome, categoria ou observação..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-3)' }}
+              onClick={() => setSearch('')}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
       </div>{/* fim do cabeçalho sticky */}
+
+      {/* Barra da tabela — mostrar detalhes / contagem, com linha sutil separando dos filtros acima */}
+      <div className="flex items-center gap-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+        <button
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
+          onClick={() => setShowDetails((v) => !v)}
+        >
+          {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
+          {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+        </button>
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
+      </div>
 
       {/* Desktop: tabela | Mobile: cards */}
 
