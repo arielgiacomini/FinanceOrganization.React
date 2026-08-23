@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Organization — Controle financeiro pessoal</title>
+  <meta name="description" content="Finance Organization centraliza contas a pagar, contas a receber e carteira num painel escuro, rápido e instalável — com lançamento em segundos e modo offline.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    :root{
+      --font-sans:'DM Sans',sans-serif; --font-mono:'DM Mono',monospace;
+      --green-400:#4ade80; --green-500:#22c55e; --green-600:#16a34a;
+      --green-dim:rgba(34,197,94,0.12); --green-border:rgba(34,197,94,0.25);
+      --bg-0:#0a0a0a; --bg-1:#111111; --bg-2:#161616; --bg-3:#1e1e1e; --bg-4:#262626; --bg-5:#303030;
+      --text-1:#f5f5f5; --text-2:#a3a3a3; --text-3:#6b6b6b;
+      --border-1:rgba(255,255,255,0.07); --border-2:rgba(255,255,255,0.12); --border-3:rgba(255,255,255,0.18);
+      --red:#f87171; --red-dim:rgba(248,113,113,0.12);
+      --amber:#fbbf24; --amber-dim:rgba(251,191,36,0.12);
+      --blue:#60a5fa; --blue-dim:rgba(96,165,250,0.12);
+    }
+    *{box-sizing:border-box;}
+    html{scroll-behavior:smooth;}
+    body{margin:0;background:var(--bg-0);color:var(--text-1);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;}
+    a{color:var(--green-400);text-decoration:none;}
+    a:hover{color:var(--green-500);}
+    h1,h2,h3,p{margin:0;}
+    .container{max-width:1160px;margin:0 auto;padding:0 24px;}
+    .btn-primary{
+      display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:10px;
+      background:var(--green-500);color:#08120a;font-weight:600;font-size:15px;border:none;cursor:pointer;
+    }
+    .btn-secondary{
+      display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:10px;
+      background:transparent;color:var(--text-1);font-weight:500;font-size:15px;border:1px solid var(--border-2);cursor:pointer;
+    }
+    .eyebrow{
+      display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.04em;
+      color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);
+      padding:5px 11px;border-radius:999px;text-transform:uppercase;
+    }
+    .card{border-radius:14px;border:1px solid var(--border-1);background:var(--bg-2);}
+    .icon-badge{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .grid-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;}
+    .grid-screens{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;align-items:start;}
+    .grid-novidades{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;}
+    @media (max-width:960px){
+      .grid-features{grid-template-columns:repeat(2,minmax(0,1fr));}
+      .grid-novidades{grid-template-columns:1fr;}
+      .grid-screens{grid-template-columns:1fr;}
+      .hero-inner{grid-template-columns:1fr !important;}
+      .hero-copy{text-align:left;align-items:flex-start !important;}
+      .nav-links{display:none !important;}
+    }
+    @media (max-width:620px){
+      .grid-features{grid-template-columns:1fr;}
+      h1.headline{font-size:34px !important;line-height:1.15 !important;}
+      .section-title{font-size:24px !important;}
+    }
+  </style>
+</head>
+<body>
+
+<div style="background:var(--bg-0);min-height:100%;">
+
+  <!-- NAV -->
+  <header style="border-bottom:1px solid var(--border-1);position:sticky;top:0;background:rgba(10,10,10,0.85);backdrop-filter:blur(8px);z-index:10;">
+    <div class="container" style="display:flex;align-items:center;justify-content:space-between;height:72px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:9px;background:var(--green-500);display:flex;align-items:center;justify-content:center;color:#08120a;font-weight:700;font-size:15px;">F</div>
+        <div style="line-height:1.1;">
+          <div style="font-size:14px;font-weight:600;color:var(--text-1);">Finance</div>
+          <div style="font-size:11px;color:var(--text-3);">Organization</div>
+        </div>
+      </div>
+      <nav class="nav-links" style="display:flex;align-items:center;gap:32px;font-size:14px;color:var(--text-2);">
+        <a href="#funcionalidades" style="color:var(--text-2);">Funcionalidades</a>
+        <a href="#telas" style="color:var(--text-2);">Telas</a>
+        <a href="#novidades" style="color:var(--text-2);">Novidades</a>
+      </nav>
+      <div style="display:flex;align-items:center;gap:18px;">
+        <a href="http://app-finance.arielgiacomini.com.br/login/" style="color:var(--text-2);font-size:14px;font-weight:500;">Entrar</a>
+        <a href="http://app-finance.arielgiacomini.com.br/" class="btn-primary" style="padding:10px 18px;font-size:13px;">Acessar o sistema</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section style="padding:88px 0 96px;">
+    <div class="container">
+      <div class="hero-inner" style="display:grid;grid-template-columns:1fr;gap:24px;justify-items:center;text-align:center;">
+        <span class="eyebrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+          v347 · funciona até offline
+        </span>
+        <h1 class="headline" style="font-size:56px;line-height:1.08;font-weight:700;letter-spacing:-0.02em;max-width:780px;color:var(--text-1);">
+          Suas contas, sob controle total — <span style="color:var(--green-400);">mesmo sem internet.</span>
+        </h1>
+        <p style="font-size:18px;line-height:1.6;color:var(--text-2);max-width:600px;">
+          O Finance Organization centraliza contas a pagar, contas a receber e carteira num só painel escuro, rápido
+          e instalável — com lançamento em segundos e sincronização automática quando a conexão cai.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
+          <a href="http://app-finance.arielgiacomini.com.br/" class="btn-primary">
+            Entrar no sistema
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a href="#funcionalidades" class="btn-secondary">Ver funcionalidades</a>
+        </div>
+      </div>
+
+      <!-- Product shot: dashboard mockup -->
+      <div style="margin-top:64px;border-radius:20px;border:1px solid var(--border-2);background:var(--bg-1);box-shadow:0 40px 80px -30px rgba(0,0,0,0.6);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:6px;padding:14px 18px;border-bottom:1px solid var(--border-1);">
+          <div style="width:10px;height:10px;border-radius:50%;background:var(--bg-4);"></div>
+          <div style="width:10px;height:10px;border-radius:50%;background:var(--bg-4);"></div>
+          <div style="width:10px;height:10px;border-radius:50%;background:var(--bg-4);"></div>
+        </div>
+        <div style="display:flex;">
+          <!-- fake sidebar -->
+          <div style="width:220px;flex-shrink:0;background:var(--bg-1);border-right:1px solid var(--border-1);padding:20px 14px;display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:0 8px 18px;">
+              <div style="width:24px;height:24px;border-radius:7px;background:var(--green-500);"></div>
+              <span style="font-size:12px;font-weight:600;color:var(--text-1);">Finance Org</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;background:var(--green-dim);color:var(--green-400);font-size:12.5px;font-weight:500;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+              Dashboard
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-3);font-size:12.5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16"/></svg>
+              Carteira
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-3);font-size:12.5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>
+              Contas a Pagar
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-3);font-size:12.5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l4 4 4-8"/></svg>
+              Contas a Receber
+            </div>
+          </div>
+          <!-- fake main -->
+          <div style="flex:1;padding:26px 30px;background:var(--bg-0);min-width:0;">
+            <div style="font-size:13px;color:var(--text-3);margin-bottom:4px;">Resumo de agosto de 2026</div>
+            <div style="font-size:19px;font-weight:600;color:var(--text-1);margin-bottom:20px;">Dashboard</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
+              <div class="card" style="padding:16px;">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">A pagar no mês</div>
+                <div style="font-size:20px;font-weight:600;color:var(--amber);">R$ 4.230,00</div>
+              </div>
+              <div class="card" style="padding:16px;">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">A receber no mês</div>
+                <div style="font-size:20px;font-weight:600;color:var(--blue);">R$ 6.980,00</div>
+              </div>
+              <div class="card" style="padding:16px;">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">Saldo projetado</div>
+                <div style="font-size:20px;font-weight:600;color:var(--green-400);">R$ 2.750,00</div>
+              </div>
+            </div>
+            <div class="card" style="padding:18px;">
+              <div style="font-size:12px;color:var(--text-3);margin-bottom:12px;">Evolução financeira · 12 meses</div>
+              <svg viewBox="0 0 560 130" width="100%" height="130" preserveAspectRatio="none">
+                <polyline points="0,95 60,100 120,80 180,88 240,60 300,68 360,45 420,52 480,30 540,20" fill="none" stroke="var(--green-500)" stroke-width="2.5"/>
+                <polygon points="0,95 60,100 120,80 180,88 240,60 300,68 360,45 420,52 480,30 540,20 560,130 0,130" fill="var(--green-dim)"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST BAR -->
+  <section style="padding:0 0 88px;">
+    <div class="container" style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:32px;color:var(--text-3);font-size:13px;font-family:var(--font-mono);">
+      <span>NEXT.JS 14</span><span style="color:var(--border-2);">·</span>
+      <span>TYPESCRIPT</span><span style="color:var(--border-2);">·</span>
+      <span>TAILWIND CSS</span><span style="color:var(--border-2);">·</span>
+      <span>PWA INSTALÁVEL</span><span style="color:var(--border-2);">·</span>
+      <span>TEMA ESCURO FIXO</span>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="funcionalidades" style="padding:24px 0 100px;">
+    <div class="container">
+      <div style="text-align:center;max-width:620px;margin:0 auto 48px;">
+        <h2 class="section-title" style="font-size:34px;font-weight:700;letter-spacing:-0.01em;margin-bottom:14px;">Tudo que a sua vida financeira precisa</h2>
+        <p style="font-size:15.5px;color:var(--text-2);line-height:1.6;">Do lançamento do dia a dia à visão de longo prazo, cada tela foi pensada pra reduzir cliques e nunca deixar um pagamento passar batido.</p>
+      </div>
+
+      <div class="grid-features">
+        <!-- 1 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Dashboard financeiro</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Resumo semanal de gastos, evolução dos últimos 12 meses, despesas por dia e projeção de investimentos num painel só.</p>
+        </div>
+        <!-- 2 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--amber-dim);color:var(--amber);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16V8M8 12l4-4 4 4"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Contas a Pagar</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Cadastro rápido ou completo, recorrência automática, histórico de pagamentos e alerta de registros pendentes.</p>
+        </div>
+        <!-- 3 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--blue-dim);color:var(--blue);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Contas a Receber</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Controle total do que falta receber, com filtro por status e histórico completo de recebimentos.</p>
+        </div>
+        <!-- 4 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Carteira</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Saldos e projeção financeira sincronizados com o servidor — sempre atualizados, em qualquer aparelho.</p>
+        </div>
+        <!-- 5 -->
+        <div class="card" style="padding:22px;border-color:var(--green-border);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Lançamento Rápido</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Registra um gasto em segundos, sem abrir o sistema — inclusive por um atalho na tela inicial do celular, já preenchido por link.</p>
+        </div>
+        <!-- 6 -->
+        <div class="card" style="padding:22px;border-color:var(--green-border);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Modo Offline</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Sem internet? O lançamento fica salvo no aparelho e é enviado sozinho pra API assim que a conexão voltar.</p>
+        </div>
+        <!-- 7 -->
+        <div class="card" style="padding:22px;border-color:var(--green-border);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 1.6 4.8L18 9.5l-4.4 1.7L12 16l-1.6-4.8L6 9.5l4.4-1.7Z"/><path d="M19 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7Z"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Sugestão inteligente de categoria</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Aprende com o seu histórico e sugere a categoria certa enquanto você digita o nome do gasto.</p>
+        </div>
+        <!-- 8 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--bg-4);color:var(--text-2);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="14" cy="6" r="2" fill="var(--bg-2)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="2" fill="var(--bg-2)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="16" cy="18" r="2" fill="var(--bg-2)"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">Configurações personalizáveis</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Escolha quais campos aparecem no cadastro rápido e a ordenação padrão de cada tela.</p>
+        </div>
+        <!-- 9 -->
+        <div class="card" style="padding:22px;">
+          <div class="icon-badge" style="background:var(--bg-4);color:var(--text-2);margin-bottom:14px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="10" y1="19" x2="14" y2="19"/></svg>
+          </div>
+          <h3 style="font-size:15.5px;font-weight:600;margin-bottom:8px;">PWA instalável</h3>
+          <p style="font-size:13.5px;color:var(--text-3);line-height:1.55;">Instale como um app de verdade no celular ou computador — tema escuro fixo e atualização automática de versão.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREENS -->
+  <section id="telas" style="padding:24px 0 100px;background:var(--bg-1);border-top:1px solid var(--border-1);border-bottom:1px solid var(--border-1);">
+    <div class="container" style="padding-top:80px;">
+      <div style="text-align:center;max-width:620px;margin:0 auto 48px;">
+        <h2 class="section-title" style="font-size:34px;font-weight:700;letter-spacing:-0.01em;margin-bottom:14px;">O app por dentro</h2>
+        <p style="font-size:15.5px;color:var(--text-2);line-height:1.6;">Interface escura, densa em informação e sem fricção — pensada pra ser usada todos os dias.</p>
+      </div>
+
+      <div class="grid-screens">
+        <!-- Contas a pagar table mock -->
+        <div class="card" style="overflow:hidden;">
+          <div style="padding:16px 18px;border-bottom:1px solid var(--border-1);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span style="font-size:13px;font-weight:600;color:var(--text-1);">Contas a Pagar</span>
+            <span style="font-size:11px;color:var(--text-3);margin-left:auto;">agosto de 2026</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border-1);">
+                <th style="text-align:left;padding:10px 14px;color:var(--text-3);font-weight:500;font-size:11px;">Nome</th>
+                <th style="text-align:left;padding:10px 14px;color:var(--text-3);font-weight:500;font-size:11px;">Categoria</th>
+                <th style="text-align:left;padding:10px 14px;color:var(--text-3);font-weight:500;font-size:11px;">Vencimento</th>
+                <th style="text-align:left;padding:10px 14px;color:var(--text-3);font-weight:500;font-size:11px;">Valor</th>
+                <th style="text-align:left;padding:10px 14px;color:var(--text-3);font-weight:500;font-size:11px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border-1);background:#1b2e1d;">
+                <td style="padding:10px 14px;color:var(--text-1);">Energia elétrica</td>
+                <td style="padding:10px 14px;color:var(--text-1);">Casa</td>
+                <td style="padding:10px 14px;color:var(--text-1);">05/08</td>
+                <td style="padding:10px 14px;color:var(--green-400);font-weight:500;">R$ 245,00</td>
+                <td style="padding:10px 14px;"><span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:var(--green-dim);color:var(--green-400);font-size:10.5px;font-weight:500;">Pago</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border-1);background:rgba(251,191,36,0.08);">
+                <td style="padding:10px 14px;color:var(--text-1);">Cartão de crédito</td>
+                <td style="padding:10px 14px;color:var(--text-1);">Cartão</td>
+                <td style="padding:10px 14px;color:var(--text-1);">18/08</td>
+                <td style="padding:10px 14px;color:var(--text-1);font-weight:500;">R$ 1.320,40</td>
+                <td style="padding:10px 14px;"><span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:var(--amber-dim);color:var(--amber);font-size:10.5px;font-weight:500;">Pendente</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border-1);">
+                <td style="padding:10px 14px;color:var(--text-1);">Internet</td>
+                <td style="padding:10px 14px;color:var(--text-1);">Casa</td>
+                <td style="padding:10px 14px;color:var(--text-1);">22/08</td>
+                <td style="padding:10px 14px;color:var(--text-1);font-weight:500;">R$ 99,90</td>
+                <td style="padding:10px 14px;"><span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:var(--amber-dim);color:var(--amber);font-size:10.5px;font-weight:500;">Pendente</span></td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px;color:var(--text-1);">Streaming</td>
+                <td style="padding:10px 14px;color:var(--text-1);">Assinaturas</td>
+                <td style="padding:10px 14px;color:var(--text-1);">27/08</td>
+                <td style="padding:10px 14px;color:var(--text-1);font-weight:500;">R$ 39,90</td>
+                <td style="padding:10px 14px;"><span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:var(--amber-dim);color:var(--amber);font-size:10.5px;font-weight:500;">Pendente</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Lançamento rápido card mock -->
+        <div style="display:flex;justify-content:center;">
+          <div class="card" style="padding:28px 24px;max-width:320px;width:100%;">
+            <div style="text-align:center;margin-bottom:18px;">
+              <div style="width:48px;height:48px;border-radius:14px;background:var(--green-500);color:#08120a;font-weight:700;font-size:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">F</div>
+              <div style="font-size:15px;font-weight:600;color:var(--text-1);">Lançamento Rápido</div>
+              <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;">Nova conta a pagar — sem entrar no sistema</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <div style="font-size:11px;color:var(--text-2);margin-bottom:5px;font-weight:500;">Nome</div>
+                <div style="background:var(--bg-3);border:1px solid var(--border-1);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--text-1);">Mercado</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-2);margin-bottom:5px;font-weight:500;">Valor</div>
+                <div style="background:var(--bg-3);border:1px solid var(--green-border);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--text-1);">R$ 187,50</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:8px;padding:8px 10px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--green-400)" stroke-width="2.4" stroke-linejoin="round"><path d="m12 3 1.6 4.8L18 9.5l-4.4 1.7L12 16l-1.6-4.8L6 9.5l4.4-1.7Z"/></svg>
+                <span style="font-size:11px;color:var(--green-400);">Sugestão: <strong>Alimentação</strong></span>
+              </div>
+              <div style="background:var(--green-500);color:#08120a;text-align:center;border-radius:9px;padding:10px;font-size:13px;font-weight:600;margin-top:4px;">Salvar</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NOVIDADES -->
+  <section id="novidades" style="padding:100px 0;">
+    <div class="container">
+      <div style="text-align:center;max-width:640px;margin:0 auto 48px;">
+        <span class="eyebrow" style="margin-bottom:16px;">Na versão v347</span>
+        <h2 class="section-title" style="font-size:34px;font-weight:700;letter-spacing:-0.01em;margin:14px 0;">O que chegou de novo</h2>
+        <p style="font-size:15.5px;color:var(--text-2);line-height:1.6;">Três atualizações pensadas pra tirar o app do caminho e deixar registrar um gasto tão rápido quanto pagar ele.</p>
+      </div>
+
+      <div class="grid-novidades">
+        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Offline-first de verdade</h3>
+          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">Service Worker próprio + fila local: lançamentos criados sem sinal ficam guardados no aparelho e são reenviados automaticamente, com deduplicação contra a API.</p>
+        </div>
+        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Lançamento por link</h3>
+          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">A tela de Lançamento Rápido aceita nome, valor e conta direto na URL — um atalho na tela inicial já abre com o gasto quase pronto.</p>
+        </div>
+        <div class="card" style="padding:26px;border-color:var(--green-border);background:linear-gradient(180deg, rgba(34,197,94,0.06), transparent 60%), var(--bg-2);">
+          <div class="icon-badge" style="background:var(--green-dim);color:var(--green-400);margin-bottom:16px;">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 1.6 4.8L18 9.5l-4.4 1.7L12 16l-1.6-4.8L6 9.5l4.4-1.7Z"/></svg>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Categoria sugerida sozinha</h3>
+          <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;">O app aprende com os últimos 6 meses de lançamentos e sugere até 3 categorias enquanto você digita o nome do gasto.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section style="padding:20px 0 100px;">
+    <div class="container">
+      <div class="card" style="padding:56px 32px;text-align:center;border-color:var(--green-border);background:radial-gradient(circle at 50% 0%, rgba(34,197,94,0.10), transparent 60%), var(--bg-2);">
+        <h2 style="font-size:28px;font-weight:700;letter-spacing:-0.01em;margin-bottom:14px;">Pronto pra organizar sua vida financeira?</h2>
+        <p style="font-size:15px;color:var(--text-2);max-width:460px;margin:0 auto 26px;">Dashboard, contas a pagar e a receber, carteira e lançamento offline — tudo num só app, com tema escuro fixo.</p>
+        <a href="http://app-finance.arielgiacomini.com.br/" class="btn-primary" style="padding:14px 28px;">Acessar o Finance Organization</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="border-top:1px solid var(--border-1);padding:28px 0;">
+    <div class="container" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:12.5px;">
+        <div style="width:20px;height:20px;border-radius:6px;background:var(--green-500);display:flex;align-items:center;justify-content:center;color:#08120a;font-weight:700;font-size:11px;">F</div>
+        © 2026 Finance Organization
+      </div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v347 · 16 ago 2026</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -18,14 +18,18 @@ export function createSession(): Session {
   }
 }
 
+// localStorage (não sessionStorage) de propósito: num PWA instalado, o sistema
+// operacional mata o processo do app quando ele fica em segundo plano, e
+// sessionStorage some junto — fazendo pedir login de novo a cada abertura,
+// mesmo dentro das 8h de validade. localStorage sobrevive a isso.
 export function getSession(): Session | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
     const session: Session = JSON.parse(raw)
     if (Date.now() > session.expiresAt) {
-      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(SESSION_KEY)
       return null
     }
     return session
@@ -35,11 +39,11 @@ export function getSession(): Session | null {
 }
 
 export function saveSession(session: Session) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
 export function clearSession() {
-  sessionStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(SESSION_KEY)
 }
 
 export function isAuthenticated(): boolean {

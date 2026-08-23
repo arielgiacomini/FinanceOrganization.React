@@ -39,7 +39,23 @@ export interface CategorySuggestion {
 let historyCache: HistoryEntry[] | null = null
 let historyPromise: Promise<HistoryEntry[]> | null = null
 
-/** Carrega (e cacheia pela sessão) o histórico dos últimos meses para sugestão. */
+// Cópia persistida (localStorage) do histórico — usada quando a busca ao vivo
+// falhar por completo (sem internet), pra sugestão continuar funcionando com
+// os dados da última vez que a tela abriu online.
+const HISTORY_STORAGE_KEY = 'finance_category_history_cache'
+
+function saveHistoryToStorage(entries: HistoryEntry[]) {
+  try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries)) } catch {}
+}
+
+function loadHistoryFromStorage(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+/** Carrega (e cacheia pela sessão + localStorage) o histórico dos últimos meses para sugestão. */
 export function loadCategoryHistory(): Promise<HistoryEntry[]> {
   if (historyCache) return Promise.resolve(historyCache)
   if (historyPromise) return historyPromise
@@ -60,8 +76,18 @@ export function loadCategoryHistory(): Promise<HistoryEntry[]> {
         entries.push({ normalizedName: normalize(b.name), originalName: b.name, category: b.category })
       }
     }
-    historyCache = entries
-    return entries
+
+    // Conseguiu buscar algo (mesmo que só parte dos meses) — usa e guarda pra próxima.
+    if (entries.length > 0) {
+      historyCache = entries
+      saveHistoryToStorage(entries)
+      return entries
+    }
+
+    // Sem rede (todos os meses falharam) — usa a última cópia salva, se existir.
+    const cached = loadHistoryFromStorage()
+    historyCache = cached
+    return cached
   })
 
   return historyPromise

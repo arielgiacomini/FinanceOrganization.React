@@ -1,17 +1,20 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { billsToPayApi, accountsApi, categoriesApi } from '@/lib/api'
-import { buildYearMonth, getFrequences, getRegistrationTypes } from '@/lib/utils'
+import { billsToPayApi, accountsApi, categoriesApi, NetworkError } from '@/lib/api'
+import { buildYearMonth, formatCurrency, getFrequences, getRegistrationTypes } from '@/lib/utils'
 import type { Account } from '@/types'
 import { Spinner } from '@/components/ui'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
-import { Check, Plus, SlidersHorizontal, Lightbulb, CalendarDays } from 'lucide-react'
+import { Check, Plus, SlidersHorizontal, Lightbulb, CalendarDays, WifiOff, CloudOff, X } from 'lucide-react'
 import { loadQuickBillEnabledFields, loadQuickBillDefaultValues } from '@/lib/wallet'
 import { loadCategoryHistory, suggestCategoriesForName } from '@/lib/categorySuggestion'
 import type { CategorySuggestion } from '@/lib/categorySuggestion'
+import { saveCachedAccounts, loadCachedAccounts, saveCachedCategories, loadCachedCategories } from '@/lib/offlineCache'
+import { enqueueBill, getPendingQueue, removeFromQueue, syncPendingQueue } from '@/lib/offlineQueue'
+import type { PendingBill } from '@/lib/offlineQueue'
 
 const COUNTRIES = [
   { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
@@ -120,7 +123,8 @@ export interface BillToPayQuickValues {
 
 interface QuickBillToPayFormProps {
   onSaved: () => void
-  onDone: () => void
+  /** queued=true quando o cadastro foi só guardado na fila offline, não confirmado pela API. */
+  onDone: (queued?: boolean) => void
   onSwitchFull: (prefill: QuickBillPrefill) => void
   onCancel: () => void
   initialValues?: BillToPayQuickValues
@@ -137,32 +141,90 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
 
   const today = toDateInputValue(new Date())
 
-  // initialValues (troca vinda do formulário completo) tem prioridade sobre
-  // um rascunho antigo — é a intenção mais recente do usuário.
-  const draft = !initialValues ? loadQuickDraft() : null
-  const [hasDraft] = useState(() => !!draft)
+  // Estado inicial NUNCA lê sessionStorage aqui — esta tela pode ser pré-renderizada
+  // em build estático (sem acesso a sessionStorage), e ler o rascunho já no useState
+  // faz a primeira renderização do cliente divergir do HTML do servidor (erro de
+  // hidratação). O rascunho, quando existir, é aplicado logo após montar (useEffect
+  // abaixo), que só roda no navegador e não precisa bater com o HTML do servidor.
+  const [hasDraft, setHasDraft] = useState(false)
 
-  const [name, setName] = useState(initialValues?.name ?? draft?.name ?? '')
-  const [value, setValue] = useState(initialValues?.value ?? draft?.value ?? '')
-  const [purchaseDate, setPurchaseDate] = useState(initialValues?.purchaseDate || draft?.purchaseDate || today)
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [value, setValue] = useState(initialValues?.value ?? '')
+  const [purchaseDate, setPurchaseDate] = useState(initialValues?.purchaseDate || today)
   // Calendário só aparece quando o usuário pede ("Informar Data") — se a data inicial não
-  // bate com Hoje/Ontem/Anteontem (ex: veio de um rascunho antigo), já começa no modo manual.
+  // bate com Hoje/Ontem/Anteontem, já começa no modo manual.
   const [manualDateMode, setManualDateMode] = useState(() => {
-    const initial = initialValues?.purchaseDate || draft?.purchaseDate || today
+    const initial = initialValues?.purchaseDate || today
     const quickKeys = [0, -1, -2].map(n => toDateInputValue(addDays(new Date(), n)))
     return !quickKeys.includes(initial)
   })
-  const [account, setAccount] = useState(initialValues?.account ?? draft?.account ?? defaults.account)
-  const [category, setCategory] = useState(initialValues?.category ?? draft?.category ?? defaults.category)
-  const [country, setCountry] = useState(initialValues?.country ?? draft?.country ?? defaults.country)
-  const [frequence, setFrequence] = useState(initialValues?.frequence ?? draft?.frequence ?? defaults.frequence)
-  const [registrationType, setRegistrationType] = useState(initialValues?.registrationType ?? draft?.registrationType ?? defaults.registrationType)
-  const [additionalMessage, setAdditionalMessage] = useState(initialValues?.additionalMessage ?? draft?.additionalMessage ?? defaults.additionalMessage)
+  const [account, setAccount] = useState(initialValues?.account ?? defaults.account)
+  const [category, setCategory] = useState(initialValues?.category ?? defaults.category)
+  const [country, setCountry] = useState(initialValues?.country ?? defaults.country)
+  const [frequence, setFrequence] = useState(initialValues?.frequence ?? defaults.frequence)
+  const [registrationType, setRegistrationType] = useState(initialValues?.registrationType ?? defaults.registrationType)
+  const [additionalMessage, setAdditionalMessage] = useState(initialValues?.additionalMessage ?? defaults.additionalMessage)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [savedFlash, setSavedFlash] = useState(false)
+  const [flashMessage, setFlashMessage] = useState<null | 'saved' | 'queued'>(null)
   const [categorySuggestions, setCategorySuggestions] = useState<CategorySuggestion[]>([])
+  const [usingCachedRefData, setUsingCachedRefData] = useState(false)
+  const [refDataLoaded, setRefDataLoaded] = useState(false)
+  const [pendingQueue, setPendingQueue] = useState<PendingBill[]>([])
+  const [syncingQueue, setSyncingQueue] = useState(false)
+
+  // Fila offline: carrega o que já estava pendente, e tenta sincronizar assim que
+  // monta (caso a conexão já tenha voltado) e sempre que o navegador avisar que
+  // ficou online de novo.
+  useEffect(() => {
+    setPendingQueue(getPendingQueue())
+
+    function runSync() {
+      setSyncingQueue(true)
+      syncPendingQueue(() => setPendingQueue(getPendingQueue()))
+        .finally(() => setSyncingQueue(false))
+    }
+    runSync()
+
+    window.addEventListener('online', runSync)
+    return () => window.removeEventListener('online', runSync)
+  }, [])
+
+  function handleManualSync() {
+    setSyncingQueue(true)
+    syncPendingQueue(() => setPendingQueue(getPendingQueue())).finally(() => setSyncingQueue(false))
+  }
+
+  function handleRemoveQueued(id: string) {
+    removeFromQueue(id)
+    setPendingQueue(getPendingQueue())
+  }
+
+  // Aplica o rascunho salvo (se existir) já depois de montar no navegador — nunca
+  // durante a renderização inicial, pra não conflitar com o HTML pré-renderizado.
+  // initialValues (troca vinda do formulário completo) tem prioridade e ignora
+  // qualquer rascunho antigo, por ser a intenção mais recente do usuário.
+  useEffect(() => {
+    if (initialValues) return
+    const draft = loadQuickDraft()
+    if (!draft) return
+    setHasDraft(true)
+    if (draft.name) setName(draft.name)
+    if (draft.value) setValue(draft.value)
+    if (draft.purchaseDate) {
+      setPurchaseDate(draft.purchaseDate)
+      const quickKeys = [0, -1, -2].map(n => toDateInputValue(addDays(new Date(), n)))
+      setManualDateMode(!quickKeys.includes(draft.purchaseDate))
+    }
+    if (draft.account) setAccount(draft.account)
+    if (draft.category) setCategory(draft.category)
+    if (draft.country) setCountry(draft.country)
+    if (draft.frequence) setFrequence(draft.frequence)
+    if (draft.registrationType) setRegistrationType(draft.registrationType)
+    if (draft.additionalMessage) setAdditionalMessage(draft.additionalMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Salva o rascunho a cada alteração (pula o primeiro render para não gravar
   // o estado inicial vazio como se fosse um rascunho de verdade).
@@ -180,8 +242,14 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
       const loadedAccounts = (accRes.data ?? [])
         .filter(a => a.enable)
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+      const loadedCategories = cats ?? []
       setAccounts(loadedAccounts)
-      setCategories(cats ?? [])
+      setCategories(loadedCategories)
+      setUsingCachedRefData(false)
+      setRefDataLoaded(true)
+      // Guarda a cópia mais recente pra usar como fallback na próxima vez que abrir sem rede.
+      saveCachedAccounts(loadedAccounts)
+      saveCachedCategories(loadedCategories)
 
       // Conta veio de parâmetro externo (ex: atalho) e pode ser só um pedaço do nome
       // (ex: "Cartão Itaú") — acha o cadastro correspondente e corrige.
@@ -189,7 +257,20 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
         const match = findAccountMatch(initialValues.account, loadedAccounts)
         if (match) setAccount(match.name)
       }
-    }).catch(() => {})
+    }).catch(() => {
+      // Sem rede (ou API fora) — usa a última cópia salva no aparelho, se existir.
+      const cachedAccounts = loadCachedAccounts()
+      const cachedCategories = loadCachedCategories()
+      setAccounts(cachedAccounts)
+      setCategories(cachedCategories)
+      setUsingCachedRefData(cachedAccounts.length > 0 || cachedCategories.length > 0)
+      setRefDataLoaded(true)
+
+      if (initialValues?.account) {
+        const match = findAccountMatch(initialValues.account, cachedAccounts)
+        if (match) setAccount(match.name)
+      }
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -220,6 +301,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
 
   function handleClearDraft() {
     clearQuickDraft()
+    setHasDraft(false)
     setName('')
     setValue('')
     setPurchaseDate(today)
@@ -260,39 +342,59 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
     if (parsedValue <= 0) { setError('Informe um valor válido.'); return }
 
     setLoading(true)
+    const purchase = purchaseDate ? new Date(purchaseDate + 'T12:00:00') : new Date()
+    const yearMonth = buildYearMonth(purchase)
+    const now = new Date().toISOString()
+    const vm = {
+      name: name.trim(),
+      account: enabledFields.account ? account : defaults.account,
+      category: enabledFields.category ? category : defaults.category,
+      value: parsedValue,
+      frequence: enabledFields.frequence ? frequence : defaults.frequence,
+      registrationType: enabledFields.registrationType ? registrationType : defaults.registrationType,
+      initialMonthYear: yearMonth,
+      fynallyMonthYear: yearMonth,
+      purchaseDate: purchaseDate || null,
+      bestPayDay: purchaseDate ? purchase.getDate() : null,
+      additionalMessage: (enabledFields.additionalMessage ? additionalMessage : defaults.additionalMessage) || null,
+      accountType: 'Conta a Pagar',
+      country: enabledFields.country ? country : defaults.country,
+      creationDate: now,
+      lastChangeDate: null,
+    }
     try {
-      const purchase = purchaseDate ? new Date(purchaseDate + 'T12:00:00') : new Date()
-      const yearMonth = buildYearMonth(purchase)
-      const now = new Date().toISOString()
-      const vm = {
-        name: name.trim(),
-        account: enabledFields.account ? account : defaults.account,
-        category: enabledFields.category ? category : defaults.category,
-        value: parsedValue,
-        frequence: enabledFields.frequence ? frequence : defaults.frequence,
-        registrationType: enabledFields.registrationType ? registrationType : defaults.registrationType,
-        initialMonthYear: yearMonth,
-        fynallyMonthYear: yearMonth,
-        purchaseDate: purchaseDate || null,
-        bestPayDay: purchaseDate ? purchase.getDate() : null,
-        additionalMessage: (enabledFields.additionalMessage ? additionalMessage : defaults.additionalMessage) || null,
-        accountType: 'Conta a Pagar',
-        country: enabledFields.country ? country : defaults.country,
-        creationDate: now,
-        lastChangeDate: null,
-      }
       await billsToPayApi.create(vm as never)
       onSaved()
       if (keepOpen) {
         resetQuickFields()
-        setSavedFlash(true)
-        setTimeout(() => setSavedFlash(false), 1500)
+        setFlashMessage('saved')
+        setTimeout(() => setFlashMessage(null), 1500)
       } else {
         clearQuickDraft()
         onDone()
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar')
+      if (err instanceof NetworkError) {
+        // Sem conexão — guarda na fila local em vez de mostrar erro. Vai ser
+        // reenviado sozinho assim que a internet voltar.
+        try {
+          enqueueBill(vm)
+          setPendingQueue(getPendingQueue())
+          onSaved()
+          if (keepOpen) {
+            resetQuickFields()
+            setFlashMessage('queued')
+            setTimeout(() => setFlashMessage(null), 2000)
+          } else {
+            clearQuickDraft()
+            onDone(true)
+          }
+        } catch {
+          setError('Sem conexão — não foi possível cadastrar agora. Tente novamente quando a internet voltar.')
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Erro ao salvar')
+      }
     } finally {
       setLoading(false)
     }
@@ -306,6 +408,45 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
 
   return (
     <form onSubmit={e => { e.preventDefault(); submit(false) }} className="space-y-4">
+      {pendingQueue.length > 0 && (
+        <div className="rounded-lg text-xs px-3 py-2 space-y-2"
+          style={{ background: 'var(--blue-dim)', border: '1px solid rgba(96,165,250,0.3)' }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 font-medium" style={{ color: 'var(--blue)' }}>
+              <CloudOff size={13} className="flex-shrink-0" />
+              {pendingQueue.length} lançamento{pendingQueue.length > 1 ? 's' : ''} aguardando envio
+            </span>
+            <button type="button" onClick={handleManualSync} disabled={syncingQueue}
+              className="underline flex-shrink-0" style={{ color: 'var(--blue)' }}>
+              {syncingQueue ? 'Enviando...' : 'Tentar agora'}
+            </button>
+          </div>
+          <div className="space-y-1">
+            {pendingQueue.map(item => (
+              <div key={item.id} className="flex items-center justify-between gap-2" style={{ color: 'var(--text-2)' }}>
+                <span className="truncate">
+                  {item.name} — <span className="font-mono">{formatCurrency(item.value, 'Brasil')}</span>
+                </span>
+                {item.lastError ? (
+                  <button type="button" title={item.lastError} onClick={() => handleRemoveQueued(item.id)}
+                    className="flex items-center gap-1 flex-shrink-0" style={{ color: 'var(--red)' }}>
+                    Falhou <X size={11} />
+                  </button>
+                ) : (
+                  <span className="flex-shrink-0" style={{ color: 'var(--text-3)' }}>na fila</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {usingCachedRefData && (
+        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+          style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid rgba(251,191,36,0.25)' }}>
+          <WifiOff size={13} className="flex-shrink-0" />
+          Sem conexão — mostrando Contas e Categorias salvas da última vez online.
+        </div>
+      )}
       <div>
         <label className="label">Nome / Descrição *</label>
         <input
@@ -411,7 +552,9 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
         <div>
           <label className="label">Conta</label>
           {accounts.length === 0 ? (
-            <p className="text-xs py-1" style={{ color: 'var(--text-3)' }}>Carregando contas...</p>
+            <p className="text-xs py-1" style={{ color: 'var(--text-3)' }}>
+              {!refDataLoaded ? 'Carregando contas...' : 'Nenhuma conta disponível offline — abra esta tela uma vez com internet.'}
+            </p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {accounts.map(a => {
@@ -521,7 +664,8 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
           </button>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
-          {savedFlash && <span className="text-xs font-medium" style={{ color: 'var(--green-400)' }}>Cadastrado ✓</span>}
+          {flashMessage === 'saved' && <span className="text-xs font-medium" style={{ color: 'var(--green-400)' }}>Cadastrado ✓</span>}
+          {flashMessage === 'queued' && <span className="text-xs font-medium" style={{ color: 'var(--blue)' }}>Salvo localmente ✓</span>}
           <button type="button" className="btn-secondary" onClick={onCancel}>Cancelar</button>
           <button type="button" className="btn-secondary" disabled={loading} onClick={() => submit(true)}>
             {loading ? <Spinner size={14} /> : <Plus size={14} />} Salvar e cadastrar outra

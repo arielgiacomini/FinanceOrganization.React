@@ -23,6 +23,14 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://api.financeiro.arielgiacomini.com.br'
 
+/**
+ * Erro de conectividade (fetch nem chegou a ter resposta — sem internet, DNS,
+ * conexão recusada). Distinto de erros de validação/negócio (que têm resposta
+ * do servidor) — usado pra decidir com segurança quando algo pode ir pra fila
+ * offline em vez de ser mostrado como falha real ao usuário.
+ */
+export class NetworkError extends Error {}
+
 function normalizeResponse(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(normalizeResponse)
   if (obj && typeof obj === 'object') {
@@ -50,7 +58,7 @@ async function request<T>(
     })
   } catch (err) {
     const isCors = err instanceof TypeError
-    throw new Error(
+    throw new NetworkError(
       isCors
         ? `Erro de CORS: a API bloqueou ${method} ${path}. Adicione AllowAnyMethod() no CORS da API C#.`
         : `Erro de rede: ${err instanceof Error ? err.message : String(err)}`
@@ -94,7 +102,7 @@ async function getApiToken(): Promise<string> {
       body: body.toString(),
     })
   } catch (err) {
-    throw new Error(`Erro de rede ao autenticar: ${err instanceof Error ? err.message : String(err)}`)
+    throw new NetworkError(`Erro de rede ao autenticar: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   if (!res.ok) throw new Error(`Falha na autenticação (${res.status}).`)
