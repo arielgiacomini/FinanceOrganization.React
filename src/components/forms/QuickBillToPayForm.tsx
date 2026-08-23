@@ -39,6 +39,40 @@ function formatDDMMYYYY(dateKey: string): string {
   return `${d}/${m}/${y}`
 }
 
+// Normalização tolerante (minúsculo, sem acento, sem espaço nas pontas) — usada só
+// pra casar o parâmetro "conta" vindo de URL externa com o nome exato cadastrado.
+const ACCENT_MAP: Record<string, string> = {
+  á: 'a', à: 'a', â: 'a', ã: 'a', ä: 'a',
+  é: 'e', è: 'e', ê: 'e', ë: 'e',
+  í: 'i', ì: 'i', î: 'i', ï: 'i',
+  ó: 'o', ò: 'o', ô: 'o', õ: 'o', ö: 'o',
+  ú: 'u', ù: 'u', û: 'u', ü: 'u',
+  ç: 'c', ñ: 'n',
+}
+function looseNormalize(s: string): string {
+  return s.toLowerCase().trim().split('').map(ch => ACCENT_MAP[ch] ?? ch).join('')
+}
+
+// Acha a conta cadastrada que melhor casa com um texto livre (parâmetro de URL externa).
+// 1) igual exato (ignorando maiúsculas/acentos); 2) todas as palavras digitadas aparecem
+// no nome cadastrado, em qualquer ordem (ex: "Cartão Itaú" casa com "Cartão de Crédito
+// Itaú Personnalité Black Cashback"); entre vários candidatos, prioriza o nome mais curto.
+function findAccountMatch(query: string, accounts: Account[]): Account | null {
+  const q = looseNormalize(query)
+  if (!q) return null
+
+  const exact = accounts.find(a => looseNormalize(a.name) === q)
+  if (exact) return exact
+
+  const tokens = q.split(/\s+/).filter(Boolean)
+  const candidates = accounts.filter(a => {
+    const name = looseNormalize(a.name)
+    return tokens.every(t => name.includes(t))
+  })
+  if (!candidates.length) return null
+  return [...candidates].sort((a, b) => a.name.length - b.name.length)[0]
+}
+
 // Rascunho de sessão — mantém o que o usuário já preencheu caso o modal seja
 // fechado sem querer (clique fora, X, etc.), para não ter que preencher de novo.
 const QUICK_DRAFT_KEY = 'finance_quick_billtopay_draft'
@@ -68,18 +102,20 @@ export interface QuickBillPrefill {
   bestPayDay: string
 }
 
-// Campos em comum entre os dois modos, usados para repassar o que o usuário
-// já preencheu ao trocar de formulário (em qualquer direção).
+// Campos em comum entre os dois modos, usados para repassar o que o usuário já
+// preencheu ao trocar de formulário (em qualquer direção) ou vindo de parâmetros
+// de URL (ex: atalho externo) — todos opcionais, o que não vier cai no rascunho
+// ou no valor padrão configurado normalmente.
 export interface BillToPayQuickValues {
-  name: string
-  value: string
-  purchaseDate: string
-  account: string
-  category: string
-  country: string
-  frequence: string
-  registrationType: string
-  additionalMessage: string
+  name?: string
+  value?: string
+  purchaseDate?: string
+  account?: string
+  category?: string
+  country?: string
+  frequence?: string
+  registrationType?: string
+  additionalMessage?: string
 }
 
 interface QuickBillToPayFormProps {
@@ -141,13 +177,20 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
       accountsApi.searchAll(),
       categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }),
     ]).then(([accRes, cats]) => {
-      setAccounts(
-        (accRes.data ?? [])
-          .filter(a => a.enable)
-          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
-      )
+      const loadedAccounts = (accRes.data ?? [])
+        .filter(a => a.enable)
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+      setAccounts(loadedAccounts)
       setCategories(cats ?? [])
+
+      // Conta veio de parâmetro externo (ex: atalho) e pode ser só um pedaço do nome
+      // (ex: "Cartão Itaú") — acha o cadastro correspondente e corrige.
+      if (initialValues?.account) {
+        const match = findAccountMatch(initialValues.account, loadedAccounts)
+        if (match) setAccount(match.name)
+      }
     }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Aquece o cache do histórico assim que o formulário abre, pra sugestão sair rápido.

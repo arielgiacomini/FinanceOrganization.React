@@ -1,18 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { QuickBillToPayForm } from '@/components/forms/QuickBillToPayForm'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
 import type { QuickBillPrefill, BillToPayQuickValues } from '@/components/forms/QuickBillToPayForm'
 import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
+import { Spinner } from '@/components/ui'
 import { CheckCircle2, Plus } from 'lucide-react'
+
+// Aceita vírgula ou ponto como separador decimal (o atalho externo pode mandar qualquer um).
+function parseValorParam(raw: string | null): string | undefined {
+  if (!raw) return undefined
+  const num = parseFloat(raw.replace(',', '.'))
+  return !isNaN(num) && num > 0 ? num.toFixed(2) : undefined
+}
 
 // Página standalone, sem AppLayout/AuthGuard — pensada para ser aberta direto
 // (atalho na tela inicial do celular) logo após um gasto, sem precisar logar.
-export default function LancamentoRapidoPage() {
+// Aceita parâmetros de URL pra pré-preencher: ?nome=...&valor=...&conta=...
+function LancamentoRapidoInner() {
+  const searchParams = useSearchParams()
+
+  const urlPrefill = useMemo<BillToPayQuickValues | undefined>(() => {
+    const name = searchParams.get('nome')?.trim() || undefined
+    const value = parseValorParam(searchParams.get('valor'))
+    const account = searchParams.get('conta')?.trim() || undefined
+    if (!name && !value && !account) return undefined
+    return { name, value, account }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const [mode, setMode] = useState<'quick' | 'full'>('quick')
   const [fullPrefill, setFullPrefill] = useState<QuickBillPrefill | undefined>(undefined)
-  const [quickPrefill, setQuickPrefill] = useState<BillToPayQuickValues | undefined>(undefined)
+  const [quickPrefill, setQuickPrefill] = useState<BillToPayQuickValues | undefined>(urlPrefill)
   const [done, setDone] = useState(false)
 
   function resetAll() {
@@ -64,5 +85,17 @@ export default function LancamentoRapidoPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LancamentoRapidoPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-0)' }}>
+        <Spinner size={32} />
+      </div>
+    }>
+      <LancamentoRapidoInner />
+    </Suspense>
   )
 }
