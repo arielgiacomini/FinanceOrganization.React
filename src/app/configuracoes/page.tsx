@@ -12,7 +12,7 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2, Bell, ArrowUpDown, Zap,
+  Pencil, Trash2, Bell, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react'
 import { walletApi, accountsApi, categoriesApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
@@ -25,8 +25,12 @@ import {
   CONTAS_PAGAR_SORT_COLUMNS, CONTAS_RECEBER_SORT_COLUMNS,
   QUICK_BILL_FIELDS, QUICK_BILL_ENABLED_DEFAULT, QUICK_BILL_VALUE_DEFAULT,
   loadQuickBillEnabledFields, loadQuickBillDefaultValues,
+  CONTAS_PAGAR_COLUMNS, loadContasPagarColumnsOrder, loadContasPagarColumnsHidden,
+  CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS, loadContasPagarAccountStyle,
 } from '@/lib/wallet'
-import type { ContasPagarSortCol, ContasReceberSortCol, QuickBillFieldKey } from '@/lib/wallet'
+import type {
+  ContasPagarSortCol, ContasReceberSortCol, QuickBillFieldKey, ContasPagarColumnKey, ContasPagarAccountStyle,
+} from '@/lib/wallet'
 
 // ─── Chip list ────────────────────────────────────────────────────────────────
 
@@ -696,6 +700,22 @@ function saveContasReceberSortConfigLocal(data: Record<string, string>) {
   localStorage.setItem(CONTAS_RECEBER_SORT_CONFIG_KEY, JSON.stringify(data))
 }
 
+// ─── Contas a Pagar — colunas visíveis/ordem da tabela — localStorage ─────────
+
+const CONTAS_PAGAR_COLUMNS_CONFIG_KEY = 'finance_contas_pagar_columns_config'
+
+function saveContasPagarColumnsConfigLocal(order: string[], hidden: string[]) {
+  localStorage.setItem(CONTAS_PAGAR_COLUMNS_CONFIG_KEY, JSON.stringify({ order, hidden }))
+}
+
+// ─── Contas a Pagar — identidade visual por conta na tabela — localStorage ────
+
+const CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY = 'finance_contas_pagar_account_style_config'
+
+function saveContasPagarAccountStyleConfigLocal(style: string) {
+  localStorage.setItem(CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY, JSON.stringify({ style }))
+}
+
 // ─── Cadastro Rápido — Contas a Pagar — localStorage ───────────────────────────
 
 const QUICK_BILL_CONFIG_KEY = 'finance_quick_bill_config'
@@ -714,7 +734,7 @@ function saveQuickBillConfigLocal(data: Record<string, string>) {
 
 // ─── Tabs definition ──────────────────────────────────────────────────────────
 
-type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao' | 'cadastro-rapido'
+type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao'
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'formularios',     label: 'Formulários',              Icon: SlidersHorizontal },
@@ -722,7 +742,6 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'grafico',         label: 'Gráfico',                   Icon: TrendingUp        },
   { id: 'alertas',         label: 'Alertas',                   Icon: Bell              },
   { id: 'ordenacao',       label: 'Contas a Pagar/Receber',     Icon: ArrowUpDown       },
-  { id: 'cadastro-rapido', label: 'Cadastro Rápido',            Icon: Zap               },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -770,6 +789,13 @@ function ConfiguracoesInner() {
   const [contasReceberSortCol,       setContasReceberSortCol]       = useState<ContasReceberSortCol>('default')
   const [contasReceberSortDir,       setContasReceberSortDir]       = useState<'asc' | 'desc'>('asc')
   const [contasReceberSortRecord,    setContasReceberSortRecord]    = useState<WalletRecord | null>(null)
+
+  const [contasPagarColumnsOrder,  setContasPagarColumnsOrder]  = useState<ContasPagarColumnKey[]>(CONTAS_PAGAR_COLUMNS.map(c => c.value))
+  const [contasPagarColumnsHidden, setContasPagarColumnsHidden] = useState<Record<ContasPagarColumnKey, boolean>>({} as Record<ContasPagarColumnKey, boolean>)
+  const [contasPagarColumnsRecord, setContasPagarColumnsRecord] = useState<WalletRecord | null>(null)
+
+  const [contasPagarAccountStyle,       setContasPagarAccountStyle]       = useState<ContasPagarAccountStyle>('tint')
+  const [contasPagarAccountStyleRecord, setContasPagarAccountStyleRecord] = useState<WalletRecord | null>(null)
 
   const [quickBillEnabled, setQuickBillEnabled] = useState<Record<QuickBillFieldKey, boolean>>({ ...QUICK_BILL_ENABLED_DEFAULT })
   const [quickBillDefaults, setQuickBillDefaults] = useState<Record<QuickBillFieldKey, string>>({ ...QUICK_BILL_VALUE_DEFAULT })
@@ -836,6 +862,11 @@ function ConfiguracoesInner() {
 
     setQuickBillEnabled(loadQuickBillEnabledFields())
     setQuickBillDefaults(loadQuickBillDefaultValues())
+
+    setContasPagarColumnsOrder(loadContasPagarColumnsOrder())
+    setContasPagarColumnsHidden(loadContasPagarColumnsHidden())
+
+    setContasPagarAccountStyle(loadContasPagarAccountStyle())
 
     categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }).then(cats => setQuickBillCategories(cats ?? [])).catch(() => {})
 
@@ -906,6 +937,27 @@ function ConfiguracoesInner() {
           saveContasReceberSortConfigLocal(c)
           setContasReceberSortCol((CONTAS_RECEBER_SORT_COLUMNS.some(x => x.value === c.sortCol) ? c.sortCol : 'default') as ContasReceberSortCol)
           setContasReceberSortDir(c.sortDir === 'desc' ? 'desc' : 'asc')
+        } catch {}
+      }
+
+      const contasPagarColumnsRec = records.find(r => r.walletKey === 'finance_contas_pagar_columns_config')
+      setContasPagarColumnsRecord(contasPagarColumnsRec ?? null)
+      if (contasPagarColumnsRec?.walletValue) {
+        try {
+          const c = JSON.parse(contasPagarColumnsRec.walletValue)
+          saveContasPagarColumnsConfigLocal(c.order ?? [], c.hidden ?? [])
+          setContasPagarColumnsOrder(loadContasPagarColumnsOrder())
+          setContasPagarColumnsHidden(loadContasPagarColumnsHidden())
+        } catch {}
+      }
+
+      const contasPagarAccountStyleRec = records.find(r => r.walletKey === 'finance_contas_pagar_account_style_config')
+      setContasPagarAccountStyleRecord(contasPagarAccountStyleRec ?? null)
+      if (contasPagarAccountStyleRec?.walletValue) {
+        try {
+          const c = JSON.parse(contasPagarAccountStyleRec.walletValue)
+          saveContasPagarAccountStyleConfigLocal(c.style ?? '')
+          setContasPagarAccountStyle(loadContasPagarAccountStyle())
         } catch {}
       }
 
@@ -1022,6 +1074,37 @@ function ConfiguracoesInner() {
       })
       .catch(() => {})
 
+    // Contas a Pagar — colunas visíveis/ordem da tabela → localStorage + API
+    const hiddenColumnsList = CONTAS_PAGAR_COLUMNS.map(c => c.value).filter(v => contasPagarColumnsHidden[v])
+    saveContasPagarColumnsConfigLocal(contasPagarColumnsOrder, hiddenColumnsList)
+    const contasPagarColumnsVal = JSON.stringify({ order: contasPagarColumnsOrder, hidden: hiddenColumnsList })
+    const contasPagarColumnsPromise = contasPagarColumnsRecord
+      ? walletApi.edit(contasPagarColumnsRecord.id, 'finance_contas_pagar_columns_config', contasPagarColumnsVal, contasPagarColumnsRecord.creationDate)
+      : walletApi.register('finance_contas_pagar_columns_config', contasPagarColumnsVal)
+    contasPagarColumnsPromise
+      .then(res => {
+        if (!contasPagarColumnsRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setContasPagarColumnsRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
+    // Contas a Pagar — identidade visual por conta na tabela → localStorage + API
+    saveContasPagarAccountStyleConfigLocal(contasPagarAccountStyle)
+    const contasPagarAccountStyleVal = JSON.stringify({ style: contasPagarAccountStyle })
+    const contasPagarAccountStylePromise = contasPagarAccountStyleRecord
+      ? walletApi.edit(contasPagarAccountStyleRecord.id, 'finance_contas_pagar_account_style_config', contasPagarAccountStyleVal, contasPagarAccountStyleRecord.creationDate)
+      : walletApi.register('finance_contas_pagar_account_style_config', contasPagarAccountStyleVal)
+    contasPagarAccountStylePromise
+      .then(res => {
+        if (!contasPagarAccountStyleRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setContasPagarAccountStyleRecord(newRec)
+        }
+      })
+      .catch(() => {})
+
     // Cadastro Rápido — Contas a Pagar → localStorage + API
     const quickBillData: Record<string, string> = {}
     for (const f of QUICK_BILL_FIELDS) {
@@ -1096,6 +1179,20 @@ function ConfiguracoesInner() {
             placeholder="Observação padrão (opcional)" />
         )
     }
+  }
+
+  function moveContasPagarColumn(index: number, dir: -1 | 1) {
+    setContasPagarColumnsOrder(order => {
+      const target = index + dir
+      if (target < 0 || target >= order.length) return order
+      const next = [...order]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
+  function toggleContasPagarColumnHidden(key: ContasPagarColumnKey) {
+    setContasPagarColumnsHidden(h => ({ ...h, [key]: !h[key] }))
   }
 
   return (
@@ -1201,6 +1298,50 @@ function ConfiguracoesInner() {
                     onChange={setRegTypes}
                     onReset={() => setRegTypes([...DEFAULT_REGISTRATION_TYPES])}
                   />
+                </Section>
+              </div>
+
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Cadastro Rápido — Contas a Pagar"
+                  subtitle="Campos que aparecem no formulário simplificado ao clicar em 'Nova conta'. Campos desligados não são perguntados — usam o valor padrão definido abaixo."
+                >
+                  <div>
+                    {QUICK_BILL_FIELDS.map(f => {
+                      const on = quickBillEnabled[f.value]
+                      return (
+                        <div
+                          key={f.value}
+                          className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3"
+                          style={{ borderBottom: '1px solid var(--border-1)' }}
+                        >
+                          <label className="flex items-center gap-2 cursor-pointer select-none sm:w-52 flex-shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={e => setQuickBillEnabled(q => ({ ...q, [f.value]: e.target.checked }))}
+                              className="w-4 h-4 rounded accent-green-500"
+                            />
+                            <span className="text-sm font-medium" style={{ color: on ? 'var(--text-1)' : 'var(--text-2)' }}>
+                              {f.label}
+                            </span>
+                          </label>
+                          <div className="flex-1 min-w-0">
+                            {on ? (
+                              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                                Aparece no cadastro rápido
+                              </span>
+                            ) : (
+                              <div className="max-w-xs">
+                                <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Valor padrão usado</p>
+                                {renderQuickDefaultInput(f.value)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </Section>
               </div>
             </>
@@ -1700,54 +1841,93 @@ function ConfiguracoesInner() {
                   </div>
                 </Section>
               </div>
-            </>
-          )}
 
-          {/* Cadastro Rápido — Contas a Pagar */}
-          {activeTab === 'cadastro-rapido' && (
-            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
-              <Section
-                title="Cadastro Rápido — Contas a Pagar"
-                subtitle="Campos que aparecem no formulário simplificado ao clicar em 'Nova conta'. Campos desligados não são perguntados — usam o valor padrão definido abaixo."
-              >
-                <div>
-                  {QUICK_BILL_FIELDS.map(f => {
-                    const on = quickBillEnabled[f.value]
-                    return (
-                      <div
-                        key={f.value}
-                        className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3"
-                        style={{ borderBottom: '1px solid var(--border-1)' }}
-                      >
-                        <label className="flex items-center gap-2 cursor-pointer select-none sm:w-52 flex-shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={e => setQuickBillEnabled(q => ({ ...q, [f.value]: e.target.checked }))}
-                            className="w-4 h-4 rounded accent-green-500"
-                          />
-                          <span className="text-sm font-medium" style={{ color: on ? 'var(--text-1)' : 'var(--text-2)' }}>
-                            {f.label}
-                          </span>
-                        </label>
-                        <div className="flex-1 min-w-0">
-                          {on ? (
-                            <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                              Aparece no cadastro rápido
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Identidade visual por conta — Contas a Pagar"
+                  subtitle="Como destacar visualmente de qual conta é cada linha da tabela, sem precisar ler a coluna Conta."
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS.map(opt => {
+                      const active = contasPagarAccountStyle === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setContasPagarAccountStyle(opt.value)}
+                          className="text-left p-3 rounded-lg transition-all"
+                          style={{
+                            background: active ? 'var(--green-dim)' : 'var(--bg-3)',
+                            border: `1px solid ${active ? 'var(--green-border)' : 'var(--border-1)'}`,
+                          }}
+                        >
+                          <p className="text-sm font-medium" style={{ color: active ? 'var(--green-400)' : 'var(--text-1)' }}>
+                            {opt.label}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                            {opt.description}
+                          </p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </Section>
+              </div>
+
+              <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+                <Section
+                  title="Colunas da tabela — Contas a Pagar"
+                  subtitle="Escolha quais colunas mostrar na tabela e em que ordem — use as setas para reordenar. A coluna de seleção e a de Ações não entram aqui, por não serem informação."
+                >
+                  <div>
+                    {contasPagarColumnsOrder.map((key, idx) => {
+                      const col = CONTAS_PAGAR_COLUMNS.find(c => c.value === key)
+                      if (!col) return null
+                      const hidden = !!contasPagarColumnsHidden[key]
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center gap-3 py-2.5"
+                          style={{ borderBottom: idx < contasPagarColumnsOrder.length - 1 ? '1px solid var(--border-1)' : undefined }}
+                        >
+                          <div className="flex flex-col flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => moveContasPagarColumn(idx, -1)}
+                              disabled={idx === 0}
+                              className="p-0.5 rounded disabled:opacity-20"
+                              style={{ color: 'var(--text-3)' }}
+                            >
+                              <ArrowUp size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveContasPagarColumn(idx, 1)}
+                              disabled={idx === contasPagarColumnsOrder.length - 1}
+                              className="p-0.5 rounded disabled:opacity-20"
+                              style={{ color: 'var(--text-3)' }}
+                            >
+                              <ArrowDown size={13} />
+                            </button>
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
+                            <input
+                              type="checkbox"
+                              checked={!hidden}
+                              onChange={() => toggleContasPagarColumnHidden(key)}
+                              className="w-4 h-4 rounded accent-green-500"
+                            />
+                            <span className="text-sm font-medium" style={{ color: hidden ? 'var(--text-3)' : 'var(--text-1)' }}>
+                              {col.label}
                             </span>
-                          ) : (
-                            <div className="max-w-xs">
-                              <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Valor padrão usado</p>
-                              {renderQuickDefaultInput(f.value)}
-                            </div>
-                          )}
+                          </label>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </Section>
-            </div>
+                      )
+                    })}
+                  </div>
+                </Section>
+              </div>
+            </>
           )}
 
         </div>

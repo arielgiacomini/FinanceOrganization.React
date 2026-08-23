@@ -225,6 +225,84 @@ export function loadContasReceberSortDir(): 'asc' | 'desc' {
   return readContasReceberSortConfig().sortDir === 'desc' ? 'desc' : 'asc'
 }
 
+// ─── Contas a Pagar — colunas visíveis/ordem da tabela ─────────────────────────
+
+const CONTAS_PAGAR_COLUMNS_CONFIG_KEY = 'finance_contas_pagar_columns_config'
+
+/** Todas as colunas de dados da tabela — só o checkbox de seleção e "Ações" ficam
+ *  de fora (são controles, não informação, e não fazem sentido esconder). */
+export type ContasPagarColumnKey =
+  | 'name' | 'country' | 'account' | 'category' | 'value' | 'dueDate' | 'purchaseDate' | 'payDay' | 'status'
+
+export const CONTAS_PAGAR_COLUMNS: { value: ContasPagarColumnKey; label: string }[] = [
+  { value: 'name',         label: 'Nome' },
+  { value: 'country',      label: 'País' },
+  { value: 'account',      label: 'Conta' },
+  { value: 'category',     label: 'Categoria' },
+  { value: 'value',        label: 'Valor' },
+  { value: 'dueDate',      label: 'Vencimento' },
+  { value: 'purchaseDate', label: 'Data de Compra' },
+  { value: 'payDay',       label: 'Pago em' },
+  { value: 'status',       label: 'Status' },
+]
+
+const CONTAS_PAGAR_COLUMNS_DEFAULT_ORDER: ContasPagarColumnKey[] = CONTAS_PAGAR_COLUMNS.map(c => c.value)
+
+// País some por padrão (só some visível se o usuário decidir mostrar) — as demais
+// colunas configuráveis começam visíveis.
+const CONTAS_PAGAR_COLUMNS_DEFAULT_HIDDEN: ContasPagarColumnKey[] = ['country']
+
+function readContasPagarColumnsConfig(): { order?: string[]; hidden?: string[] } {
+  try {
+    const raw = localStorage.getItem(CONTAS_PAGAR_COLUMNS_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadContasPagarColumnsOrder(): ContasPagarColumnKey[] {
+  const saved = readContasPagarColumnsConfig().order
+  if (!Array.isArray(saved)) return [...CONTAS_PAGAR_COLUMNS_DEFAULT_ORDER]
+  const valid = saved.filter((v): v is ContasPagarColumnKey => CONTAS_PAGAR_COLUMNS_DEFAULT_ORDER.includes(v as ContasPagarColumnKey))
+  // Colunas novas que ainda não existiam quando a config foi salva entram no fim.
+  for (const v of CONTAS_PAGAR_COLUMNS_DEFAULT_ORDER) if (!valid.includes(v)) valid.push(v)
+  return valid
+}
+
+export function loadContasPagarColumnsHidden(): Record<ContasPagarColumnKey, boolean> {
+  const hiddenList = readContasPagarColumnsConfig().hidden
+  const list = Array.isArray(hiddenList) ? hiddenList : CONTAS_PAGAR_COLUMNS_DEFAULT_HIDDEN
+  const result = {} as Record<ContasPagarColumnKey, boolean>
+  for (const col of CONTAS_PAGAR_COLUMNS_DEFAULT_ORDER) result[col] = list.includes(col)
+  return result
+}
+
+// ─── Contas a Pagar — identidade visual por conta na tabela ────────────────────
+
+const CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY = 'finance_contas_pagar_account_style_config'
+
+export type ContasPagarAccountStyle = 'none' | 'tint' | 'border' | 'dot'
+
+export const CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS: { value: ContasPagarAccountStyle; label: string; description: string }[] = [
+  { value: 'tint',   label: 'Fundo tingido',     description: 'Um leve tom da cor da conta por cima do fundo da linha inteira.' },
+  { value: 'border', label: 'Borda esquerda',    description: 'Uma faixa colorida na borda esquerda de cada linha.' },
+  { value: 'dot',    label: 'Bolinha no início', description: 'Uma bolinha colorida ao lado do checkbox de seleção.' },
+  { value: 'none',   label: 'Nenhuma',           description: 'Sem destaque visual por conta na linha.' },
+]
+
+function readContasPagarAccountStyleConfig(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadContasPagarAccountStyle(): ContasPagarAccountStyle {
+  const v = readContasPagarAccountStyleConfig().style
+  return (CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS.some(o => o.value === v) ? v : 'tint') as ContasPagarAccountStyle
+}
+
 // ─── Cadastro Rápido — Contas a Pagar ──────────────────────────────────────────
 
 const QUICK_BILL_CONFIG_KEY = 'finance_quick_bill_config'
