@@ -84,10 +84,6 @@ export function loadSaldoFinalYm(): string {
   return readPlrConfig().saldoFinalYm ?? ''
 }
 
-export function loadGraficoMesAnoInicial(): string {
-  return readPlrConfig().graficoMesAnoInicial ?? ''
-}
-
 export function loadValeCategoria(): string {
   return readPlrConfig().valeCategoria ?? 'Vale Alimentação/Refeição'
 }
@@ -103,6 +99,107 @@ export function loadNomeGrupoInvestimento(): string {
 export function loadInvestimentoAnosProjecao(): number {
   const v = parseInt(readPlrConfig().investimentoAnosProjecao)
   return !isNaN(v) && v > 0 ? v : 5
+}
+
+// ─── Marcos do gráfico (Evolução Financeira) ───────────────────────────────────
+
+const CHART_MILESTONES_KEY = 'finance_chart_milestones'
+
+export interface ChartMilestone {
+  id: string
+  /** Formato "Mês/Ano", ex: "Agosto/2026" — mesmo formato usado no eixo do gráfico. */
+  yearMonth: string
+  title: string
+  description?: string
+  /** Emoji opcional, ex: "🏠" — dá identidade visual sem precisar de sistema de categorias. */
+  icon?: string
+  createdAt: string
+}
+
+function readChartMilestones(): ChartMilestone[] {
+  try {
+    const raw = localStorage.getItem(CHART_MILESTONES_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch {}
+  return []
+}
+
+export function loadChartMilestones(): ChartMilestone[] {
+  return readChartMilestones()
+}
+
+export function saveChartMilestonesLocal(milestones: ChartMilestone[]) {
+  localStorage.setItem(CHART_MILESTONES_KEY, JSON.stringify(milestones))
+}
+
+/**
+ * O backend às vezes acaba criando mais de um registro pra mesma walletKey
+ * (cada tela que salva sem ter carregado o registro existente ainda cria um
+ * novo em vez de editar) — resultado: `records.find(...)` pode pegar uma
+ * cópia antiga/vazia e os marcos "somem". Essa função junta os marcos de
+ * *todos* os registros duplicados (sem perder nenhum) e aponta qual registro
+ * deve ser usado como alvo das próximas edições (o alterado mais recentemente).
+ */
+export function mergeChartMilestoneRecords<T extends { walletKey: string; walletValue: string; creationDate: string; lastChangeDate: string | null }>(
+  records: T[],
+): { merged: ChartMilestone[]; canonical: T | undefined } {
+  const matches = records.filter(r => r.walletKey === CHART_MILESTONES_KEY)
+  const recordTime = (r: T) => new Date(r.lastChangeDate || r.creationDate).getTime()
+
+  // Processa do registro mais antigo pro mais novo — quando o mesmo marco (id)
+  // aparece em mais de um duplicado com conteúdo diferente (ex: editado depois
+  // que um duplicado já existia), a versão do registro mais recente sempre
+  // vence por último no Map, em vez de depender da ordem que a API devolveu.
+  const byId = new Map<string, ChartMilestone>()
+  for (const rec of [...matches].sort((a, b) => recordTime(a) - recordTime(b))) {
+    if (!rec.walletValue) continue
+    try {
+      const parsed = JSON.parse(rec.walletValue)
+      if (Array.isArray(parsed)) {
+        for (const m of parsed) if (m?.id) byId.set(m.id, m)
+      }
+    } catch {}
+  }
+  const canonical = matches.length > 0
+    ? [...matches].sort((a, b) => recordTime(b) - recordTime(a))[0]
+    : undefined
+  return { merged: Array.from(byId.values()), canonical }
+}
+
+// ─── Marcos do gráfico — estilo visual (tamanho da fonte e cor) ────────────────
+
+const CHART_MILESTONE_STYLE_KEY = 'finance_chart_milestone_style'
+
+export interface ChartMilestoneStyle {
+  fontSize: number
+  color: string
+}
+
+export const CHART_MILESTONE_STYLE_DEFAULT: ChartMilestoneStyle = { fontSize: 9, color: '#a78bfa' }
+
+export const CHART_MILESTONE_COLOR_OPTIONS = ['#a78bfa', '#60a5fa', '#4ade80', '#fbbf24', '#f87171', '#f5f5f5']
+
+function readChartMilestoneStyle(): Partial<ChartMilestoneStyle> {
+  try {
+    const raw = localStorage.getItem(CHART_MILESTONE_STYLE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadChartMilestoneStyle(): ChartMilestoneStyle {
+  const c = readChartMilestoneStyle()
+  return {
+    fontSize: typeof c.fontSize === 'number' && c.fontSize > 0 ? c.fontSize : CHART_MILESTONE_STYLE_DEFAULT.fontSize,
+    color: c.color || CHART_MILESTONE_STYLE_DEFAULT.color,
+  }
+}
+
+export function saveChartMilestoneStyleLocal(style: ChartMilestoneStyle) {
+  localStorage.setItem(CHART_MILESTONE_STYLE_KEY, JSON.stringify(style))
 }
 
 // ─── Alerta de dados desatualizados ───────────────────────────────────────────
