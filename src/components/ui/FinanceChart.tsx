@@ -1,12 +1,11 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import { dashboardApi, walletApi } from '@/lib/api'
-import type { MonthlyCashflowItem } from '@/lib/api'
+import type { MonthlyCashflowItem, WalletRecord } from '@/lib/api'
 import {
   loadPlrName,
   loadSaldoFinalYm,
-  loadGraficoMesAnoInicial,
   loadValeCategoria,
   loadNomeGrupoEspanha,
   loadContasBancariasTotal,
@@ -17,13 +16,18 @@ import {
   loadContasBancariasBoxes,
   loadNomeGrupoInvestimento,
   transferBetweenBoxes,
+  loadChartMilestones,
+  saveChartMilestonesLocal,
+  mergeChartMilestoneRecords,
+  loadChartMilestoneStyle,
 } from '@/lib/wallet'
+import type { ChartMilestone, ChartMilestoneStyle } from '@/lib/wallet'
 import { Modal, Spinner } from '@/components/ui'
-import { FlagBrasil, FlagEspanha, FlagGlobe } from '@/components/ui/Flags'
-import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight } from 'lucide-react'
+import { FlagBrasil, FlagEspanha, FlagGlobe, MilestoneIcon, flagEmojiIcon } from '@/components/ui/Flags'
+import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight, Trash2, Plus, MapPin } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts'
 
 interface ChartPoint {
@@ -34,6 +38,11 @@ interface ChartPoint {
   saldoBrasil: number
   despesaBrasil: number
 }
+
+// Intervalo de anos oferecido no filtro "Personalizar" — buscado por inteiro
+// numa única chamada, pra marcar/desmarcar ano ou mês nunca precisar de nova
+// requisição ao backend (só refiltra o que já está em memória).
+const CUSTOM_YEAR_MIN = 2019
 
 type ChartSize = 'compact' | 'normal' | 'large'
 const CHART_SIZE_KEY = 'finance_chart_size'
@@ -58,6 +67,18 @@ function shortLabel(ym: string): string {
   return `${m.slice(0, 3)}/${y.slice(2)}`
 }
 
+/** Tempo decorrido entre dois "yearMonth" (ex: "2 anos e 3 meses"), pra legenda da linha do tempo entre marcos. */
+function formatMonthGap(ymA: string, ymB: string): string {
+  const diff = Math.abs(ymToNum(ymB) - ymToNum(ymA))
+  if (diff === 0) return 'mesmo mês'
+  const anos = Math.floor(diff / 12)
+  const meses = diff % 12
+  const parts: string[] = []
+  if (anos > 0) parts.push(`${anos} ${anos === 1 ? 'ano' : 'anos'}`)
+  if (meses > 0) parts.push(`${meses} ${meses === 1 ? 'mês' : 'meses'}`)
+  return parts.join(' e ')
+}
+
 function formatEur(v: number): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
 }
@@ -68,6 +89,14 @@ function formatBrl(v: number): string {
 
 
 
+
+// Contas a Receber, Vale Refeição e PLR só contam pro saldo enquanto ainda
+// pendentes — o que já foi recebido não entra mais nessa conta (esse dinheiro
+// já está em outra conta ou já foi gasto, não é mais "a receber"). Sempre usa
+// `manipulatedValue` (o valor corrigido), nunca `value` (o valor original).
+function isPendingReceivable(i: MonthlyCashflowItem): boolean {
+  return i.hasReceivable === false
+}
 
 function numToYm(n: number): string {
   const year = Math.floor(n / 12)
@@ -83,6 +112,8 @@ interface CalcSnapshot {
   saldoFinal: number
   saldoFinalYm: string
   valeRefeicaoTotal: number
+  receitaTotal: number
+  despesaPendenteTotal: number
   contasBancariasEspanha: number
   nomeGrupoEspanha: string
   gruposEncontrados: string[]
@@ -382,6 +413,117 @@ function AdjustModal({ open, onClose, adjustInfo, onTransferDone }: {
   )
 }
 
+// Barra de fórmula estilo Excel (o "fx" verde característico) — mostra a conta
+// exata, com os valores reais, exatamente como apareceria na barra de fórmulas
+// de uma planilha se você clicasse na célula do resultado.
+function FormulaBar({ formula }: { formula: string }) {
+  return (
+    <div
+      className="flex items-start gap-2 rounded-lg px-3 py-2 font-mono"
+      style={{ background: 'var(--bg-1)', border: '1px solid var(--border-1)', fontSize: 11 }}
+    >
+      <span className="flex-shrink-0 font-bold" style={{ color: '#21a366' }}>fx</span>
+      <span style={{ color: 'var(--text-2)' }}>{formula}</span>
+    </div>
+  )
+}
+
+// Explicação em linguagem simples, sempre logo abaixo da fórmula — a "regra"
+// contada como se fosse pra uma criança entender.
+function CalcExplain({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--text-3)' }}>
+      {children}
+    </p>
+  )
+}
+
+function MilestoneModal({ yearMonth, milestones, onAdd, onDelete, onClose }: {
+  yearMonth: string | null
+  milestones: ChartMilestone[]
+  onAdd: (title: string, description: string, icon: string) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [icon, setIcon] = useState('')
+
+  useEffect(() => {
+    if (yearMonth) { setTitle(''); setDescription(''); setIcon('') }
+  }, [yearMonth])
+
+  if (!yearMonth) return null
+
+  function handleAdd() {
+    if (!title.trim()) return
+    onAdd(title, description, icon)
+    setTitle(''); setDescription(''); setIcon('')
+  }
+
+  return (
+    <Modal open={!!yearMonth} onClose={onClose} title={`📌 Marcos — ${yearMonth}`} size="sm">
+      <div className="space-y-4">
+        {milestones.length > 0 && (
+          <div className="space-y-2">
+            {milestones.map(m => (
+              <div key={m.id} className="flex items-start gap-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                <MilestoneIcon icon={m.icon} size={16} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{m.title}</p>
+                  {m.description && <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{m.description}</p>}
+                </div>
+                <button type="button" onClick={() => onDelete(m.id)} title="Excluir marco"
+                  className="p-1 rounded-md flex-shrink-0" style={{ color: 'var(--text-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-2" style={{ borderTop: milestones.length > 0 ? '1px solid var(--border-1)' : undefined, paddingTop: milestones.length > 0 ? 12 : 0 }}>
+          <div className="flex gap-2">
+            {/* Sem maxLength de propósito: emojis compostos (família, profissão + tom de
+                pele, bandeiras) usam sequências ZWJ com bem mais de 4 unidades UTF-16 —
+                um limite curto cortava o emoji no meio, corrompendo a sequência (por
+                isso alguns picados no celular não apareciam certo na versão web). */}
+            <input
+              className="input text-sm text-center"
+              style={{ width: 52 }}
+              value={icon}
+              onChange={e => setIcon(e.target.value)}
+              placeholder="🏠"
+            />
+            <input
+              className="input flex-1 text-sm"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              placeholder="Título do marco (ex: Comprei o apartamento)"
+              autoFocus
+            />
+          </div>
+          <textarea
+            className="input w-full text-sm"
+            rows={2}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Descrição opcional"
+          />
+          <button type="button" onClick={handleAdd} disabled={!title.trim()}
+            className="btn-primary w-full flex items-center justify-center gap-1.5 py-2 text-sm"
+            style={{ opacity: title.trim() ? 1 : 0.5 }}>
+            <Plus size={14} /> Adicionar marco
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 interface FinanceChartProps {
   monthsRange?: number
 }
@@ -395,24 +537,41 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [configYm, setConfigYm] = useState<string>('')
+
+  // Marcos do gráfico — clique num ponto pra adicionar/ver os marcos daquele mês
+  const [milestones, setMilestones] = useState<ChartMilestone[]>([])
+  const [milestonesRecord, setMilestonesRecord] = useState<WalletRecord | null>(null)
+  const [milestoneModalYm, setMilestoneModalYm] = useState<string | null>(null)
+  const [milestoneStyle, setMilestoneStyle] = useState<ChartMilestoneStyle>(() => loadChartMilestoneStyle())
+
+  // A tela de Marcos pode mudar tamanho/cor a qualquer momento — reflete na
+  // hora se o usuário voltar pra essa aba (evita precisar recarregar a página)
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') setMilestoneStyle(loadChartMilestoneStyle())
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+    }
+  }, [])
   const [filterMode, setFilterMode] = useState<'next6' | 'last12' | 'custom'>('next6')
   const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
-
-  // Anos efetivamente selecionados pelo usuário no filtro Personalizar
-  const customYearsForFetch = useMemo(() => {
-    if (filterMode !== 'custom') return [] as number[]
-    const years = new Set<number>()
-    selectedYearMonths.forEach(key => years.add(parseInt(key.split('-')[0])))
-    return Array.from(years).sort((a, b) => a - b)
-  }, [filterMode, selectedYearMonths])
+  // Filtro extra (combina com qualquer filterMode acima): só mostra no gráfico
+  // os meses que têm marco cadastrado
+  const [milestonesOnlyFilter, setMilestonesOnlyFilter] = useState(false)
 
   // Só dispara nova busca quando o range relevante à API muda: entrar/sair de
-  // "últimos 12 meses", ou mudar os anos selecionados em "Personalizar".
-  // "Próximos 6 meses" sempre usa o mesmo range de busca padrão.
+  // "últimos 12 meses" ou de "Personalizar". Dentro de "Personalizar", a busca
+  // sempre traz o intervalo inteiro de anos selecionáveis de uma vez só — marcar
+  // ou desmarcar ano/mês nunca dispara uma nova chamada, só refiltra o que já
+  // foi carregado (ver CUSTOM_YEAR_MIN/MAX mais abaixo).
   const fetchRangeMode = filterMode === 'last12'
     ? 'last12'
     : filterMode === 'custom'
-      ? `custom:${customYearsForFetch.join(',')}`
+      ? 'custom-full'
       : 'default'
 
   useEffect(() => {
@@ -435,7 +594,18 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               localStorage.setItem('finance_plr_config', rec.walletValue)
             }
           }
-        } catch { /* usa o que já houver no localStorage */ }
+          // Junta marcos de eventuais registros duplicados da mesma chave (ver
+          // comentário de mergeChartMilestoneRecords) — sem isso, um registro
+          // antigo/vazio podia "esconder" os marcos de verdade.
+          const { merged, canonical } = mergeChartMilestoneRecords(records)
+          if (!cancelled) {
+            setMilestonesRecord(canonical ?? null)
+            saveChartMilestonesLocal(merged)
+            setMilestones(merged)
+          }
+        } catch {
+          if (!cancelled) setMilestones(loadChartMilestones())
+        }
 
         if (cancelled) return
 
@@ -468,8 +638,12 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             monthsSet.add((n % 12) + 1) // backend usa 1-12
             monthNumsSet.add(n)
           }
-        } else if (filterMode === 'custom' && customYearsForFetch.length > 0) {
-          for (const y of customYearsForFetch) {
+        } else if (filterMode === 'custom') {
+          // Busca o intervalo inteiro de anos selecionáveis de uma vez — não só
+          // os que estão marcados agora — pra marcar/desmarcar não precisar de
+          // nova chamada ao backend depois.
+          const customEndYear = now.getFullYear() + 5
+          for (let y = CUSTOM_YEAR_MIN; y <= customEndYear; y++) {
             yearsSet.add(y)
             for (let m = 0; m < 12; m++) {
               monthsSet.add(m + 1) // backend usa 1-12
@@ -501,9 +675,9 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
         const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
 
-        // ── PLR total = soma de todos os "type 4" do range (manipulatedValue) ─
+        // ── PLR total = soma dos "type 4" ainda pendentes no range ────────────
         const plrTotal = cashflow
-          .filter(i => i.type?.startsWith('4'))
+          .filter(i => i.type?.startsWith('4') && isPendingReceivable(i))
           .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
 
         // ── SALDO FINAL = Total Contas Bancárias − PLR total ─────────────────
@@ -557,17 +731,19 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry) && i.hasPay === false)
             .reduce((s, i) => s + (i.value ?? 0), 0)
 
-          // Receita Brasil = type 2 + Brasil (manipulatedValue, todos hasReceivable)
+          // Receita Brasil = type 2 + Brasil, só o que ainda está pendente naquele
+          // mês — o que já foi recebido não conta mais pro saldo (já está em outra
+          // conta ou já foi gasto)
           const receitaBR = items
-            .filter(i => i.type?.startsWith('2') && !isEs(i.taxCountry))
+            .filter(i => i.type?.startsWith('2') && !isEs(i.taxCountry) && isPendingReceivable(i))
             .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
 
           const isConfiguredMonth = saldoFinalYm ? ym === saldoFinalYm : false
 
-          // Vale Refeição = type 3 (manipulatedValue), só no mês configurado
+          // Vale Refeição = type 3, só no mês configurado e só o que ainda está pendente
           const valeRefeicaoBR = isConfiguredMonth
             ? items
-                .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+                .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry) && isPendingReceivable(i))
                 .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
             : 0
 
@@ -587,14 +763,20 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         // ── Snapshot para o painel de memória de cálculo ────────────────────
         const configuredItems = byMonth[saldoFinalYm] ?? []
         const valeRefeicaoTotal = configuredItems
-          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry) && isPendingReceivable(i))
           .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+        const receitaTotal = configuredItems
+          .filter(i => i.type?.startsWith('2') && !isEs(i.taxCountry) && isPendingReceivable(i))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+        const despesaPendenteTotal = configuredItems
+          .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry) && i.hasPay === false)
+          .reduce((s, i) => s + (i.value ?? 0), 0)
 
         const despesaEspanhaTotal = cashflow
           .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
           .reduce((s, i) => s + (i.value ?? 0), 0)
 
-        setCalcBase({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
+        setCalcBase({ plrName, plrTotal, contasBancariasTotal, saldoFinal, saldoFinalYm, valeRefeicaoTotal, receitaTotal, despesaPendenteTotal, contasBancariasEspanha, nomeGrupoEspanha, gruposEncontrados, despesaEspanhaTotal })
         setByMonthState(byMonth)
         setData(points)
       } finally {
@@ -654,19 +836,29 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       .filter(i => i.type?.startsWith('1') && isEs(i.taxCountry) && i.hasPay === false)
       .reduce((s, i) => s + (i.value ?? 0), 0)
 
-    const plrTotal = Object.entries(byMonthState)
-      .filter(([ym]) => filteredYms.has(ym))
-      .flatMap(([, items]) => items)
-      .filter(i => i.type?.startsWith('4'))
-      .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
-
-    const saldoFinal = calcBase.contasBancariasTotal - plrTotal
+    // PLR e Saldo Final NÃO são recalculados por período — são uma "foto de hoje"
+    // (saldo bancário atual menos todo o PLR ainda pendente, não só o que está no
+    // intervalo do gráfico). Reaproveita exatamente o mesmo valor usado no ponto
+    // do gráfico (calculado uma vez em calcBase), pra nunca ficar diferente do
+    // que está plotado.
+    const plrTotal = calcBase.plrTotal
+    const saldoFinal = calcBase.saldoFinal
 
     const saldoFinalYmVisible = calcBase.saldoFinalYm && filteredYms.has(calcBase.saldoFinalYm)
     const valeRefeicaoTotal = saldoFinalYmVisible
       ? (byMonthState[calcBase.saldoFinalYm!] ?? [])
-          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry))
+          .filter(i => i.type?.startsWith('3') && !isEs(i.taxCountry) && isPendingReceivable(i))
           .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+      : 0
+    const receitaTotal = saldoFinalYmVisible
+      ? (byMonthState[calcBase.saldoFinalYm!] ?? [])
+          .filter(i => i.type?.startsWith('2') && !isEs(i.taxCountry) && isPendingReceivable(i))
+          .reduce((s, i) => s + (i.manipulatedValue ?? 0), 0)
+      : 0
+    const despesaPendenteTotal = saldoFinalYmVisible
+      ? (byMonthState[calcBase.saldoFinalYm!] ?? [])
+          .filter(i => i.type?.startsWith('1') && !isEs(i.taxCountry) && i.hasPay === false)
+          .reduce((s, i) => s + (i.value ?? 0), 0)
       : 0
 
     return {
@@ -675,6 +867,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
       plrTotal,
       saldoFinal,
       valeRefeicaoTotal,
+      receitaTotal,
+      despesaPendenteTotal,
       saldoFinalYm: saldoFinalYmVisible ? calcBase.saldoFinalYm : null,
     }
   }, [calcBase, filteredData, byMonthState])
@@ -729,6 +923,24 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     return years
   }, [selectedYearMonths])
 
+  // Agrupa os marcos por mês pra desenhar 1 marcador por mês no gráfico
+  // (mesmo que tenha vários marcos naquele mês) — hook antes de early return
+  const milestonesByYm = useMemo(() => {
+    const map: Record<string, ChartMilestone[]> = {}
+    for (const m of milestones) {
+      if (!map[m.yearMonth]) map[m.yearMonth] = []
+      map[m.yearMonth].push(m)
+    }
+    return map
+  }, [milestones])
+
+  // Dados efetivamente plotados no gráfico — quando "Só marcos" está ativo,
+  // restringe aos meses que têm marco, além dos filtros de período já aplicados.
+  const chartData = useMemo(() => {
+    if (!milestonesOnlyFilter) return filteredData
+    return filteredData.filter(d => milestonesByYm[d.yearMonth]?.length)
+  }, [filteredData, milestonesOnlyFilter, milestonesByYm])
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center" style={{ minHeight: 400 }}>
@@ -744,16 +956,56 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     localStorage.setItem(CHART_SIZE_KEY, size)
   }
 
-  // Anos disponíveis no filtro Personalizar: do "Mês/Ano inicial do gráfico"
-  // configurado (Configurações → Gráfico) até o ano atual + 5. Independente
-  // da âncora do Saldo Final, que segue controlando o acumulado/projeção.
+  // Salva a lista inteira de marcos — local (imediato) + backend (assíncrono,
+  // igual ao resto do app: se falhar, o valor local já está lá e uma próxima
+  // sincronização tenta de novo).
+  async function persistMilestones(next: ChartMilestone[]) {
+    setMilestones(next)
+    saveChartMilestonesLocal(next)
+    const val = JSON.stringify(next)
+    try {
+      const res = milestonesRecord
+        ? await walletApi.edit(milestonesRecord.id, 'finance_chart_milestones', val, milestonesRecord.creationDate)
+        : await walletApi.register('finance_chart_milestones', val)
+      if (!milestonesRecord) {
+        const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+        if (newRec) setMilestonesRecord(newRec)
+      }
+    } catch { /* fica salvo local; próxima sincronização tenta de novo */ }
+  }
+
+  function addMilestone(yearMonth: string, title: string, description: string, icon: string) {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    const newMilestone: ChartMilestone = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      yearMonth,
+      title: trimmed,
+      description: description.trim() || undefined,
+      icon: icon.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    }
+    persistMilestones([...milestones, newMilestone])
+  }
+
+  function deleteMilestone(id: string) {
+    persistMilestones(milestones.filter(m => m.id !== id))
+  }
+
+  function handleChartClick(e: { activeLabel?: string }) {
+    if (!e?.activeLabel) return
+    const point = filteredData.find(d => d.label === e.activeLabel)
+    if (point) setMilestoneModalYm(point.yearMonth)
+  }
+
+  // Anos disponíveis no filtro Personalizar: de CUSTOM_YEAR_MIN (2019) até o
+  // ano atual + 5 — o mesmo intervalo que já é buscado inteiro do backend (ver
+  // fetchRangeMode acima), então qualquer ano dessa lista sempre tem dado
+  // pronto pra mostrar assim que marcado, sem esperar nova busca.
   const currentYearForList = new Date().getFullYear()
-  const graficoInicioYm = loadGraficoMesAnoInicial()
-  const parsedStartYear = graficoInicioYm ? parseInt(graficoInicioYm.split('/')[1]) : NaN
-  const startYearForList = !isNaN(parsedStartYear) ? parsedStartYear : 2018
   const availableYears = Array.from(
-    { length: currentYearForList + 5 - startYearForList + 1 },
-    (_, i) => startYearForList + i,
+    { length: currentYearForList + 5 - CUSTOM_YEAR_MIN + 1 },
+    (_, i) => CUSTOM_YEAR_MIN + i,
   )
   const MONTH_NAMES = Object.keys(MONTHS)
 
@@ -829,6 +1081,9 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   // Visibilidade efetiva de uma linha: combina o toggle manual da legenda
   // com o filtro de país (Todos / Brasil / Espanha)
   function isLineVisible(key: string) {
+    // "Só marcos" é pra focar só nos marcadores — com o gráfico esparso (só os
+    // meses com marco), linhas conectando pontos distantes ficam enganosas.
+    if (milestonesOnlyFilter) return false
     if (hiddenLines[key]) return false
     if (countryFilter === 'todos') return true
     const line = LINES.find(l => l.key === key)
@@ -969,9 +1224,18 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         onTransferDone={() => setReloadKey(k => k + 1)}
       />
 
+      {/* Modal de marcos — abre ao clicar em qualquer ponto do gráfico */}
+      <MilestoneModal
+        yearMonth={milestoneModalYm}
+        milestones={milestoneModalYm ? (milestonesByYm[milestoneModalYm] ?? []) : []}
+        onAdd={(title, description, icon) => milestoneModalYm && addMilestone(milestoneModalYm, title, description, icon)}
+        onDelete={deleteMilestone}
+        onClose={() => setMilestoneModalYm(null)}
+      />
+
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer>
-          <ComposedChart data={filteredData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-1)" opacity={0.4} />
             <XAxis
               dataKey="label"
@@ -1067,9 +1331,112 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 }}
               />
             )}
+
+            {/* Marcos do usuário — 1 marcador por mês, clicável, com tooltip nativo
+                mostrando título (e descrição, se tiver) de cada marco daquele mês.
+                Com "Só marcos" ativo, desenha também uma linha do tempo sutil entre
+                um marco e o próximo, com o tempo decorrido entre eles. */}
+            {(() => {
+              const milestoneYms = Array.from(new Set(chartData.map(d => d.yearMonth)))
+                .filter(ym => milestonesByYm[ym]?.length)
+              return <>
+                {milestonesOnlyFilter && milestoneYms.slice(1).map((ym, i) => {
+                  const prevYm = milestoneYms[i]
+                  const prevPoint = chartData.find(d => d.yearMonth === prevYm)
+                  const point = chartData.find(d => d.yearMonth === ym)
+                  if (!prevPoint || !point) return null
+                  return (
+                    <ReferenceArea
+                      key={`timeline-${prevYm}-${ym}`}
+                      yAxisId="left"
+                      x1={prevPoint.label}
+                      x2={point.label}
+                      fill="transparent"
+                      stroke="none"
+                      label={(props: { viewBox?: { x?: number; y?: number; width?: number } }) => {
+                        const x = props.viewBox?.x ?? 0
+                        const y = props.viewBox?.y ?? 0
+                        const width = props.viewBox?.width ?? 0
+                        return (
+                          <g style={{ pointerEvents: 'none' }}>
+                            <line x1={x} x2={x + width} y1={y + 9} y2={y + 9}
+                              stroke={milestoneStyle.color} strokeOpacity={0.35} strokeWidth={1.5} strokeDasharray="4 3" />
+                            <text x={x + width / 2} y={y + 9 - 5} textAnchor="middle" fontSize={10} fill="var(--text-3)">
+                              {formatMonthGap(prevYm, ym)}
+                            </text>
+                          </g>
+                        )
+                      }}
+                    />
+                  )
+                })}
+                {milestoneYms.map(ym => {
+                const list = milestonesByYm[ym]
+                const point = chartData.find(d => d.yearMonth === ym)
+                if (!point) return null
+                const icon = list.length === 1 ? (list[0].icon || '📌') : '📌'
+                // Bandeira BR/ES desenhada em SVG em vez do emoji de texto: no Windows o
+                // emoji de bandeira não tem glifo (cai pra "BR"/"ES" em texto).
+                const flag = list.length === 1 ? flagEmojiIcon(list[0].icon, 14) : null
+                const tooltipText = list
+                  .map(m => `${m.icon ? m.icon + ' ' : ''}${m.title}${m.description ? ' — ' + m.description : ''}`)
+                  .join('\n')
+                // Nome visível direto no gráfico, bem discreto — o tooltip (title acima)
+                // continua trazendo a descrição completa ao passar o mouse
+                const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + '…' : s
+                const visibleLabel = list.length === 1
+                  ? truncate(list[0].title, 16)
+                  : `${list.length} marcos`
+                return (
+                  <ReferenceLine
+                    key={`milestone-${ym}`}
+                    yAxisId="left"
+                    x={point.label}
+                    stroke={milestoneStyle.color}
+                    strokeDasharray="2 4"
+                    strokeOpacity={0.35}
+                    label={(props: { viewBox?: { x?: number; y?: number } }) => {
+                      const x = props.viewBox?.x ?? 0
+                      const y = props.viewBox?.y ?? 0
+                      return (
+                        <g
+                          transform={`translate(${x}, ${y})`}
+                          style={{ cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); setMilestoneModalYm(ym) }}
+                        >
+                          <title>{tooltipText}</title>
+                          {/* Área invisível maior que o emoji só pra manter um alvo de clique
+                              confortável — sem pintar nenhum fundo atrás do ícone. */}
+                          <circle cx={0} cy={9} r={9} fill="transparent" style={{ pointerEvents: 'all' }} />
+                          {flag ? (
+                            <g transform="translate(-7, 2)">{flag}</g>
+                          ) : (
+                            <text x={0} y={14} textAnchor="middle" fontSize={14}>{icon}</text>
+                          )}
+                          {list.length > 1 && (
+                            <>
+                              <circle cx={8} cy={2} r={5} fill={milestoneStyle.color} fillOpacity={0.85} />
+                              <text x={8} y={4.5} textAnchor="middle" fontSize={7} fill="#fff" fontWeight={700}>{list.length}</text>
+                            </>
+                          )}
+                          {/* Nome do marco — fonte pequena e discreta, sempre visível, tamanho configurável */}
+                          <text x={11} y={13} fontSize={milestoneStyle.fontSize} fill="var(--text-3)" style={{ fontStyle: 'italic' }}>
+                            {visibleLabel}
+                          </text>
+                        </g>
+                      )
+                    }}
+                  />
+                )
+              })}
+              </>
+            })()}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>
+        📌 Clique em qualquer ponto do gráfico pra adicionar um marco (ex: &quot;Comprei o apartamento&quot;) naquele mês.
+      </p>
 
       {/* Slicers — Filtros de período */}
       <div className="mt-4 space-y-3">
@@ -1118,6 +1485,18 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               border: `1px solid ${filterMode === 'custom' ? 'var(--green-400)' : 'var(--border-1)'}`,
             }}>
             Personalizar
+          </button>
+          {/* Filtro extra, independente do período acima — só mostra no gráfico os
+              meses que têm marco cadastrado, pra focar só nos acontecimentos marcados */}
+          <button type="button"
+            onClick={() => setMilestonesOnlyFilter(v => !v)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: milestonesOnlyFilter ? milestoneStyle.color : 'var(--bg-3)',
+              color: milestonesOnlyFilter ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${milestonesOnlyFilter ? milestoneStyle.color : 'var(--border-1)'}`,
+            }}>
+            <MapPin size={12} /> Só marcos
           </button>
         </div>
 
@@ -1191,7 +1570,19 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
           </button>
 
           {calcOpen && (
-            <div className="p-4 space-y-4 text-xs" style={{ background: 'var(--bg-2)' }}>
+            <div className="p-4 space-y-5 text-xs" style={{ background: 'var(--bg-2)' }}>
+
+              {/* Intro didática */}
+              <div className="rounded-lg px-3 py-2.5" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                <p className="leading-relaxed" style={{ color: 'var(--text-2)' }}>
+                  💡 Pensa nisso como uma planilha: cada número do gráfico vem de uma
+                  conta simples de <strong>somar</strong> e <strong>subtrair</strong>.
+                  Do lado de cada resultado tem uma linha <span className="font-mono" style={{ color: '#21a366' }}>fx</span> mostrando
+                  exatamente essa conta — igual quando você clica numa célula do Excel
+                  e vê a fórmula aparecer ali em cima.
+                </p>
+              </div>
+
 
               {/* Espanha */}
               <div>
@@ -1218,6 +1609,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                     </p>
                   </div>
                 </div>
+                <div className="mt-2">
+                  <FormulaBar formula={`= ${formatEur(calc.contasBancariasEspanha)}  (saldo de hoje)  −  ${formatEur(calc.despesaEspanhaTotal)}  (despesas que ainda faltam pagar)  =  ${formatEur(calc.contasBancariasEspanha - calc.despesaEspanhaTotal)}`} />
+                  <CalcExplain>
+                    É um &quot;e se&quot;: imagina que você não vai colocar nem tirar mais
+                    nenhum dinheiro dessa conta. Esse número é o quanto sobraria depois de
+                    pagar tudo que ainda está pendente lá na Espanha — mês a mês, o gráfico
+                    vai descontando só o que ainda não foi pago (o que já foi pago não
+                    conta de novo, porque já saiu de lá antes).
+                  </CalcExplain>
+                </div>
               </div>
 
               <div style={{ borderTop: '1px solid var(--border-1)' }} />
@@ -1236,7 +1637,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                   </div>
                   <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
                     <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
-                      PLR{calc.plrName ? ` — ${calc.plrName}` : ''}
+                      PLR pendente{calc.plrName ? ` — ${calc.plrName}` : ''}
                     </p>
                     <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
                       − {formatBrl(calc.plrTotal)}
@@ -1251,16 +1652,129 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                     </p>
                   </div>
                 </div>
+                <div className="mt-2">
+                  <FormulaBar formula={`= ${formatBrl(calc.contasBancariasTotal)}  (tudo que está nas contas bancárias hoje)  −  ${formatBrl(calc.plrTotal)}  (PLR${calc.plrName ? ` "${calc.plrName}"` : ''} ainda pendente)  =  ${formatBrl(calc.saldoFinal)}`} />
+                  <CalcExplain>
+                    Somamos tudo que você tem guardado nas contas bancárias do Brasil
+                    hoje e tiramos o valor do PLR <strong>que ainda não caiu</strong>. Fazemos
+                    isso porque, assim que o PLR é recebido, ele passa a fazer parte do
+                    saldo bancário normalmente — contá-lo separado de novo duplicaria o
+                    valor.
+                  </CalcExplain>
+                </div>
+                {calc.saldoFinalYm && (
+                  <>
+                    <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                      <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                        Contas a Receber pendentes ({calc.saldoFinalYm})
+                      </p>
+                      <p className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                        + {formatBrl(calc.receitaTotal)}
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <FormulaBar formula={`= ${formatBrl(calc.receitaTotal)}  (só o que ainda falta receber em ${calc.saldoFinalYm})`} />
+                      <CalcExplain>
+                        Somamos só as Contas a Receber de {calc.saldoFinalYm} que{' '}
+                        <strong>ainda não caíram</strong> na conta. O que já foi recebido
+                        não entra mais aqui — esse dinheiro já está em outra conta ou já foi
+                        gasto, então contá-lo de novo inflaria o saldo à toa.
+                      </CalcExplain>
+                    </div>
+                  </>
+                )}
                 {calc.saldoFinalYm && calc.valeRefeicaoTotal > 0 && (
-                  <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                  <>
+                    <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                      <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                        Vale Alimentação/Refeição pendente ({calc.saldoFinalYm})
+                      </p>
+                      <p className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
+                        + {formatBrl(calc.valeRefeicaoTotal)}
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <FormulaBar formula={`= ${formatBrl(calc.valeRefeicaoTotal)}  (Vale Alimentação/Refeição de ${calc.saldoFinalYm} que ainda não caiu)`} />
+                      <CalcExplain>
+                        Só no mês configurado, somamos também o Vale Alimentação/Refeição
+                        que ainda está pendente — pela mesma regra de cima: o que já foi
+                        recebido não conta mais, porque esse dinheiro já saiu dali (foi pra
+                        outra conta ou já foi gasto).
+                      </CalcExplain>
+                    </div>
+                  </>
+                )}
+                {calc.saldoFinalYm && calc.despesaPendenteTotal > 0 && (
+                  <>
+                    <div className="mt-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                      <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                        Contas a Pagar ainda pendentes ({calc.saldoFinalYm})
+                      </p>
+                      <p className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                        − {formatBrl(calc.despesaPendenteTotal)}
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <FormulaBar formula={`= ${formatBrl(calc.despesaPendenteTotal)}  (só as contas de ${calc.saldoFinalYm} que ainda não foram pagas)`} />
+                      <CalcExplain>
+                        Tiramos o que ainda falta pagar naquele mês. As contas que{' '}
+                        <strong>já foram pagas</strong> não entram aqui — elas já saíram do
+                        saldo das contas bancárias antes, então descontar de novo contaria a
+                        mesma despesa duas vezes.
+                      </CalcExplain>
+                    </div>
+                  </>
+                )}
+                {calc.saldoFinalYm && (
+                  <div className="mt-3 rounded-lg px-3 py-2.5" style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.3)' }}>
                     <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
-                      Vale Alimentação/Refeição ({calc.saldoFinalYm})
+                      🏁 Saldo Brasil do mês configurado ({calc.saldoFinalYm}) — o ponto no gráfico
                     </p>
-                    <p className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
-                      + {formatBrl(calc.valeRefeicaoTotal)}
+                    <p className="font-mono font-bold text-sm mb-2" style={{ color: (calc.saldoFinal + calc.receitaTotal + calc.valeRefeicaoTotal - calc.despesaPendenteTotal) >= 0 ? 'var(--green-400)' : 'var(--red)' }}>
+                      = {formatBrl(calc.saldoFinal + calc.receitaTotal + calc.valeRefeicaoTotal - calc.despesaPendenteTotal)}
                     </p>
+                    <FormulaBar formula={`= ${formatBrl(calc.saldoFinal)} (Saldo Final)  +  ${formatBrl(calc.receitaTotal)} (Contas a Receber pendentes)  +  ${formatBrl(calc.valeRefeicaoTotal)} (Vale pendente)  −  ${formatBrl(calc.despesaPendenteTotal)} (Contas a Pagar pendentes)  =  ${formatBrl(calc.saldoFinal + calc.receitaTotal + calc.valeRefeicaoTotal - calc.despesaPendenteTotal)}`} />
+                    <CalcExplain>
+                      Essa é a soma de <strong>tudo</strong> que você viu aqui em cima — é
+                      exatamente o número que aparece no ponto do gráfico do mês configurado
+                      na linha &quot;Saldo Brasil&quot;.
+                    </CalcExplain>
                   </div>
                 )}
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-1)' }} />
+
+              {/* O que cada elemento do gráfico significa, mês a mês */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
+                  📊 O que cada parte do gráfico está somando, mês a mês
+                </p>
+                <div className="space-y-3">
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="font-semibold mb-1" style={{ color: 'var(--text-1)' }}>Barras vermelhas de despesa</p>
+                    <CalcExplain>
+                      Cada barra soma <strong>todas</strong> as Contas a Pagar daquele
+                      país, naquele mês — não importa se já foi paga ou se ainda está
+                      pendente. É só &quot;quanto custou esse mês&quot;, pra você comparar
+                      um mês com o outro de relance.
+                    </CalcExplain>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
+                    <p className="font-semibold mb-1" style={{ color: 'var(--text-1)' }}>Linha do Saldo Brasil</p>
+                    <CalcExplain>
+                      No mês configurado, essa linha soma <strong>tudo</strong>: o Saldo
+                      Final (contas bancárias − PLR pendente) + as Contas a Receber ainda{' '}
+                      <strong>pendentes</strong> daquele mês + o Vale Refeição pendente −
+                      as Contas a Pagar que ainda faltam. Nos outros meses, ela é mais
+                      simples — só o que ainda falta <strong>receber</strong> naquele mês,
+                      menos o que <strong>ainda falta pagar</strong>. Em todos os casos, o
+                      que já foi recebido ou já foi pago não entra de novo — esse dinheiro
+                      já saiu dali (foi pra outra conta, já foi gasto, ou já está refletido
+                      no saldo bancário).
+                    </CalcExplain>
+                  </div>
+                </div>
               </div>
 
             </div>

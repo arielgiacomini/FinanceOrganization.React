@@ -8,7 +8,14 @@
 // Registrado com scope "/" (src/components/ServiceWorkerRegistration.tsx),
 // então cobre todas as telas — mas continua sem nenhuma lógica de negócio
 // aqui, só cache e o ciclo de vida padrão do Service Worker.
-const CACHE_NAME = 'finance-app-shell-v3'
+//
+// IMPORTANTE: o navegador só percebe que existe uma versão nova deste
+// arquivo (e dispara install/activate/controllerchange, que é o que avisa o
+// usuário) quando o CONTEÚDO do sw.js muda byte a byte. Por isso o
+// CACHE_NAME abaixo precisa acompanhar o APP_VERSION (src/lib/version.ts) a
+// cada entrega — sem isso o aviso de nova versão nunca dispara, mesmo com o
+// resto do app atualizado.
+const CACHE_NAME = 'finance-app-shell-v372'
 
 self.addEventListener('install', () => {
   // Ativa a versão nova imediatamente, sem esperar as abas antigas fecharem —

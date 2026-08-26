@@ -364,10 +364,93 @@
 
       <div style="display:flex;flex-direction:column;gap:16px;max-width:760px;margin:0 auto;">
 
-        <!-- v357 -->
+        <!-- v372 -->
         <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v357</span>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v372</span>
+            <span style="font-size:12.5px;color:var(--text-3);">26 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Linha do tempo entre marcos</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Com o filtro "Só marcos" ativo, o gráfico desenha uma linha sutil entre um marco e o próximo, mostrando quanto tempo passou entre eles</li>
+          </ul>
+        </div>
+
+        <!-- v371 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v371</span>
+            <span style="font-size:12.5px;color:var(--text-3);">26 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Marcos: emoji, filtro e visual mais limpo</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: emojis compostos (família, profissão + tom de pele) escolhidos pelo celular agora aparecem certinho na versão web</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: bandeira Brasil/Espanha escolhida como ícone do marco agora aparece como bandeira de verdade na web (antes caía pra "BR"/"ES" em texto, limitação do Windows)</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Novo filtro "Só marcos" no gráfico Evolução Financeira — mostra só os meses com marco cadastrado, escondendo as linhas pra focar nos marcadores</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Marcador do gráfico sem o fundo colorido atrás do emoji — visual mais limpo</li>
+          </ul>
+        </div>
+
+        <!-- v370 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v370</span>
+            <span style="font-size:12.5px;color:var(--text-3);">26 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Selecionar todos em Contas a Pagar</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Novo botão "Selecionar todos" em Contas a Pagar — marca de uma vez todos os registros do filtro atual, pra ações em massa</li>
+          </ul>
+        </div>
+
+        <!-- v369 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v369</span>
+            <span style="font-size:12.5px;color:var(--text-3);">26 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">PWA atualiza sozinho quando sai versão nova</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: o app instalado na tela de início não ficava mais sabendo de versões novas — agora o Service Worker sempre detecta o deploy mais recente</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Aviso de "nova versão disponível" e atualização automática, sem precisar excluir e reinstalar o app da tela de início</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A atualização espera você terminar de preencher um formulário antes de recarregar sozinha, pra nunca perder o que você estava digitando</li>
+          </ul>
+        </div>
+
+        <!-- v368 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v368</span>
+            <span style="font-size:12.5px;color:var(--text-3);">24 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Tela própria de Marcos</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Novo menu "Marcos" no lugar da seção em Configurações: veja, edite e exclua todos os marcos cadastrados num só lugar</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Aparência do marco no gráfico (tamanho do texto e cor) agora se ajusta direto na tela de Marcos</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: marcos cadastrados às vezes não apareciam por causa de registros duplicados salvos no servidor — a tela agora sempre mostra a versão mais recente de cada marco</li>
+          </ul>
+        </div>
+
+        <!-- v367 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v367</span>
+            <span style="font-size:12.5px;color:var(--text-3);">24 ago 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Marcos no gráfico e Memória de Cálculo à prova de dúvida</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Novo: marque acontecimentos importantes direto no gráfico Evolução Financeira (ex: "Comprei o apartamento") clicando no mês — o nome fica visível discretamente no próprio gráfico, salvo pra sempre</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Memória de Cálculo do gráfico agora mostra a fórmula real de cada número, estilo barra de fórmulas do Excel, com explicação em linguagem simples</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: dinheiro já recebido (Contas a Receber, PLR, Vale Refeição) não inflava mais o Saldo Brasil — só o que ainda está pendente entra na conta</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Filtro "Personalizar" do gráfico ganhou anos de 2019 a 2031 e parou de travar esperando o servidor a cada ano marcado/desmarcado</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Tabela de Contas a Pagar com colunas configuráveis, identidade visual por conta e linha expansível com todos os detalhes</li>
+          </ul>
+        </div>
+
+        <!-- v357 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v357</span>
             <span style="font-size:12.5px;color:var(--text-3);">23 ago 2026</span>
           </div>
           <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Melhorias de layout e usabilidade no mobile</h3>
@@ -414,7 +497,7 @@
         <div style="width:20px;height:20px;border-radius:6px;background:var(--green-500);display:flex;align-items:center;justify-content:center;color:#08120a;font-weight:700;font-size:11px;">F</div>
         © 2026 Finance Organization
       </div>
-      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v357 · 23 ago 2026</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v372 · 26 ago 2026</div>
     </div>
   </footer>
 

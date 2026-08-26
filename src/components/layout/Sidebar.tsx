@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle,
-  ChevronRight, ChevronLeft, Menu, X, LogOut, Settings, Wallet,
+  ChevronRight, ChevronLeft, Menu, X, LogOut, Settings, Wallet, MapPin,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
@@ -16,6 +16,7 @@ const nav = [
   { href: '/carteira',           label: 'Carteira',         icon: Wallet          },
   { href: '/contas-a-pagar',     label: 'Contas a Pagar',   icon: ArrowUpCircle   },
   { href: '/contas-a-receber',   label: 'Contas a Receber', icon: ArrowDownCircle },
+  { href: '/marcos',             label: 'Marcos',           icon: MapPin          },
   { href: '/configuracoes',      label: 'Configurações',    icon: Settings        },
 ]
 

@@ -12,7 +12,7 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2, Bell, ArrowUpDown, ArrowUp, ArrowDown,
+  Pencil, Trash2, Bell, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle,
 } from 'lucide-react'
 import { walletApi, accountsApi, categoriesApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
@@ -766,7 +766,6 @@ function ConfiguracoesInner() {
 
   const [plrName,                  setPlrName]                  = useState('')
   const [saldoFinalYm,             setSaldoFinalYm]             = useState('')
-  const [graficoMesAnoInicial,     setGraficoMesAnoInicial]     = useState('')
   const [valeCategoria,            setValeCategoria]            = useState('')
   const [nomeGrupoEspanha,         setNomeGrupoEspanha]         = useState('')
   const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
@@ -803,6 +802,8 @@ function ConfiguracoesInner() {
   const [quickBillCategories, setQuickBillCategories] = useState<string[]>([])
 
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   async function handleDelete() {
     if (!deleteTarget) return
@@ -837,7 +838,6 @@ function ConfiguracoesInner() {
     const c = loadPlrConfig()
     setPlrName(c.name ?? 'PLR - Ciclo 2 - 2025 de méritocracia (encerrando 2025)')
     setSaldoFinalYm(c.saldoFinalYm ?? '')
-    setGraficoMesAnoInicial(c.graficoMesAnoInicial ?? '')
     setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
@@ -881,7 +881,6 @@ function ConfiguracoesInner() {
           savePlrConfigAll(p)
           setPlrName(p.name ?? '')
           setSaldoFinalYm(p.saldoFinalYm ?? '')
-          setGraficoMesAnoInicial(p.graficoMesAnoInicial ?? '')
           setValeCategoria(p.valeCategoria ?? '')
           setNomeGrupoEspanha(p.nomeGrupoEspanha ?? '')
           setNomeGrupoInvestimento(p.nomeGrupoInvestimento ?? 'Investimentos')
@@ -979,131 +978,149 @@ function ConfiguracoesInner() {
           setQuickBillDefaults(vals)
         } catch {}
       }
+
     }).catch(() => {})
   }, [])
 
-  function save() {
-    // Formulários → localStorage
+  async function save() {
+    // Formulários → localStorage (síncrono, não precisa de rede)
     saveFrequences(frequences)
     saveRegistrationTypes(regTypes)
 
+    setSaving(true)
+    setSaveError(null)
+
+    // Cada entrada dispara sua chamada à API e é rastreada individualmente —
+    // se alguma falhar, o usuário fica sabendo exatamente qual (em vez do
+    // botão sempre mostrar "Salvo!" mesmo quando a sincronização falha).
+    const tasks: { label: string; promise: Promise<unknown> }[] = []
+
     // Saldo contas → API
     const saldoVal = JSON.stringify(saldoContas)
-    const saldoPromise = saldoContasRecord
-      ? walletApi.edit(saldoContasRecord.id, 'finance_saldo_contas', saldoVal, saldoContasRecord.creationDate)
-      : walletApi.register('finance_saldo_contas', saldoVal)
-    saldoPromise
-      .then(res => {
+    tasks.push({
+      label: 'Saldo Disponível em Contas a Pagar',
+      promise: (saldoContasRecord
+        ? walletApi.edit(saldoContasRecord.id, 'finance_saldo_contas', saldoVal, saldoContasRecord.creationDate)
+        : walletApi.register('finance_saldo_contas', saldoVal)
+      ).then(res => {
         if (!saldoContasRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setSaldoContasRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Gráfico → localStorage + API
-    const data = { name: plrName, saldoFinalYm, graficoMesAnoInicial, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
+    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
     savePlrConfigAll(data)
     const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
-    const plrPromise = existing
-      ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
-      : walletApi.register('finance_plr_config', JSON.stringify(data))
-    plrPromise.catch(() => {})
+    tasks.push({
+      label: 'Gráfico (Nome do PLR e demais campos)',
+      promise: existing
+        ? walletApi.edit(existing.id, 'finance_plr_config', JSON.stringify(data), existing.creationDate)
+        : walletApi.register('finance_plr_config', JSON.stringify(data)),
+    })
 
     // Alerta de dados desatualizados → localStorage + API
     const staleData = { ativo: String(staleAlertAtivo), mensagem: staleAlertMensagem, intervaloMinutos: staleAlertIntervaloMinutos }
     saveStaleAlertConfigLocal(staleData)
     const staleVal = JSON.stringify(staleData)
-    const stalePromise = staleAlertRecord
-      ? walletApi.edit(staleAlertRecord.id, 'finance_stale_alert_config', staleVal, staleAlertRecord.creationDate)
-      : walletApi.register('finance_stale_alert_config', staleVal)
-    stalePromise
-      .then(res => {
+    tasks.push({
+      label: 'Alerta de dados desatualizados',
+      promise: (staleAlertRecord
+        ? walletApi.edit(staleAlertRecord.id, 'finance_stale_alert_config', staleVal, staleAlertRecord.creationDate)
+        : walletApi.register('finance_stale_alert_config', staleVal)
+      ).then(res => {
         if (!staleAlertRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setStaleAlertRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Despesas por Mês/Ano — filtro padrão → localStorage + API
     const despesaMesData = { filtrarAnoAtual: String(despesaMesFiltrarAnoAtual), categoriaPadrao: despesaMesCategoriaPadrao }
     saveDespesaMesConfigLocal(despesaMesData)
     const despesaMesVal = JSON.stringify(despesaMesData)
-    const despesaMesPromise = despesaMesRecord
-      ? walletApi.edit(despesaMesRecord.id, 'finance_despesa_mes_config', despesaMesVal, despesaMesRecord.creationDate)
-      : walletApi.register('finance_despesa_mes_config', despesaMesVal)
-    despesaMesPromise
-      .then(res => {
+    tasks.push({
+      label: 'Despesas por Mês/Ano',
+      promise: (despesaMesRecord
+        ? walletApi.edit(despesaMesRecord.id, 'finance_despesa_mes_config', despesaMesVal, despesaMesRecord.creationDate)
+        : walletApi.register('finance_despesa_mes_config', despesaMesVal)
+      ).then(res => {
         if (!despesaMesRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setDespesaMesRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Contas a Pagar — ordenação padrão da tabela → localStorage + API
     const contasPagarSortData = { sortCol: contasPagarSortCol, sortDir: contasPagarSortDir }
     saveContasPagarSortConfigLocal(contasPagarSortData)
     const contasPagarSortVal = JSON.stringify(contasPagarSortData)
-    const contasPagarSortPromise = contasPagarSortRecord
-      ? walletApi.edit(contasPagarSortRecord.id, 'finance_contas_pagar_sort_config', contasPagarSortVal, contasPagarSortRecord.creationDate)
-      : walletApi.register('finance_contas_pagar_sort_config', contasPagarSortVal)
-    contasPagarSortPromise
-      .then(res => {
+    tasks.push({
+      label: 'Ordenação — Contas a Pagar',
+      promise: (contasPagarSortRecord
+        ? walletApi.edit(contasPagarSortRecord.id, 'finance_contas_pagar_sort_config', contasPagarSortVal, contasPagarSortRecord.creationDate)
+        : walletApi.register('finance_contas_pagar_sort_config', contasPagarSortVal)
+      ).then(res => {
         if (!contasPagarSortRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setContasPagarSortRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Contas a Receber — ordenação padrão da tabela → localStorage + API
     const contasReceberSortData = { sortCol: contasReceberSortCol, sortDir: contasReceberSortDir }
     saveContasReceberSortConfigLocal(contasReceberSortData)
     const contasReceberSortVal = JSON.stringify(contasReceberSortData)
-    const contasReceberSortPromise = contasReceberSortRecord
-      ? walletApi.edit(contasReceberSortRecord.id, 'finance_contas_receber_sort_config', contasReceberSortVal, contasReceberSortRecord.creationDate)
-      : walletApi.register('finance_contas_receber_sort_config', contasReceberSortVal)
-    contasReceberSortPromise
-      .then(res => {
+    tasks.push({
+      label: 'Ordenação — Contas a Receber',
+      promise: (contasReceberSortRecord
+        ? walletApi.edit(contasReceberSortRecord.id, 'finance_contas_receber_sort_config', contasReceberSortVal, contasReceberSortRecord.creationDate)
+        : walletApi.register('finance_contas_receber_sort_config', contasReceberSortVal)
+      ).then(res => {
         if (!contasReceberSortRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setContasReceberSortRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Contas a Pagar — colunas visíveis/ordem da tabela → localStorage + API
     const hiddenColumnsList = CONTAS_PAGAR_COLUMNS.map(c => c.value).filter(v => contasPagarColumnsHidden[v])
     saveContasPagarColumnsConfigLocal(contasPagarColumnsOrder, hiddenColumnsList)
     const contasPagarColumnsVal = JSON.stringify({ order: contasPagarColumnsOrder, hidden: hiddenColumnsList })
-    const contasPagarColumnsPromise = contasPagarColumnsRecord
-      ? walletApi.edit(contasPagarColumnsRecord.id, 'finance_contas_pagar_columns_config', contasPagarColumnsVal, contasPagarColumnsRecord.creationDate)
-      : walletApi.register('finance_contas_pagar_columns_config', contasPagarColumnsVal)
-    contasPagarColumnsPromise
-      .then(res => {
+    tasks.push({
+      label: 'Colunas da tabela — Contas a Pagar',
+      promise: (contasPagarColumnsRecord
+        ? walletApi.edit(contasPagarColumnsRecord.id, 'finance_contas_pagar_columns_config', contasPagarColumnsVal, contasPagarColumnsRecord.creationDate)
+        : walletApi.register('finance_contas_pagar_columns_config', contasPagarColumnsVal)
+      ).then(res => {
         if (!contasPagarColumnsRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setContasPagarColumnsRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Contas a Pagar — identidade visual por conta na tabela → localStorage + API
     saveContasPagarAccountStyleConfigLocal(contasPagarAccountStyle)
     const contasPagarAccountStyleVal = JSON.stringify({ style: contasPagarAccountStyle })
-    const contasPagarAccountStylePromise = contasPagarAccountStyleRecord
-      ? walletApi.edit(contasPagarAccountStyleRecord.id, 'finance_contas_pagar_account_style_config', contasPagarAccountStyleVal, contasPagarAccountStyleRecord.creationDate)
-      : walletApi.register('finance_contas_pagar_account_style_config', contasPagarAccountStyleVal)
-    contasPagarAccountStylePromise
-      .then(res => {
+    tasks.push({
+      label: 'Identidade visual por conta — Contas a Pagar',
+      promise: (contasPagarAccountStyleRecord
+        ? walletApi.edit(contasPagarAccountStyleRecord.id, 'finance_contas_pagar_account_style_config', contasPagarAccountStyleVal, contasPagarAccountStyleRecord.creationDate)
+        : walletApi.register('finance_contas_pagar_account_style_config', contasPagarAccountStyleVal)
+      ).then(res => {
         if (!contasPagarAccountStyleRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setContasPagarAccountStyleRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
     // Cadastro Rápido — Contas a Pagar → localStorage + API
     const quickBillData: Record<string, string> = {}
@@ -1113,20 +1130,29 @@ function ConfiguracoesInner() {
     }
     saveQuickBillConfigLocal(quickBillData)
     const quickBillVal = JSON.stringify(quickBillData)
-    const quickBillPromise = quickBillRecord
-      ? walletApi.edit(quickBillRecord.id, 'finance_quick_bill_config', quickBillVal, quickBillRecord.creationDate)
-      : walletApi.register('finance_quick_bill_config', quickBillVal)
-    quickBillPromise
-      .then(res => {
+    tasks.push({
+      label: 'Cadastro Rápido — Contas a Pagar',
+      promise: (quickBillRecord
+        ? walletApi.edit(quickBillRecord.id, 'finance_quick_bill_config', quickBillVal, quickBillRecord.creationDate)
+        : walletApi.register('finance_quick_bill_config', quickBillVal)
+      ).then(res => {
         if (!quickBillRecord) {
           const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
           if (newRec) setQuickBillRecord(newRec)
         }
-      })
-      .catch(() => {})
+      }),
+    })
 
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    const results = await Promise.allSettled(tasks.map(t => t.promise))
+    const failed = tasks.filter((_, i) => results[i].status === 'rejected').map(t => t.label)
+
+    setSaving(false)
+    if (failed.length > 0) {
+      setSaveError(`Não sincronizou com o servidor: ${failed.join(', ')}. Os valores ficaram salvos só neste navegador — tente salvar de novo.`)
+    } else {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    }
   }
 
   function setQuickDefault(key: QuickBillFieldKey, value: string) {
@@ -1201,12 +1227,19 @@ function ConfiguracoesInner() {
         title="Configurações"
         subtitle="Preferências e parâmetros da aplicação"
         action={
-          <button onClick={save} className="btn-primary">
-            {saved ? <Check size={15} /> : <Save size={15} />}
-            {saved ? 'Salvo!' : 'Salvar'}
+          <button onClick={save} disabled={saving} className="btn-primary">
+            {saving ? <Spinner size={15} /> : saved ? <Check size={15} /> : saveError ? <AlertTriangle size={15} /> : <Save size={15} />}
+            {saving ? 'Salvando…' : saved ? 'Salvo!' : saveError ? 'Falhou — tentar de novo' : 'Salvar'}
           </button>
         }
       />
+
+      {saveError && (
+        <div className="flex items-start gap-2.5 rounded-xl px-4 py-3" style={{ background: 'var(--red-dim)', border: '1px solid rgba(248,113,113,0.3)' }}>
+          <AlertTriangle size={15} style={{ color: 'var(--red)', flexShrink: 0, marginTop: 1 }} />
+          <p className="text-xs" style={{ color: 'var(--text-2)' }}>{saveError}</p>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-6">
 
@@ -1575,14 +1608,6 @@ function ConfiguracoesInner() {
                     Mês em que o Saldo Final da Carteira entra na receita Brasil.
                   </p>
                   <YearMonthSelector value={saldoFinalYm || currentYearMonth()} onChange={setSaldoFinalYm} />
-                </div>
-
-                <div>
-                  <label className="label">Mês/Ano inicial do gráfico</label>
-                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-                    A partir de qual mês o filtro Personalizar do gráfico passa a listar os anos.
-                  </p>
-                  <YearMonthSelector value={graficoMesAnoInicial || currentYearMonth()} onChange={setGraficoMesAnoInicial} />
                 </div>
 
                 <div>
