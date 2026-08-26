@@ -813,7 +813,7 @@ function ContasAPagarPageInner() {
       </>}
       </div>{/* fim do cabeçalho sticky */}
 
-      {/* Barra da tabela — mostrar detalhes / contagem, com linha sutil separando dos filtros acima */}
+      {/* Barra da tabela — mostrar detalhes / seleção em massa / contagem, com linha sutil separando dos filtros acima */}
       <div className="flex items-center gap-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
         <button
           className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
@@ -822,6 +822,21 @@ function ContasAPagarPageInner() {
           {showDetails ? <ChevronUp size={12} className="inline mr-1" /> : <ChevronDown size={12} className="inline mr-1" />}
           {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
         </button>
+        {filtered.length > 0 && (
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5"
+            style={{
+              borderColor: allSelected ? 'rgba(96,165,250,0.4)' : 'var(--border-1)',
+              color: allSelected ? 'var(--blue)' : 'var(--text-3)',
+              background: allSelected ? 'var(--blue-dim)' : 'transparent',
+            }}
+            onClick={toggleAll}
+          >
+            {allSelected ? <SquareCheck size={12} /> : <Square size={12} />}
+            {allSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+          </button>
+        )}
         <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtered.length} registros</span>
       </div>
 

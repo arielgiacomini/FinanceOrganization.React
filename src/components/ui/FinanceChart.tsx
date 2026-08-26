@@ -23,8 +23,8 @@ import {
 } from '@/lib/wallet'
 import type { ChartMilestone, ChartMilestoneStyle } from '@/lib/wallet'
 import { Modal, Spinner } from '@/components/ui'
-import { FlagBrasil, FlagEspanha, FlagGlobe } from '@/components/ui/Flags'
-import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight, Trash2, Plus } from 'lucide-react'
+import { FlagBrasil, FlagEspanha, FlagGlobe, MilestoneIcon, flagEmojiIcon } from '@/components/ui/Flags'
+import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight, Trash2, Plus, MapPin } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -456,7 +456,7 @@ function MilestoneModal({ yearMonth, milestones, onAdd, onDelete, onClose }: {
           <div className="space-y-2">
             {milestones.map(m => (
               <div key={m.id} className="flex items-start gap-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{m.icon || '📌'}</span>
+                <MilestoneIcon icon={m.icon} size={16} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{m.title}</p>
                   {m.description && <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{m.description}</p>}
@@ -474,13 +474,16 @@ function MilestoneModal({ yearMonth, milestones, onAdd, onDelete, onClose }: {
 
         <div className="space-y-2" style={{ borderTop: milestones.length > 0 ? '1px solid var(--border-1)' : undefined, paddingTop: milestones.length > 0 ? 12 : 0 }}>
           <div className="flex gap-2">
+            {/* Sem maxLength de propósito: emojis compostos (família, profissão + tom de
+                pele, bandeiras) usam sequências ZWJ com bem mais de 4 unidades UTF-16 —
+                um limite curto cortava o emoji no meio, corrompendo a sequência (por
+                isso alguns picados no celular não apareciam certo na versão web). */}
             <input
               className="input text-sm text-center"
               style={{ width: 52 }}
               value={icon}
               onChange={e => setIcon(e.target.value)}
               placeholder="🏠"
-              maxLength={4}
             />
             <input
               className="input flex-1 text-sm"
@@ -544,6 +547,9 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }, [])
   const [filterMode, setFilterMode] = useState<'next6' | 'last12' | 'custom'>('next6')
   const [selectedYearMonths, setSelectedYearMonths] = useState<Set<string>>(new Set())
+  // Filtro extra (combina com qualquer filterMode acima): só mostra no gráfico
+  // os meses que têm marco cadastrado
+  const [milestonesOnlyFilter, setMilestonesOnlyFilter] = useState(false)
 
   // Só dispara nova busca quando o range relevante à API muda: entrar/sair de
   // "últimos 12 meses" ou de "Personalizar". Dentro de "Personalizar", a busca
@@ -916,6 +922,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     return map
   }, [milestones])
 
+  // Dados efetivamente plotados no gráfico — quando "Só marcos" está ativo,
+  // restringe aos meses que têm marco, além dos filtros de período já aplicados.
+  const chartData = useMemo(() => {
+    if (!milestonesOnlyFilter) return filteredData
+    return filteredData.filter(d => milestonesByYm[d.yearMonth]?.length)
+  }, [filteredData, milestonesOnlyFilter, milestonesByYm])
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center" style={{ minHeight: 400 }}>
@@ -1056,6 +1069,9 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   // Visibilidade efetiva de uma linha: combina o toggle manual da legenda
   // com o filtro de país (Todos / Brasil / Espanha)
   function isLineVisible(key: string) {
+    // "Só marcos" é pra focar só nos marcadores — com o gráfico esparso (só os
+    // meses com marco), linhas conectando pontos distantes ficam enganosas.
+    if (milestonesOnlyFilter) return false
     if (hiddenLines[key]) return false
     if (countryFilter === 'todos') return true
     const line = LINES.find(l => l.key === key)
@@ -1207,7 +1223,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer>
-          <ComposedChart data={filteredData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+          <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-1)" opacity={0.4} />
             <XAxis
               dataKey="label"
@@ -1306,13 +1322,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
 
             {/* Marcos do usuário — 1 marcador por mês, clicável, com tooltip nativo
                 mostrando título (e descrição, se tiver) de cada marco daquele mês */}
-            {Array.from(new Set(filteredData.map(d => d.yearMonth)))
+            {Array.from(new Set(chartData.map(d => d.yearMonth)))
               .filter(ym => milestonesByYm[ym]?.length)
               .map(ym => {
                 const list = milestonesByYm[ym]
-                const point = filteredData.find(d => d.yearMonth === ym)
+                const point = chartData.find(d => d.yearMonth === ym)
                 if (!point) return null
                 const icon = list.length === 1 ? (list[0].icon || '📌') : '📌'
+                // Bandeira BR/ES desenhada em SVG em vez do emoji de texto: no Windows o
+                // emoji de bandeira não tem glifo (cai pra "BR"/"ES" em texto).
+                const flag = list.length === 1 ? flagEmojiIcon(list[0].icon, 14) : null
                 const tooltipText = list
                   .map(m => `${m.icon ? m.icon + ' ' : ''}${m.title}${m.description ? ' — ' + m.description : ''}`)
                   .join('\n')
@@ -1340,8 +1359,14 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                           onClick={(e) => { e.stopPropagation(); setMilestoneModalYm(ym) }}
                         >
                           <title>{tooltipText}</title>
-                          <circle cx={0} cy={9} r={9} fill={milestoneStyle.color} stroke="var(--bg-2)" strokeWidth={2} />
-                          <text x={0} y={13} textAnchor="middle" fontSize={10}>{icon}</text>
+                          {/* Área invisível maior que o emoji só pra manter um alvo de clique
+                              confortável — sem pintar nenhum fundo atrás do ícone. */}
+                          <circle cx={0} cy={9} r={9} fill="transparent" style={{ pointerEvents: 'all' }} />
+                          {flag ? (
+                            <g transform="translate(-7, 2)">{flag}</g>
+                          ) : (
+                            <text x={0} y={14} textAnchor="middle" fontSize={14}>{icon}</text>
+                          )}
                           {list.length > 1 && (
                             <>
                               <circle cx={8} cy={2} r={5} fill={milestoneStyle.color} fillOpacity={0.85} />
@@ -1412,6 +1437,18 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
               border: `1px solid ${filterMode === 'custom' ? 'var(--green-400)' : 'var(--border-1)'}`,
             }}>
             Personalizar
+          </button>
+          {/* Filtro extra, independente do período acima — só mostra no gráfico os
+              meses que têm marco cadastrado, pra focar só nos acontecimentos marcados */}
+          <button type="button"
+            onClick={() => setMilestonesOnlyFilter(v => !v)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: milestonesOnlyFilter ? milestoneStyle.color : 'var(--bg-3)',
+              color: milestonesOnlyFilter ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${milestonesOnlyFilter ? milestoneStyle.color : 'var(--border-1)'}`,
+            }}>
+            <MapPin size={12} /> Só marcos
           </button>
         </div>
 

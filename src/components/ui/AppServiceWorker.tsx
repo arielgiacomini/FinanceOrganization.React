@@ -1,7 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
+
+function isEditingSomething(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
+}
 
 /**
  * Registra o Service Worker do app inteiro (public/sw.js) e avisa o usuário
@@ -10,12 +18,17 @@ import { RefreshCw } from 'lucide-react'
  * reinstalado (o cache do WKWebView no iOS é bem mais agressivo que o de uma
  * aba comum do Safari).
  *
+ * A troca é aplicada sozinha assim que não houver risco de derrubar algo que
+ * o usuário esteja digitando (nenhum input/textarea focado) — o aviso fica
+ * visível como confirmação, com um botão pra quem quiser aplicar na hora.
+ *
  * Só registra em build de produção — em "next dev" o hash dos arquivos muda a
  * cada recompilação, e um Service Worker registrado ali fica "grudado"
  * servindo versões antigas em cache, atrapalhando o desenvolvimento local.
  */
 export function AppServiceWorker() {
   const [updateReady, setUpdateReady] = useState(false)
+  const regRef = useRef<ServiceWorkerRegistration | null>(null)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
@@ -41,24 +54,48 @@ export function AppServiceWorker() {
     }
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
 
-    let reg: ServiceWorkerRegistration | null = null
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then(r => { reg = r })
+      .then(r => {
+        regRef.current = r
+        r.update().catch(() => {})
+      })
       .catch(() => {})
 
     // Assim que o usuário reabre o app (a aba/PWA volta a ficar visível), força
     // uma checagem imediata por versão nova — é exatamente o momento em que
     // "ficar preso numa versão antiga" mais incomoda.
     function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') reg?.update().catch(() => {})
+      if (document.visibilityState === 'visible') regRef.current?.update().catch(() => {})
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Reforça a checagem periodicamente pra quem deixa o app aberto sem
+    // trocar de aba/tela por muito tempo.
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') regRef.current?.update().catch(() => {})
+    }, UPDATE_CHECK_INTERVAL_MS)
 
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.clearInterval(intervalId)
     }
   }, [])
+
+  useEffect(() => {
+    if (!updateReady) return
+
+    // Aplica sozinho assim que o usuário não estiver no meio de preencher
+    // algo — evita derrubar um formulário aberto (ex: Contas a Pagar).
+    const intervalId = window.setInterval(() => {
+      if (!isEditingSomething()) {
+        window.clearInterval(intervalId)
+        window.location.reload()
+      }
+    }, 2000)
+
+    return () => window.clearInterval(intervalId)
+  }, [updateReady])
 
   if (!updateReady) return null
 
@@ -68,13 +105,13 @@ export function AppServiceWorker() {
       style={{ background: 'var(--bg-3)', border: '1px solid var(--green-border)' }}
     >
       <RefreshCw size={16} style={{ color: 'var(--green-400)' }} className="flex-shrink-0" />
-      <p className="text-sm flex-1" style={{ color: 'var(--text-1)' }}>Nova versão disponível</p>
+      <p className="text-sm flex-1" style={{ color: 'var(--text-1)' }}>Nova versão disponível — atualizando sozinho</p>
       <button
         type="button"
         onClick={() => window.location.reload()}
         className="btn-primary px-3 py-1.5 text-xs flex-shrink-0"
       >
-        Atualizar
+        Atualizar agora
       </button>
     </div>
   )

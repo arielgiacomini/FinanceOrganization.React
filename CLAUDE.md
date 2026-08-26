@@ -282,6 +282,7 @@ Usar `Record<string, boolean>` + `forEach` em vez de `Set<string>` onde o TS rec
 - [ ] Todos os `<TRow>` têm apenas `<Td>` como filhos (sem `<td>` cru)
 - [ ] Adicionar entrada da versão em `landing/index.html` (`#novidades`) — vale pra toda entrega, não só features grandes
 - [ ] `APP_VERSION`/`APP_VERSION_DATE` incrementados em `src/lib/version.ts`
+- [ ] `CACHE_NAME` em `public/sw.js` acompanha o `APP_VERSION` novo — sem isso o Service Worker não percebe que mudou e o PWA instalado não avisa/atualiza sozinho (fica "grudado" até desinstalar e reinstalar)
 - [ ] esbuild validado em **todos** os arquivos alterados
 - [ ] Zero e negativo funcionam onde aplicável
 - [ ] Hooks antes de qualquer early return

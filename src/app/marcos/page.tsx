@@ -12,6 +12,7 @@ import {
 } from '@/lib/wallet'
 import type { ChartMilestone, ChartMilestoneStyle } from '@/lib/wallet'
 import { Trash2, Pencil, Check } from 'lucide-react'
+import { MilestoneIcon } from '@/components/ui/Flags'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -206,13 +207,14 @@ function MarcosInner() {
                 {editId === m.id ? (
                   <div className="flex flex-col gap-2">
                     <div className="flex gap-2">
+                      {/* Sem maxLength: emojis compostos (ZWJ) passam de 4 unidades UTF-16 —
+                          ver mesmo comentário em FinanceChart.tsx (MilestoneModal). */}
                       <input
                         className="input text-sm text-center"
                         style={{ width: 52 }}
                         value={editIcon}
                         onChange={e => setEditIcon(e.target.value)}
                         placeholder="🏠"
-                        maxLength={4}
                       />
                       <input
                         className="input flex-1 text-sm"
@@ -247,7 +249,7 @@ function MarcosInner() {
                   </div>
                 ) : (
                   <div className="flex items-start gap-3">
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>{m.icon || '📌'}</span>
+                    <MilestoneIcon icon={m.icon} size={16} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{m.title}</p>

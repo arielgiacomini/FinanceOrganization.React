@@ -18,6 +18,28 @@ export function FlagEspanha({ size = 18 }: { size?: number }) {
   )
 }
 
+// Bandeira Brasil/Espanha via emoji (par de "regional indicator") — no Windows,
+// o Segoe UI Emoji não tem os glifos de bandeira e cai no fallback "BR"/"ES" em
+// texto em vez de desenhar a bandeira (funciona normal no iOS/Android). Como o
+// ícone de um marco pode ser digitado como emoji de bandeira, detecta esses dois
+// casos específicos (os únicos países do app) e desenha com as mesmas <FlagBrasil>/
+// <FlagEspanha> usadas no resto do app, em vez de depender da fonte do sistema.
+const FLAG_EMOJI_BRASIL = String.fromCodePoint(0x1F1E7, 0x1F1F7)  // 🇧🇷
+const FLAG_EMOJI_ESPANHA = String.fromCodePoint(0x1F1EA, 0x1F1F8) // 🇪🇸
+
+export function flagEmojiIcon(icon: string | undefined, size = 16): React.JSX.Element | null {
+  if (icon === FLAG_EMOJI_BRASIL) return <FlagBrasil size={size} />
+  if (icon === FLAG_EMOJI_ESPANHA) return <FlagEspanha size={size} />
+  return null
+}
+
+/** Ícone de um marco: mostra a bandeira desenhada (BR/ES) se for esse o emoji, senão o texto normal (emoji ou 📌 padrão). */
+export function MilestoneIcon({ icon, size = 16 }: { icon?: string; size?: number }) {
+  const flag = flagEmojiIcon(icon, size)
+  if (flag) return flag
+  return <span style={{ fontSize: size, lineHeight: 1 }}>{icon || '📌'}</span>
+}
+
 export function FlagGlobe({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
