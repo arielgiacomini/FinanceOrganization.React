@@ -27,7 +27,7 @@ import { FlagBrasil, FlagEspanha, FlagGlobe, MilestoneIcon, flagEmojiIcon } from
 import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight, Trash2, Plus, MapPin } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts'
 
 interface ChartPoint {
@@ -65,6 +65,18 @@ function ymToNum(ym: string): number {
 function shortLabel(ym: string): string {
   const [m, y] = ym.split('/')
   return `${m.slice(0, 3)}/${y.slice(2)}`
+}
+
+/** Tempo decorrido entre dois "yearMonth" (ex: "2 anos e 3 meses"), pra legenda da linha do tempo entre marcos. */
+function formatMonthGap(ymA: string, ymB: string): string {
+  const diff = Math.abs(ymToNum(ymB) - ymToNum(ymA))
+  if (diff === 0) return 'mesmo mês'
+  const anos = Math.floor(diff / 12)
+  const meses = diff % 12
+  const parts: string[] = []
+  if (anos > 0) parts.push(`${anos} ${anos === 1 ? 'ano' : 'anos'}`)
+  if (meses > 0) parts.push(`${meses} ${meses === 1 ? 'mês' : 'meses'}`)
+  return parts.join(' e ')
 }
 
 function formatEur(v: number): string {
@@ -1321,10 +1333,44 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             )}
 
             {/* Marcos do usuário — 1 marcador por mês, clicável, com tooltip nativo
-                mostrando título (e descrição, se tiver) de cada marco daquele mês */}
-            {Array.from(new Set(chartData.map(d => d.yearMonth)))
-              .filter(ym => milestonesByYm[ym]?.length)
-              .map(ym => {
+                mostrando título (e descrição, se tiver) de cada marco daquele mês.
+                Com "Só marcos" ativo, desenha também uma linha do tempo sutil entre
+                um marco e o próximo, com o tempo decorrido entre eles. */}
+            {(() => {
+              const milestoneYms = Array.from(new Set(chartData.map(d => d.yearMonth)))
+                .filter(ym => milestonesByYm[ym]?.length)
+              return <>
+                {milestonesOnlyFilter && milestoneYms.slice(1).map((ym, i) => {
+                  const prevYm = milestoneYms[i]
+                  const prevPoint = chartData.find(d => d.yearMonth === prevYm)
+                  const point = chartData.find(d => d.yearMonth === ym)
+                  if (!prevPoint || !point) return null
+                  return (
+                    <ReferenceArea
+                      key={`timeline-${prevYm}-${ym}`}
+                      yAxisId="left"
+                      x1={prevPoint.label}
+                      x2={point.label}
+                      fill="transparent"
+                      stroke="none"
+                      label={(props: { viewBox?: { x?: number; y?: number; width?: number } }) => {
+                        const x = props.viewBox?.x ?? 0
+                        const y = props.viewBox?.y ?? 0
+                        const width = props.viewBox?.width ?? 0
+                        return (
+                          <g style={{ pointerEvents: 'none' }}>
+                            <line x1={x} x2={x + width} y1={y + 9} y2={y + 9}
+                              stroke={milestoneStyle.color} strokeOpacity={0.35} strokeWidth={1.5} strokeDasharray="4 3" />
+                            <text x={x + width / 2} y={y + 9 - 5} textAnchor="middle" fontSize={10} fill="var(--text-3)">
+                              {formatMonthGap(prevYm, ym)}
+                            </text>
+                          </g>
+                        )
+                      }}
+                    />
+                  )
+                })}
+                {milestoneYms.map(ym => {
                 const list = milestonesByYm[ym]
                 const point = chartData.find(d => d.yearMonth === ym)
                 if (!point) return null
@@ -1383,6 +1429,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                   />
                 )
               })}
+              </>
+            })()}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
