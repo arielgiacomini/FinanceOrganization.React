@@ -769,6 +769,7 @@ function ConfiguracoesInner() {
   const [valeCategoria,            setValeCategoria]            = useState('')
   const [nomeGrupoEspanha,         setNomeGrupoEspanha]         = useState('')
   const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
+  const [nomeGrupoContasBancarias, setNomeGrupoContasBancarias] = useState('')
   const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
   const [chartRecords,             setChartRecords]             = useState<WalletRecord[]>([])
 
@@ -841,6 +842,7 @@ function ConfiguracoesInner() {
     setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
+    setNomeGrupoContasBancarias(c.nomeGrupoContasBancarias ?? 'Contas Bancárias')
     setInvestimentoAnosProjecao(c.investimentoAnosProjecao ?? '5')
 
     const sa = loadStaleAlertConfigLocal()
@@ -884,6 +886,7 @@ function ConfiguracoesInner() {
           setValeCategoria(p.valeCategoria ?? '')
           setNomeGrupoEspanha(p.nomeGrupoEspanha ?? '')
           setNomeGrupoInvestimento(p.nomeGrupoInvestimento ?? 'Investimentos')
+          setNomeGrupoContasBancarias(p.nomeGrupoContasBancarias ?? 'Contas Bancárias')
           setInvestimentoAnosProjecao(p.investimentoAnosProjecao ?? '5')
         } catch {}
       }
@@ -1011,7 +1014,7 @@ function ConfiguracoesInner() {
     })
 
     // Gráfico → localStorage + API
-    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
+    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, nomeGrupoContasBancarias, investimentoAnosProjecao }
     savePlrConfigAll(data)
     const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
     tasks.push({
@@ -1646,6 +1649,19 @@ function ConfiguracoesInner() {
                     value={nomeGrupoInvestimento}
                     onChange={e => setNomeGrupoInvestimento(e.target.value)}
                     placeholder="Ex: Investimentos"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Grupo Contas Bancárias</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Nome do grupo na Carteira usado no Saldo Final do gráfico e no destino de transferências entre caixinhas.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={nomeGrupoContasBancarias}
+                    onChange={e => setNomeGrupoContasBancarias(e.target.value)}
+                    placeholder="Ex: Contas Bancárias"
                   />
                 </div>
 

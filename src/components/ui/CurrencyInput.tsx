@@ -8,6 +8,7 @@ interface CurrencyInputProps {
   onChange: (raw: string) => void  // retorna string numérica ex: "150.50"
   placeholder?: string
   required?: boolean
+  autoFocus?: boolean
 }
 
 function formatCurrencyDisplay(raw: string, country: string): string {
@@ -36,7 +37,7 @@ function hasValue(value: string): boolean {
   return !isNaN(n)
 }
 
-export function CurrencyInput({ value, country, onChange, placeholder, required }: CurrencyInputProps) {
+export function CurrencyInput({ value, country, onChange, placeholder, required, autoFocus }: CurrencyInputProps) {
   const [display, setDisplay] = useState('')
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -122,6 +123,7 @@ export function CurrencyInput({ value, country, onChange, placeholder, required 
         onBlur={handleBlur}
         placeholder={focused ? '0,00' : (placeholder ?? (isSpain ? '0,00 €' : 'R$ 0,00'))}
         required={required}
+        autoFocus={autoFocus}
         style={{
           borderColor: isNegative
             ? 'rgba(220,38,38,0.4)'

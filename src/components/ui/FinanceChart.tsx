@@ -15,6 +15,7 @@ import {
   loadInvestimentoBoxes,
   loadContasBancariasBoxes,
   loadNomeGrupoInvestimento,
+  loadNomeGrupoContasBancarias,
   transferBetweenBoxes,
   loadChartMilestones,
   saveChartMilestonesLocal,
@@ -172,7 +173,7 @@ function AdjustModal({ open, onClose, adjustInfo, onTransferDone }: {
     if (!valorValido || !selectedFrom || !selectedTo) return
     setSaving(true)
     try {
-      const ok = transferBetweenBoxes(grupoNome, selectedFrom, 'Contas Bancárias', selectedTo, valor)
+      const ok = transferBetweenBoxes(grupoNome, selectedFrom, loadNomeGrupoContasBancarias(), selectedTo, valor)
       if (!ok) { setSaving(false); return }
       const raw = localStorage.getItem('finance_wallet')
       if (raw) {
@@ -271,7 +272,7 @@ function AdjustModal({ open, onClose, adjustInfo, onTransferDone }: {
         {/* Destino — Contas Bancárias */}
         {!done && <div>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)' }}>
-            Para onde direcionar — Contas Bancárias
+            Para onde direcionar — {loadNomeGrupoContasBancarias()}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {contasBoxes.map(box => {

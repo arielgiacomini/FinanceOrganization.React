@@ -38,10 +38,8 @@ function readWallet(): { groups: Array<{ label: string; boxes: Array<{ label: st
 export function loadContasBancariasTotal(): number {
   try {
     const wallet = readWallet()
-    const group = wallet.groups.find(g =>
-      g.label.trim().toLowerCase() === 'contas bancárias' ||
-      g.label.trim().toLowerCase() === 'contas bancarias'
-    )
+    const nome = loadNomeGrupoContasBancarias().trim().toLowerCase()
+    const group = wallet.groups.find(g => g.label.trim().toLowerCase() === nome)
     if (!group) return 0
     return group.boxes
       .filter(b => b.currency === 'Brasil')
@@ -94,6 +92,10 @@ export function loadNomeGrupoEspanha(): string {
 
 export function loadNomeGrupoInvestimento(): string {
   return readPlrConfig().nomeGrupoInvestimento ?? 'Investimentos'
+}
+
+export function loadNomeGrupoContasBancarias(): string {
+  return readPlrConfig().nomeGrupoContasBancarias ?? 'Contas Bancárias'
 }
 
 export function loadInvestimentoAnosProjecao(): number {
@@ -509,7 +511,7 @@ export function transferBetweenBoxes(
     const fromGroup = wallet.groups.find((g: any) => g.label.trim().toLowerCase() === fromGroupLabel.trim().toLowerCase())
     const toGroup = wallet.groups.find((g: any) => {
       const l = g.label.trim().toLowerCase()
-      return l === toGroupLabel.trim().toLowerCase() || l === 'contas bancárias' || l === 'contas bancarias'
+      return l === toGroupLabel.trim().toLowerCase() || l === loadNomeGrupoContasBancarias().trim().toLowerCase()
     })
     if (!fromGroup || !toGroup) return false
 
@@ -531,10 +533,8 @@ export function transferBetweenBoxes(
 export function loadContasBancariasBoxes(): Array<{ label: string; value: number; currency: string }> {
   try {
     const wallet = readWallet()
-    const group = wallet.groups.find(g =>
-      g.label.trim().toLowerCase() === 'contas bancárias' ||
-      g.label.trim().toLowerCase() === 'contas bancarias'
-    )
+    const nome = loadNomeGrupoContasBancarias().trim().toLowerCase()
+    const group = wallet.groups.find(g => g.label.trim().toLowerCase() === nome)
     if (!group) return []
     return group.boxes.map(b => ({
       label: b.label,

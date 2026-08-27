@@ -167,6 +167,13 @@ function ContasAPagarPageInner() {
   const [deleteTarget, setDeleteTarget] = useState<BillToPay | null>(null)
   const [historyTarget, setHistoryTarget] = useState<BillToPay | null>(null)
   const [relatedTarget, setRelatedTarget] = useState<BillToPay | null>(null)
+  // Registros Relacionados: clicar na linha expande os detalhes completos daquele registro —
+  // zera ao trocar de conta (ou fechar), pra não reabrir já com linhas de uma conta anterior expandidas
+  const [expandedRelatedIds, setExpandedRelatedIds] = useState<Record<string, boolean>>({})
+  useEffect(() => { setExpandedRelatedIds({}) }, [relatedTarget?.id])
+  function toggleExpandedRelated(id: string) {
+    setExpandedRelatedIds(prev => ({ ...prev, [id]: !prev[id] }))
+  }
   const [bulkPayOpen, setBulkPayOpen] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
@@ -1180,7 +1187,15 @@ function ContasAPagarPageInner() {
       )}
       {/* Registros Relacionados Modal */}
       <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
-        {relatedTarget && (
+        {relatedTarget && (() => {
+          const sortedDetails = [...(relatedTarget.details ?? [])].sort((a, b) => (b.purchaseDate ?? '').localeCompare(a.purchaseDate ?? ''))
+          // Soma por conta — só faz sentido mostrar se os registros vierem de mais de uma conta
+          const accountTotals = new Map<string, number>()
+          for (const d of sortedDetails) {
+            const key = d.account ?? '—'
+            accountTotals.set(key, (accountTotals.get(key) ?? 0) + (d.value ?? 0))
+          }
+          return (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{relatedTarget.name}</span>
@@ -1203,33 +1218,72 @@ function ContasAPagarPageInner() {
                 <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor total</p>
                 <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>{formatCurrency(relatedTarget.value + (relatedTarget.detailsAmount ?? 0), relatedTarget.country)}</p>
               </div>
+              {/* Soma por conta — só aparece quando os registros vêm de mais de uma conta */}
+              {accountTotals.size > 1 && (
+                <div className="flex flex-wrap items-center gap-2 w-full pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
+                  {Array.from(accountTotals.entries()).map(([account, total]) => (
+                    <span key={account} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                      style={{ background: 'var(--bg-4)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}>
+                      {account}
+                      <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(total, relatedTarget.country)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border-1)' }}>
               <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
-                    {['Conta', 'Descrição', 'Categoria', 'Valor', 'Data de Compra', 'Status', 'Mensagem'].map(h => (
+                    {['', 'Descrição', 'Valor', 'Data de Compra', 'Status'].map(h => (
                       <th key={h} className="px-3 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-3)', background: 'var(--bg-3)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {[...(relatedTarget.details ?? [])].sort((a, b) => (b.purchaseDate ?? '').localeCompare(a.purchaseDate ?? '')).map(d => (
-                    <TRow key={d.id}>
-                      <Td className="text-xs">{d.account ?? '—'}</Td>
-                      <Td className="text-xs"><span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{d.name ?? '—'}</span></Td>
-                      <Td className="text-xs">{d.category ?? '—'}</Td>
-                      <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(d.value, d.country)}</span></Td>
-                      <Td className="text-xs">{formatDate(d.purchaseDate)}</Td>
-                      <Td>{d.hasPay ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span> : <span className="badge-pending"><AlertCircle size={10} />Pendente</span>}</Td>
-                      <Td className="text-xs"><span style={{ color: 'var(--text-3)' }}>{d.additionalMessage ?? '—'}</span></Td>
-                    </TRow>
-                  ))}
+                  {sortedDetails.map(d => {
+                    const isExpanded = !!expandedRelatedIds[d.id]
+                    return (
+                      <Fragment key={d.id}>
+                        {/* Clicar na linha expande/colapsa os detalhes completos — mesmo padrão da tabela de Contas a Pagar */}
+                        <TRow onClick={() => toggleExpandedRelated(d.id)} style={{ cursor: 'pointer' }}>
+                          <Td style={{ width: 24 }}>
+                            <span style={{ color: 'var(--text-3)' }}>
+                              {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </span>
+                          </Td>
+                          <Td className="text-xs"><span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{d.name ?? '—'}</span></Td>
+                          <Td><span className="font-mono text-xs font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(d.value, d.country)}</span></Td>
+                          <Td className="text-xs">{formatDate(d.purchaseDate)}</Td>
+                          <Td>
+                            <span title={d.hasPay ? 'Pago' : 'Pendente'} style={{ color: d.hasPay ? 'var(--green-400)' : 'var(--amber)', display: 'inline-flex' }}>
+                              {d.hasPay ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                            </span>
+                          </Td>
+                        </TRow>
+                        {isExpanded && (
+                          <TRow>
+                            <Td colSpan={5}>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-xs py-1">
+                                <div><span style={{ color: 'var(--text-3)' }}>Conta: </span><span style={{ color: 'var(--text-2)' }}>{d.account ?? '—'}</span></div>
+                                <div><span style={{ color: 'var(--text-3)' }}>Categoria: </span><span style={{ color: 'var(--text-2)' }}>{d.category ?? '—'}</span></div>
+                                <div><span style={{ color: 'var(--text-3)' }}>Status: </span><span style={{ color: d.hasPay ? 'var(--green-400)' : 'var(--amber)' }}>{d.hasPay ? 'Pago' : 'Pendente'}</span></div>
+                                {d.additionalMessage && (
+                                  <div className="col-span-full"><span style={{ color: 'var(--text-3)' }}>Observação: </span><span style={{ color: 'var(--text-2)' }}>{d.additionalMessage}</span></div>
+                                )}
+                              </div>
+                            </Td>
+                          </TRow>
+                        )}
+                      </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
-        )}
+          )
+        })()}
       </Modal>
     </div>
   )
