@@ -308,6 +308,8 @@ export interface DailyExpenseRecord {
   value: number
   manipulatedValue: number
   hasPay: boolean
+  /** Opcional: nem toda versão da API ainda traz esse campo nesse endpoint. */
+  registrationType?: string
 }
 
 export interface MonthlyCashflowItem {

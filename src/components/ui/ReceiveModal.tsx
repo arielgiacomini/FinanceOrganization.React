@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { cashReceivableApi } from '@/lib/api'
-import { formatCurrency, formatYearMonth } from '@/lib/utils'
+import { formatCurrency, formatYearMonth, todayDateInputValue } from '@/lib/utils'
 import type { CashReceivable } from '@/types'
 import { Modal, Spinner } from '@/components/ui'
 import { CheckCircle2 } from 'lucide-react'
@@ -14,7 +14,7 @@ interface ReceiveModalProps {
 }
 
 export function ReceiveModal({ item, onClose, onSuccess }: ReceiveModalProps) {
-  const [receiveDay, setReceiveDay] = useState(new Date().toISOString().slice(0, 10))
+  const [receiveDay, setReceiveDay] = useState(todayDateInputValue())
   const [receiving, setReceiving] = useState(false)
   const [error, setError] = useState('')
 

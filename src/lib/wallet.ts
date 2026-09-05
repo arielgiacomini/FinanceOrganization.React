@@ -248,6 +248,13 @@ export function loadDespesaMesCategoriaPadrao(): string {
   return readDespesaMesConfig().categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA
 }
 
+export const DESPESA_MES_DEFAULT_COR_PROJETADO = '#94a3b8'
+
+export function loadDespesaMesCorProjetado(): string {
+  const v = readDespesaMesConfig().corProjetado
+  return v && /^#[0-9A-Fa-f]{6}$/.test(v) ? v : DESPESA_MES_DEFAULT_COR_PROJETADO
+}
+
 // ─── Contas a Pagar — ordenação padrão da tabela ───────────────────────────────
 
 const CONTAS_PAGAR_SORT_CONFIG_KEY = 'finance_contas_pagar_sort_config'

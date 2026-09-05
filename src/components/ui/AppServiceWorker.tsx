@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Check } from 'lucide-react'
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
 
@@ -114,5 +114,80 @@ export function AppServiceWorker() {
         Atualizar agora
       </button>
     </div>
+  )
+}
+
+type CheckStatus = 'idle' | 'checking' | 'up-to-date' | 'updated'
+
+/**
+ * Botão manual "Checar atualizações" — pra quem não quer esperar a checagem
+ * automática (ex: acabou de ver que subiu uma versão nova e quer confirmar na
+ * hora). Reaproveita o mesmo sinal de "versão nova assumiu" (evento
+ * "controllerchange") que o aviso automático usa; se a checagem não encontrar
+ * nada em alguns segundos, assume que já está na versão mais recente.
+ */
+export function CheckForUpdateButton({ className }: { className?: string }) {
+  const [status, setStatus] = useState<CheckStatus>('idle')
+
+  async function checkNow() {
+    if (status === 'checking' || status === 'updated') return
+    if (!('serviceWorker' in navigator)) return
+    setStatus('checking')
+
+    let settled = false
+    function onControllerChange() {
+      settled = true
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+      setStatus('updated')
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
+
+    try {
+      const reg = await navigator.serviceWorker.getRegistration()
+      if (reg) await reg.update()
+    } catch {}
+
+    // skipWaiting é imediato, mas a ativação ainda leva um instante — dá uma
+    // folga antes de concluir que não tinha nada novo.
+    window.setTimeout(() => {
+      if (!settled) {
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+        setStatus('up-to-date')
+        window.setTimeout(() => setStatus('idle'), 3000)
+      }
+    }, 3000)
+  }
+
+  if (status === 'updated') {
+    return (
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full transition-colors ${className ?? ''}`}
+        style={{ background: 'var(--green-dim)', color: 'var(--green-400)', border: '1px solid var(--green-border)' }}
+      >
+        <RefreshCw size={11} /> Atualizar agora
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={checkNow}
+      disabled={status === 'checking'}
+      title={status === 'up-to-date' ? 'Você já está na versão mais recente' : 'Checar se há uma versão nova'}
+      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors hover:bg-[var(--bg-4)] ${className ?? ''}`}
+      style={{ color: status === 'up-to-date' ? 'var(--green-400)' : 'var(--text-3)', border: '1px solid var(--border-1)' }}
+    >
+      {status === 'checking' ? (
+        <RefreshCw size={11} className="animate-spin" />
+      ) : status === 'up-to-date' ? (
+        <Check size={11} />
+      ) : (
+        <RefreshCw size={11} />
+      )}
+      {status === 'checking' ? 'Checando...' : status === 'up-to-date' ? 'Atualizado' : 'Checar atualizações'}
+    </button>
   )
 }

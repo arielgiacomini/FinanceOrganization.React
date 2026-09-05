@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { billsToPayApi } from '@/lib/api'
-import { formatCurrency, formatYearMonth } from '@/lib/utils'
+import { formatCurrency, formatYearMonth, todayDateInputValue } from '@/lib/utils'
 import type { BillToPay } from '@/types'
 import { Modal, Spinner } from '@/components/ui'
 import { CheckCircle2, AlertTriangle } from 'lucide-react'
@@ -14,7 +14,7 @@ interface PayBillModalProps {
 }
 
 export function PayBillModal({ bill, onClose, onSuccess }: PayBillModalProps) {
-  const [payDay, setPayDay] = useState(new Date().toISOString().slice(0, 10))
+  const [payDay, setPayDay] = useState(todayDateInputValue())
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState('')
 

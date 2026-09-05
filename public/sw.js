@@ -15,7 +15,7 @@
 // CACHE_NAME abaixo precisa acompanhar o APP_VERSION (src/lib/version.ts) a
 // cada entrega — sem isso o aviso de nova versão nunca dispara, mesmo com o
 // resto do app atualizado.
-const CACHE_NAME = 'finance-app-shell-v375'
+const CACHE_NAME = 'finance-app-shell-v383'
 
 self.addEventListener('install', () => {
   // Ativa a versão nova imediatamente, sem esperar as abas antigas fecharem —

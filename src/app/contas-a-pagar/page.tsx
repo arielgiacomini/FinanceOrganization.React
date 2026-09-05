@@ -75,6 +75,29 @@ function purchaseDateTag(dateStr?: string | null): { label: string; color: strin
   return null
 }
 
+// Soma os "Compra Livre" relacionados por país — o campo agregado `detailsAmount`
+// vem do backend somando o `value` cru sem considerar a moeda, então um registro
+// com compras em Brasil e Espanha misturadas soma R$ e € juntos como se fosse um
+// valor só. Recalcula aqui a partir de `details` (cada item já tem seu `country`).
+function detailsCountryTotals(details: BillToPay[] | undefined): { brl: number; eur: number } {
+  let brl = 0
+  let eur = 0
+  for (const d of details ?? []) {
+    if (normalizeCountry(d.country) === 'Espanha') eur += d.value ?? 0
+    else brl += d.value ?? 0
+  }
+  return { brl, eur }
+}
+
+/** Texto pronto pro badge "Qtd Compras": um valor só, ou os dois lado a lado quando mistura Brasil e Espanha. */
+function formatDetailsAmount(b: BillToPay): string {
+  const { brl, eur } = detailsCountryTotals(b.details)
+  if (brl > 0 && eur > 0) return `${formatCurrency(brl, 'Brasil')} · ${formatCurrency(eur, 'Espanha')}`
+  if (eur > 0) return formatCurrency(eur, 'Espanha')
+  if (brl > 0) return formatCurrency(brl, 'Brasil')
+  return formatCurrency(b.detailsAmount ?? 0, b.country)
+}
+
 function sortBillsDefault(data: BillToPay[]): BillToPay[] {
   const byDueThenPurchase = (a: BillToPay, b: BillToPay) => {
     const dueDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
@@ -263,15 +286,15 @@ function ContasAPagarPageInner() {
     return counts
   }, [bills])
 
-  // Filtragem local por país
-  const filtered = useMemo(() => {
+  // Filtragem local por país — todos os filtros MENOS o de conta. Serve de base
+  // pros botões de conta (e pro resumo por conta): cada botão mostra o total
+  // já refletindo os outros filtros ativos (país, status, dia, categoria,
+  // busca), sem que escolher uma conta zere o valor das outras.
+  const filteredExceptAccount = useMemo(() => {
     let result = bills
     if (countryFilter !== 'Todos') {
       const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
       result = result.filter(b => getCountry(b.country) === countryFilter)
-    }
-    if (accountFilter !== 'Todos') {
-      result = result.filter(b => b.account === accountFilter)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -293,7 +316,13 @@ function ContasAPagarPageInner() {
     }
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bills, countryFilter, accountFilter, search, catPath.join(':'), statusFilter, dayFilter])
+  }, [bills, countryFilter, search, catPath.join(':'), statusFilter, dayFilter])
+
+  // Filtragem final exibida na tabela — soma o filtro de conta por cima dos demais
+  const filtered = useMemo(() => {
+    if (accountFilter === 'Todos') return filteredExceptAccount
+    return filteredExceptAccount.filter(b => b.account === accountFilter)
+  }, [filteredExceptAccount, accountFilter])
 
   // Ordenação exibida na tabela — coluna clicada pelo usuário (ou o padrão configurado)
   const sortedFiltered = useMemo(
@@ -365,11 +394,11 @@ function ContasAPagarPageInner() {
     return names.sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [bills])
 
-  // Soma por conta (baseado nos dados filtrados por país)
+  // Soma por conta — reflete todos os filtros ativos exceto o de conta (mesma
+  // lógica dos botões de conta logo abaixo)
   const accountSummary = useMemo(() => {
-    const source = countryFilter === 'Todos' ? bills : filtered
     const map: Record<string, { total: number; pending: number; hex?: string; isCreditCard?: boolean; countries: Set<string> }> = {}
-    for (const b of source) {
+    for (const b of filteredExceptAccount) {
       const key = b.account ?? '—'
       if (!map[key]) {
         const acc = b.account ? accountMap[b.account.trim().toLowerCase()] : undefined
@@ -380,7 +409,7 @@ function ContasAPagarPageInner() {
       if (b.country) map[key].countries.add(b.country.trim())
     }
     return Object.entries(map).sort((a, b) => b[1].total - a[1].total)
-  }, [bills, filtered, countryFilter, accountMap])
+  }, [filteredExceptAccount, accountMap])
 
   // Contas de cartão de crédito (isCreditCard=true no accountMap)
   const creditCardTotal = useMemo(() => {
@@ -435,7 +464,7 @@ function ContasAPagarPageInner() {
                 <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}
                   className="inline-flex items-center gap-1 mt-0.5 truncate max-w-full"
                   style={{ color: 'var(--blue)', fontSize: 10 }}>
-                  <ReceiptText size={9} /> {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
+                  <ReceiptText size={9} /> {b.detailsQuantity} · {formatDetailsAmount(b)}
                 </button>
               )}
             </div>
@@ -757,7 +786,7 @@ function ContasAPagarPageInner() {
               const accData = accountMap[acc.trim().toLowerCase()]
               const hex = accData?.colors?.backgroundColorHexadecimal
               const active = accountFilter === acc
-              const accBills = bills.filter(b => b.account === acc)
+              const accBills = filteredExceptAccount.filter(b => b.account === acc)
               const accTotal = accBills.reduce((s, b) => s + b.value, 0)
               const onlySpain = accBills.length > 0 && accBills.every(b => b.country?.trim() === 'Espanha')
               const accCurr = onlySpain ? 'Espanha' : 'Brasil'
@@ -976,7 +1005,7 @@ function ContasAPagarPageInner() {
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
                     style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(96,165,250,0.3)' }}
                     onClick={e => { e.stopPropagation(); setRelatedTarget(b) }}>
-                    <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
+                    <ReceiptText size={11} /> {b.detailsQuantity} compra{(b.detailsQuantity ?? 0) > 1 ? 's' : ''} · {formatDetailsAmount(b)}
                   </button>
                 )}
               </div>
@@ -1108,7 +1137,7 @@ function ContasAPagarPageInner() {
                         <div>
                           <span style={{ color: 'var(--text-3)' }}>Compras: </span>
                           <button type="button" onClick={e => { e.stopPropagation(); setRelatedTarget(b) }} style={{ color: 'var(--blue)' }}>
-                            {b.detailsQuantity} · {formatCurrency(b.detailsAmount ?? 0, b.country)}
+                            {b.detailsQuantity} · {formatDetailsAmount(b)}
                           </button>
                         </div>
                       )}
@@ -1189,12 +1218,17 @@ function ContasAPagarPageInner() {
       <Modal open={!!relatedTarget} onClose={() => setRelatedTarget(null)} title="Registros Relacionados" size="xl">
         {relatedTarget && (() => {
           const sortedDetails = [...(relatedTarget.details ?? [])].sort((a, b) => (b.purchaseDate ?? '').localeCompare(a.purchaseDate ?? ''))
-          // Soma por conta — só faz sentido mostrar se os registros vierem de mais de uma conta
-          const accountTotals = new Map<string, number>()
+          // Soma por conta — só faz sentido mostrar se os registros vierem de mais de uma conta.
+          // Guarda o país de cada conta pra formatar com a moeda certa (uma conta pode ser só
+          // Brasil ou só Espanha, mas o total geral pode misturar as duas).
+          const accountTotals = new Map<string, { total: number; country: string | null | undefined }>()
           for (const d of sortedDetails) {
             const key = d.account ?? '—'
-            accountTotals.set(key, (accountTotals.get(key) ?? 0) + (d.value ?? 0))
+            const entry = accountTotals.get(key) ?? { total: 0, country: d.country }
+            entry.total += d.value ?? 0
+            accountTotals.set(key, entry)
           }
+          const { brl: detailsBrl, eur: detailsEur } = detailsCountryTotals(sortedDetails)
           return (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -1208,7 +1242,7 @@ function ContasAPagarPageInner() {
               </div>
               <div>
                 <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor realizado</p>
-                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--green-400)' }}>{formatCurrency(relatedTarget.detailsAmount ?? 0, relatedTarget.country)}</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--green-400)' }}>{formatDetailsAmount(relatedTarget)}</p>
               </div>
               <div>
                 <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor restante</p>
@@ -1216,16 +1250,20 @@ function ContasAPagarPageInner() {
               </div>
               <div>
                 <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor total</p>
-                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>{formatCurrency(relatedTarget.value + (relatedTarget.detailsAmount ?? 0), relatedTarget.country)}</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>
+                  {normalizeCountry(relatedTarget.country) === 'Espanha'
+                    ? formatCurrency(relatedTarget.value + detailsEur, 'Espanha') + (detailsBrl > 0 ? ` · ${formatCurrency(detailsBrl, 'Brasil')}` : '')
+                    : formatCurrency(relatedTarget.value + detailsBrl, 'Brasil') + (detailsEur > 0 ? ` · ${formatCurrency(detailsEur, 'Espanha')}` : '')}
+                </p>
               </div>
               {/* Soma por conta — só aparece quando os registros vêm de mais de uma conta */}
               {accountTotals.size > 1 && (
                 <div className="flex flex-wrap items-center gap-2 w-full pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
-                  {Array.from(accountTotals.entries()).map(([account, total]) => (
+                  {Array.from(accountTotals.entries()).map(([account, { total, country }]) => (
                     <span key={account} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
                       style={{ background: 'var(--bg-4)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}>
                       {account}
-                      <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(total, relatedTarget.country)}</span>
+                      <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(total, country ?? relatedTarget.country)}</span>
                     </span>
                   ))}
                 </div>
@@ -1235,7 +1273,7 @@ function ContasAPagarPageInner() {
               <table className="w-full text-sm" style={{ borderCollapse: 'collapse', background: 'var(--bg-1)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
-                    {['', 'Descrição', 'Valor', 'Data de Compra', 'Status'].map(h => (
+                    {['', 'Descrição', 'Valor', 'Data de Compra', 'Status', 'Ações'].map(h => (
                       <th key={h} className="px-3 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-3)', background: 'var(--bg-3)' }}>{h}</th>
                     ))}
                   </tr>
@@ -1260,10 +1298,32 @@ function ContasAPagarPageInner() {
                               {d.hasPay ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
                             </span>
                           </Td>
+                          <Td style={NOWRAP_TIGHT}>
+                            <div className="flex items-center gap-1">
+                              {!d.hasPay && (
+                                <button title="Marcar como pago" className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]" style={{ color: 'var(--green-400)' }}
+                                  onClick={e => { e.stopPropagation(); setRelatedTarget(null); setPayTarget(d) }}>
+                                  <CircleDollarSign size={15} />
+                                </button>
+                              )}
+                              <button title="Histórico" className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]" style={{ color: 'var(--blue)' }}
+                                onClick={e => { e.stopPropagation(); setRelatedTarget(null); setHistoryTarget(d) }}>
+                                <History size={15} />
+                              </button>
+                              <button title="Editar" className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]" style={{ color: 'var(--text-3)' }}
+                                onClick={e => { e.stopPropagation(); setRelatedTarget(null); setEditTarget(d) }}>
+                                <Pencil size={15} />
+                              </button>
+                              <button title="Excluir" className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]" style={{ color: 'var(--text-3)' }}
+                                onClick={e => { e.stopPropagation(); setRelatedTarget(null); setDeleteTarget(d) }}>
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </Td>
                         </TRow>
                         {isExpanded && (
                           <TRow>
-                            <Td colSpan={5}>
+                            <Td colSpan={6}>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-xs py-1">
                                 <div><span style={{ color: 'var(--text-3)' }}>Conta: </span><span style={{ color: 'var(--text-2)' }}>{d.account ?? '—'}</span></div>
                                 <div><span style={{ color: 'var(--text-3)' }}>Categoria: </span><span style={{ color: 'var(--text-2)' }}>{d.category ?? '—'}</span></div>
