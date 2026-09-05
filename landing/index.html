@@ -364,10 +364,22 @@
 
       <div style="display:flex;flex-direction:column;gap:16px;max-width:760px;margin:0 auto;">
 
-        <!-- v384 -->
+        <!-- v385 -->
         <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v384</span>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v385</span>
+            <span style="font-size:12.5px;color:var(--text-3);">5 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: botão "Checar atualizações" parava de detectar versões novas</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">O servidor estava mandando o navegador guardar sw.js em cache por 1 ano inteiro, então o botão às vezes comparava contra uma cópia antiga e nunca via a versão nova publicada — corrigido para sw.js (e manifest.json) nunca ficarem em cache</li>
+          </ul>
+        </div>
+
+        <!-- v384 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v384</span>
             <span style="font-size:12.5px;color:var(--text-3);">5 set 2026</span>
           </div>
           <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">"Ver registros" com o mesmo visual de Registros Relacionados</h3>
@@ -652,7 +664,7 @@
         <div style="width:20px;height:20px;border-radius:6px;background:var(--green-500);display:flex;align-items:center;justify-content:center;color:#08120a;font-weight:700;font-size:11px;">F</div>
         © 2026 Finance Organization
       </div>
-      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v384 · 5 set 2026</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v385 · 5 set 2026</div>
     </div>
   </footer>
 
