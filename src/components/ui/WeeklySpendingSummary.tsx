@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { dashboardApi } from '@/lib/api'
 import type { DailyExpenseRecord } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
+import { loadQuickBillDefaultValues } from '@/lib/wallet'
 import { Spinner } from '@/components/ui'
+import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { ChevronDown, ChevronUp, Flame } from 'lucide-react'
 
 const ALL_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -102,8 +104,14 @@ function categoryEmoji(name: string): string {
 
 type DetailView = 'semana' | 'dia'
 
+// Separador interno pra combinar categoria + país numa chave só de agrupamento
+// (ex: "Viagem||Espanha") — nunca soma R$ e € juntos no mesmo total, então uma
+// categoria com gasto nos dois países vira dois cartões, um por moeda.
+const CAT_CURRENCY_SEP = '||'
+
 interface CategoryStat {
   name: string
+  currency: 'Brasil' | 'Espanha'
   emoji: string
   current: number
   previous: number
@@ -114,7 +122,8 @@ interface CategoryStat {
 }
 
 function buildCategoryStats(byCatPeriod: Record<string, Record<string, number>>, periodKeys: string[]): CategoryStat[] {
-  const stats = Object.entries(byCatPeriod).map(([name, periods]) => {
+  const stats = Object.entries(byCatPeriod).map(([key, periods]) => {
+    const [name, currency] = key.split(CAT_CURRENCY_SEP) as [string, 'Brasil' | 'Espanha']
     const spark = periodKeys.map(k => Math.round((periods[k] ?? 0) * 100) / 100)
     const current = spark[5]
     const previous = spark[4]
@@ -132,10 +141,21 @@ function buildCategoryStats(byCatPeriod: Record<string, Record<string, number>>,
       else break
     }
 
-    return { name, emoji: categoryEmoji(name), current, previous, delta, deltaPct, spark, streak }
+    return { name, currency, emoji: categoryEmoji(name), current, previous, delta, deltaPct, spark, streak }
   })
+  // Ranking por delta combina as duas moedas só pra ordenar (maior alta primeiro) —
+  // os valores exibidos em cada cartão continuam sempre na moeda original, nunca somados.
   stats.sort((a, b) => b.delta - a.delta)
   return stats
+}
+
+function currencyTotals(cats: CategoryStat[], currency: 'Brasil' | 'Espanha'): HeroCurrencyTotals {
+  const subset = cats.filter(c => c.currency === currency)
+  const total = Math.round(subset.reduce((s, c) => s + c.current, 0) * 100) / 100
+  const comparisonValue = Math.round(subset.reduce((s, c) => s + c.previous, 0) * 100) / 100
+  const delta = Math.round((total - comparisonValue) * 100) / 100
+  const deltaPct = comparisonValue !== 0 ? Math.round((delta / comparisonValue) * 1000) / 10 : (total > 0 ? null : 0)
+  return { total, comparisonValue, delta, deltaPct }
 }
 
 function sparkPath(values: number[], w = 100, h = 32, pad = 3) {
@@ -166,43 +186,70 @@ function Sparkline({ values, tone }: { values: number[]; tone: 'up' | 'down' | '
   )
 }
 
-function HeroStat({
-  label, total, comparisonLabel, comparisonValue, delta, deltaPct, rangeLabel,
-}: {
-  label: string
+interface HeroCurrencyTotals {
   total: number
-  comparisonLabel: string
   comparisonValue: number
   delta: number
   deltaPct: number | null
+}
+
+function DeltaPill({ delta, deltaPct, size = 12 }: { delta: number; deltaPct: number | null; size?: number }) {
+  if (deltaPct === null) return null
+  return (
+    <span
+      className="font-mono font-bold px-2 py-1 rounded-full"
+      style={{
+        fontSize: size,
+        color: delta <= 0 ? 'var(--green-400)' : 'var(--red)',
+        background: delta <= 0 ? 'var(--green-dim)' : 'var(--red-dim)',
+        border: `1px solid ${delta <= 0 ? 'var(--green-border)' : 'rgba(248,113,113,0.28)'}`,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {delta <= 0 ? '▼' : '▲'} {Math.abs(deltaPct)}%
+    </span>
+  )
+}
+
+function HeroStat({
+  label, primary, secondary, comparisonLabel, rangeLabel,
+}: {
+  label: string
+  primary: { country: 'Brasil' | 'Espanha'; totals: HeroCurrencyTotals }
+  secondary: { country: 'Brasil' | 'Espanha'; totals: HeroCurrencyTotals } | null
+  comparisonLabel: string
   rangeLabel: string
 }) {
+  const PrimaryFlag = primary.country === 'Espanha' ? FlagEspanha : FlagBrasil
+  const SecondaryFlag = secondary?.country === 'Espanha' ? FlagEspanha : FlagBrasil
   return (
     <div className="flex-1 min-w-[220px]">
       <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>{label}</p>
-      <div className="flex flex-wrap items-end gap-2.5 mt-1">
+      <div className="flex flex-wrap items-end gap-2 mt-1">
+        <PrimaryFlag size={15} />
         <p className="font-mono font-bold" style={{ fontSize: 26, color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-          {formatCurrency(total, 'Brasil')}
+          {formatCurrency(primary.totals.total, primary.country)}
         </p>
-        {deltaPct !== null && (
-          <span
-            className="font-mono font-bold px-2 py-1 rounded-full"
-            style={{
-              fontSize: 12,
-              color: delta <= 0 ? 'var(--green-400)' : 'var(--red)',
-              background: delta <= 0 ? 'var(--green-dim)' : 'var(--red-dim)',
-              border: `1px solid ${delta <= 0 ? 'var(--green-border)' : 'rgba(248,113,113,0.28)'}`,
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {delta <= 0 ? '▼' : '▲'} {Math.abs(deltaPct)}%
-          </span>
-        )}
+        <DeltaPill delta={primary.totals.delta} deltaPct={primary.totals.deltaPct} />
       </div>
       <p className="font-mono text-xs mt-0.5" style={{ color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
-        {comparisonLabel}: {formatCurrency(comparisonValue, 'Brasil')}
+        {comparisonLabel}: {formatCurrency(primary.totals.comparisonValue, primary.country)}
       </p>
-      <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{rangeLabel}</p>
+
+      {secondary && (
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
+          <SecondaryFlag size={13} />
+          <p className="font-mono font-semibold" style={{ fontSize: 15, color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+            {formatCurrency(secondary.totals.total, secondary.country)}
+          </p>
+          <DeltaPill delta={secondary.totals.delta} deltaPct={secondary.totals.deltaPct} size={10.5} />
+          <span className="font-mono text-xs" style={{ color: 'var(--text-3)' }}>
+            {comparisonLabel}: {formatCurrency(secondary.totals.comparisonValue, secondary.country)}
+          </span>
+        </div>
+      )}
+
+      <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{rangeLabel}</p>
     </div>
   )
 }
@@ -211,6 +258,10 @@ export function WeeklySpendingSummary() {
   const [records, setRecords] = useState<DailyExpenseRecord[] | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [detailView, setDetailView] = useState<DetailView>('semana')
+  // Conta/país padrão do Cadastro Rápido — decide qual moeda aparece em destaque
+  // (maior, no topo) neste card: a do país da conta que o usuário configurou lá
+  // como padrão, não sempre Brasil.
+  const [quickBillDefaults] = useState(() => loadQuickBillDefaultValues())
 
   useEffect(() => {
     let cancelled = false
@@ -223,6 +274,27 @@ export function WeeklySpendingSummary() {
 
   const data = useMemo(() => {
     if (!records) return null
+
+    // Moeda em destaque (maior, no topo): país predominante da conta configurada
+    // como padrão no Cadastro Rápido — senão o país padrão de lá — senão Brasil.
+    // Uma conta pode ter lançamentos nos dois países (ex: conta multimoeda tipo
+    // Wise) — por isso soma o valor de cada país pra essa conta e usa o que
+    // predominar, em vez de olhar só o primeiro registro encontrado.
+    let primaryCurrency: 'Brasil' | 'Espanha' = 'Brasil'
+    const defaultAccount = quickBillDefaults.account?.trim().toLowerCase()
+    if (defaultAccount) {
+      let brSum = 0
+      let esSum = 0
+      for (const r of records) {
+        if ((r.account ?? '').trim().toLowerCase() !== defaultAccount) continue
+        if ((r.taxCountry ?? '').trim().toLowerCase() === 'espanha') esSum += r.value ?? 0
+        else brSum += r.value ?? 0
+      }
+      if (brSum > 0 || esSum > 0) primaryCurrency = esSum > brSum ? 'Espanha' : 'Brasil'
+      else if (quickBillDefaults.country?.trim().toLowerCase() === 'espanha') primaryCurrency = 'Espanha'
+    } else if (quickBillDefaults.country?.trim().toLowerCase() === 'espanha') {
+      primaryCurrency = 'Espanha'
+    }
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -237,45 +309,45 @@ export function WeeklySpendingSummary() {
     const currentDayKey = dayKeys[5]
     const previousDayKey = dayKeys[4]
 
-    // total[categoria][periodKey] = soma
+    // total[categoria+moeda][periodKey] = soma — nunca mistura R$ e € no mesmo total
+    // (ver CAT_CURRENCY_SEP), então uma categoria com gasto nos dois países vira duas
+    // entradas independentes.
     const byCatWeek: Record<string, Record<string, number>> = {}
     const byCatDay: Record<string, Record<string, number>> = {}
 
     for (const r of records) {
-      if ((r.taxCountry ?? '').trim().toLowerCase() === 'espanha') continue
       const d = recordDate(r)
       if (!d) continue
+      const currency: 'Brasil' | 'Espanha' = (r.taxCountry ?? '').trim().toLowerCase() === 'espanha' ? 'Espanha' : 'Brasil'
       const topCat = (r.category ?? 'Outros').split(':')[0].trim() || 'Outros'
+      const key = `${topCat}${CAT_CURRENCY_SEP}${currency}`
       const value = r.value ?? 0
 
       const wKey = weekKeyOf(d)
       if (weekKeys.includes(wKey)) {
-        if (!byCatWeek[topCat]) byCatWeek[topCat] = {}
-        byCatWeek[topCat][wKey] = (byCatWeek[topCat][wKey] ?? 0) + value
+        if (!byCatWeek[key]) byCatWeek[key] = {}
+        byCatWeek[key][wKey] = (byCatWeek[key][wKey] ?? 0) + value
       }
 
       const dKey = dateKeyOf(d)
       if (dayKeys.includes(dKey)) {
-        if (!byCatDay[topCat]) byCatDay[topCat] = {}
-        byCatDay[topCat][dKey] = (byCatDay[topCat][dKey] ?? 0) + value
+        if (!byCatDay[key]) byCatDay[key] = {}
+        byCatDay[key][dKey] = (byCatDay[key][dKey] ?? 0) + value
       }
     }
 
     const categories = buildCategoryStats(byCatWeek, weekKeys)
     const categoriesDay = buildCategoryStats(byCatDay, dayKeys)
 
-    const totalCurrent = Math.round(categories.reduce((s, c) => s + c.current, 0) * 100) / 100
-    const totalPrevious = Math.round(categories.reduce((s, c) => s + c.previous, 0) * 100) / 100
-    const totalDelta = Math.round((totalCurrent - totalPrevious) * 100) / 100
-    const totalDeltaPct = totalPrevious !== 0 ? Math.round((totalDelta / totalPrevious) * 1000) / 10 : null
+    const weekBrasil = currencyTotals(categories, 'Brasil')
+    const weekEspanha = currencyTotals(categories, 'Espanha')
+    const dayBrasil = currencyTotals(categoriesDay, 'Brasil')
+    const dayEspanha = currencyTotals(categoriesDay, 'Espanha')
 
-    const totalCurrentDay = Math.round(categoriesDay.reduce((s, c) => s + c.current, 0) * 100) / 100
-    const totalPreviousDay = Math.round(categoriesDay.reduce((s, c) => s + c.previous, 0) * 100) / 100
-    const totalDeltaDay = Math.round((totalCurrentDay - totalPreviousDay) * 100) / 100
-    const totalDeltaPctDay = totalPreviousDay !== 0 ? Math.round((totalDeltaDay / totalPreviousDay) * 1000) / 10 : null
-
-    const topRiser = categories.find(c => c.delta > 0) ?? null
-    const topRiserDay = categoriesDay.find(c => c.delta > 0) ?? null
+    // A narrativa em texto segue a moeda em destaque — os números da outra
+    // moeda já aparecem à parte, nos cartões e no bloco de destaque.
+    const topRiser = categories.filter(c => c.currency === primaryCurrency).find(c => c.delta > 0) ?? null
+    const topRiserDay = categoriesDay.filter(c => c.currency === primaryCurrency).find(c => c.delta > 0) ?? null
 
     const currentRangeLabel = `${formatDayMonth(parseDateKey(currentWeekKey))}–${formatDayMonth(today)}`
     const previousMonday = parseDateKey(previousWeekKey)
@@ -285,11 +357,11 @@ export function WeeklySpendingSummary() {
     const previousDayLabel = formatDayMonth(parseDateKey(previousDayKey))
 
     return {
-      categories, categoriesDay,
-      totalCurrent, totalPrevious, totalDelta, totalDeltaPct, topRiser,
-      totalCurrentDay, totalPreviousDay, totalDeltaDay, totalDeltaPctDay, topRiserDay,
+      categories, categoriesDay, primaryCurrency,
+      weekBrasil, weekEspanha, dayBrasil, dayEspanha, topRiser, topRiserDay,
       currentRangeLabel, previousRangeLabel, currentDayLabel, previousDayLabel,
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records])
 
   if (records === null) {
@@ -301,17 +373,24 @@ export function WeeklySpendingSummary() {
   }
 
   if (!data) return null
-  const hasWeekData = data.totalCurrent !== 0 || data.totalPrevious !== 0
-  const hasDayData = data.totalCurrentDay !== 0 || data.totalPreviousDay !== 0
+  const { weekBrasil, weekEspanha, dayBrasil, dayEspanha, primaryCurrency } = data
+  const hasWeekData = weekBrasil.total !== 0 || weekBrasil.comparisonValue !== 0 || weekEspanha.total !== 0 || weekEspanha.comparisonValue !== 0
+  const hasDayData = dayBrasil.total !== 0 || dayBrasil.comparisonValue !== 0 || dayEspanha.total !== 0 || dayEspanha.comparisonValue !== 0
   if (!hasWeekData && !hasDayData) return null
 
-  const {
-    categories, categoriesDay,
-    totalCurrent, totalPrevious, totalDelta, totalDeltaPct,
-    totalCurrentDay, totalPreviousDay, totalDeltaDay, totalDeltaPctDay,
-  } = data
+  const { categories, categoriesDay } = data
+  const secondaryCurrency = primaryCurrency === 'Espanha' ? 'Brasil' : 'Espanha'
+  const weekPrimary = primaryCurrency === 'Espanha' ? weekEspanha : weekBrasil
+  const weekSecondary = primaryCurrency === 'Espanha' ? weekBrasil : weekEspanha
+  const dayPrimary = primaryCurrency === 'Espanha' ? dayEspanha : dayBrasil
+  const daySecondary = primaryCurrency === 'Espanha' ? dayBrasil : dayEspanha
+  const hasWeekSecondary = weekSecondary.total !== 0 || weekSecondary.comparisonValue !== 0
+  const hasDaySecondary = daySecondary.total !== 0 || daySecondary.comparisonValue !== 0
 
-  const weekInsight = totalDelta <= 0
+  // A narrativa em texto segue a moeda em destaque (conta padrão do Cadastro
+  // Rápido) — os números da outra moeda aparecem à parte, no bloco de destaque
+  // e nos cartões por categoria.
+  const weekInsight = weekPrimary.delta <= 0
     ? (data.topRiser
         ? <>Na semana, você gastou <strong style={{ color: 'var(--text-1)' }}>menos</strong>. Mas <strong style={{ color: 'var(--text-1)' }}>{data.topRiser.name}</strong> está subindo — vale ficar de olho.</>
         : <>Na semana, você gastou <strong style={{ color: 'var(--text-1)' }}>menos</strong> em relação à anterior.</>)
@@ -321,7 +400,7 @@ export function WeeklySpendingSummary() {
 
   const dayInsight = !hasDayData
     ? <>Ainda não há gastos registrados hoje.</>
-    : totalDeltaDay <= 0
+    : dayPrimary.delta <= 0
       ? (data.topRiserDay
           ? <>Hoje, você já gastou <strong style={{ color: 'var(--text-1)' }}>menos</strong> que ontem. Fique de olho em <strong style={{ color: 'var(--text-1)' }}>{data.topRiserDay.name}</strong>.</>
           : <>Hoje, você já gastou <strong style={{ color: 'var(--text-1)' }}>menos</strong> que ontem.</>)
@@ -341,7 +420,7 @@ export function WeeklySpendingSummary() {
             Gastos da Semana e do Dia
           </h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-            Comparado com o período anterior — Brasil
+            Comparado com o período anterior — Brasil e Espanha
           </p>
         </div>
       </div>
@@ -349,20 +428,16 @@ export function WeeklySpendingSummary() {
       <div className="flex flex-wrap gap-6 mt-3 pb-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
         <HeroStat
           label="Esta semana"
-          total={totalCurrent}
+          primary={{ country: primaryCurrency, totals: weekPrimary }}
+          secondary={hasWeekSecondary ? { country: secondaryCurrency, totals: weekSecondary } : null}
           comparisonLabel="semana passada"
-          comparisonValue={totalPrevious}
-          delta={totalDelta}
-          deltaPct={totalDeltaPct}
           rangeLabel={`${data.currentRangeLabel} vs ${data.previousRangeLabel}`}
         />
         <HeroStat
           label="Hoje"
-          total={totalCurrentDay}
+          primary={{ country: primaryCurrency, totals: dayPrimary }}
+          secondary={hasDaySecondary ? { country: secondaryCurrency, totals: daySecondary } : null}
           comparisonLabel="ontem"
-          comparisonValue={totalPreviousDay}
-          delta={totalDeltaDay}
-          deltaPct={totalDeltaPctDay}
           rangeLabel={`${data.currentDayLabel} vs ${data.previousDayLabel}`}
         />
       </div>
@@ -416,20 +491,21 @@ export function WeeklySpendingSummary() {
               {activeCategories.map(cat => {
                 const tone: 'up' | 'down' | 'flat' = cat.delta > 0.005 ? 'up' : cat.delta < -0.005 ? 'down' : 'flat'
                 return (
-                  <div key={cat.name} className="rounded-xl p-4 flex flex-col gap-2.5" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                  <div key={`${cat.name}-${cat.currency}`} className="rounded-xl p-4 flex flex-col gap-2.5" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
                     <div className="flex items-center gap-2">
                       <span className="flex items-center justify-center flex-shrink-0" style={{ width: 30, height: 30, fontSize: 16, borderRadius: 9, background: 'var(--bg-4)' }}>
                         {cat.emoji}
                       </span>
-                      <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{cat.name}</span>
+                      <span className="text-sm font-semibold flex-1 min-w-0 truncate" style={{ color: 'var(--text-1)' }}>{cat.name}</span>
+                      {cat.currency === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
                     </div>
 
                     <div>
                       <p className="font-mono font-bold" style={{ fontSize: 20, color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(cat.current, 'Brasil')}
+                        {formatCurrency(cat.current, cat.currency)}
                       </p>
                       <p className="font-mono text-xs" style={{ color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
-                        {comparisonWord} {formatCurrency(cat.previous, 'Brasil')}
+                        {comparisonWord} {formatCurrency(cat.previous, cat.currency)}
                       </p>
                     </div>
 
@@ -445,7 +521,7 @@ export function WeeklySpendingSummary() {
                       >
                         {tone === 'flat'
                           ? '＝ estável'
-                          : `${tone === 'up' ? '▲' : '▼'} ${cat.deltaPct !== null ? Math.abs(cat.deltaPct) + '% · ' : ''}${tone === 'up' ? '+' : '−'}${formatCurrency(Math.abs(cat.delta), 'Brasil')}`}
+                          : `${tone === 'up' ? '▲' : '▼'} ${cat.deltaPct !== null ? Math.abs(cat.deltaPct) + '% · ' : ''}${tone === 'up' ? '+' : '−'}${formatCurrency(Math.abs(cat.delta), cat.currency)}`}
                       </span>
                       {tone === 'down' && cat.streak >= 2 && (
                         <span

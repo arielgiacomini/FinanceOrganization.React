@@ -57,9 +57,11 @@ function looseNormalize(s: string): string {
 }
 
 // Acha a conta cadastrada que melhor casa com um texto livre (parâmetro de URL externa).
-// 1) igual exato (ignorando maiúsculas/acentos); 2) todas as palavras digitadas aparecem
-// no nome cadastrado, em qualquer ordem (ex: "Cartão Itaú" casa com "Cartão de Crédito
-// Itaú Personnalité Black Cashback"); entre vários candidatos, prioriza o nome mais curto.
+// 1) igual exato (ignorando maiúsculas/acentos); 2) por pontuação de palavras em comum —
+// exige só a MAIORIA das palavras (não todas), porque automações externas (ex: atalho do
+// iOS lendo notificação do cartão) costumam incluir a bandeira do cartão ("MC", "Visa")
+// que não faz parte do nome cadastrado aqui, e isso não pode derrubar o casamento inteiro.
+// Entre os candidatos, prioriza quem bate mais palavras e, empatado, o nome mais curto.
 function findAccountMatch(query: string, accounts: Account[]): Account | null {
   const q = looseNormalize(query)
   if (!q) return null
@@ -68,12 +70,20 @@ function findAccountMatch(query: string, accounts: Account[]): Account | null {
   if (exact) return exact
 
   const tokens = q.split(/\s+/).filter(Boolean)
-  const candidates = accounts.filter(a => {
-    const name = looseNormalize(a.name)
-    return tokens.every(t => name.includes(t))
-  })
-  if (!candidates.length) return null
-  return [...candidates].sort((a, b) => a.name.length - b.name.length)[0]
+  if (!tokens.length) return null
+
+  const minMatches = Math.ceil(tokens.length / 2)
+  const scored = accounts
+    .map(a => {
+      const name = looseNormalize(a.name)
+      const matches = tokens.filter(t => name.includes(t)).length
+      return { account: a, matches }
+    })
+    .filter(({ matches }) => matches >= minMatches)
+  if (!scored.length) return null
+
+  scored.sort((a, b) => b.matches - a.matches || a.account.name.length - b.account.name.length)
+  return scored[0].account
 }
 
 // Rascunho de sessão — mantém o que o usuário já preencheu caso o modal seja

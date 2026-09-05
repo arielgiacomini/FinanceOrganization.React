@@ -39,6 +39,27 @@ export function formatDatetime(date?: string | null): string {
   }
 }
 
+/** "YYYY-MM-DD" de hoje em horário local — nunca via `new Date().toISOString()`,
+ *  que converte pra UTC antes de fatiar e pode cair no dia seguinte (fusos
+ *  negativos, fim do dia) ou anterior (fusos positivos, início do dia). */
+export function todayDateInputValue(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const da = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${da}`
+}
+
+/** Extrai "YYYY-MM-DD" direto do prefixo de uma data ISO vinda da API (ex:
+ *  "2026-09-04T00:00:00"), pra popular um `<input type="date">` — nunca via
+ *  `new Date(valor).toISOString()`, que desloca o dia dependendo do fuso
+ *  horário do navegador de quem está usando o app. */
+export function safeDateInputValue(value?: string | null): string {
+  if (!value) return ''
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value)
+  return match ? match[1] : ''
+}
+
 // ─── YearMonth (format: "Maio/2025" — padrão da API) ─────────────────────────
 
 const MONTHS_PT = [

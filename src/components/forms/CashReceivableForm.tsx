@@ -60,7 +60,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
     frequence:         initial?.frequence ?? draft?.frequence as string ?? 'Livre',
     registrationType:  initial?.registrationType ?? draft?.registrationType as string ?? 'Compra Livre',
     agreementDate:     initial?.agreementDate ? initial.agreementDate.slice(0, 10) : (draft?.agreementDate as string ?? ''),
-    dueDate:           initial?.dueDate ? new Date(initial.dueDate).toISOString().slice(0, 10) : (draft?.dueDate as string ?? ''),
+    dueDate:           initial?.dueDate ? initial.dueDate.slice(0, 10) : (draft?.dueDate as string ?? ''),
     dateReceived:      initial?.dateReceived ? initial.dateReceived.slice(0, 10) : (draft?.dateReceived as string ?? ''),
     hasReceived:       initial?.hasReceived ?? (draft?.hasReceived as boolean ?? false),
     initialMonthYear:  initial?.yearMonth ?? draft?.initialMonthYear as string ?? currentYearMonth(),

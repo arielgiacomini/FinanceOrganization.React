@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
 import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
+import { CheckForUpdateButton } from '@/components/ui/AppServiceWorker'
 
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
@@ -110,8 +111,13 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
             style={{ color: 'var(--text-3)' }}>
             <LogOut size={16} />
             {!collapsed && <span>Sair</span>}
-            {!collapsed && <AppVersionBadge className="ml-auto" />}
           </button>
+          {!collapsed && (
+            <div className="flex items-center justify-between gap-2 px-3 mt-2">
+              <AppVersionBadge />
+              <CheckForUpdateButton />
+            </div>
+          )}
           {!collapsed && (
             <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
           )}
@@ -172,8 +178,11 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
             style={{ color: 'var(--text-3)' }}>
             <LogOut size={16} />
             <span>Sair</span>
-            <AppVersionBadge className="ml-auto" />
           </button>
+          <div className="flex items-center justify-between gap-2 px-3 mt-2">
+            <AppVersionBadge />
+            <CheckForUpdateButton />
+          </div>
           <p className="text-xs px-3 mt-2" style={{ color: 'var(--text-3)' }}>© {new Date().getFullYear()} · Finance Org</p>
         </div>
       </div>

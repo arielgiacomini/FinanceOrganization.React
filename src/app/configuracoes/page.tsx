@@ -21,7 +21,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { currentYearMonth } from '@/lib/utils'
 import {
   STALE_ALERT_DEFAULT_MENSAGEM, STALE_ALERT_DEFAULT_INTERVALO_MINUTOS,
-  DESPESA_MES_DEFAULT_CATEGORIA,
+  DESPESA_MES_DEFAULT_CATEGORIA, DESPESA_MES_DEFAULT_COR_PROJETADO,
   CONTAS_PAGAR_SORT_COLUMNS, CONTAS_RECEBER_SORT_COLUMNS,
   QUICK_BILL_FIELDS, QUICK_BILL_ENABLED_DEFAULT, QUICK_BILL_VALUE_DEFAULT,
   loadQuickBillEnabledFields, loadQuickBillDefaultValues,
@@ -769,6 +769,7 @@ function ConfiguracoesInner() {
   const [valeCategoria,            setValeCategoria]            = useState('')
   const [nomeGrupoEspanha,         setNomeGrupoEspanha]         = useState('')
   const [nomeGrupoInvestimento,    setNomeGrupoInvestimento]    = useState('')
+  const [nomeGrupoContasBancarias, setNomeGrupoContasBancarias] = useState('')
   const [investimentoAnosProjecao, setInvestimentoAnosProjecao] = useState('5')
   const [chartRecords,             setChartRecords]             = useState<WalletRecord[]>([])
 
@@ -779,6 +780,7 @@ function ConfiguracoesInner() {
 
   const [despesaMesFiltrarAnoAtual,  setDespesaMesFiltrarAnoAtual]  = useState(true)
   const [despesaMesCategoriaPadrao,  setDespesaMesCategoriaPadrao]  = useState(DESPESA_MES_DEFAULT_CATEGORIA)
+  const [despesaMesCorProjetado,     setDespesaMesCorProjetado]     = useState(DESPESA_MES_DEFAULT_COR_PROJETADO)
   const [despesaMesRecord,           setDespesaMesRecord]           = useState<WalletRecord | null>(null)
 
   const [contasPagarSortCol,         setContasPagarSortCol]         = useState<ContasPagarSortCol>('default')
@@ -841,6 +843,7 @@ function ConfiguracoesInner() {
     setValeCategoria(c.valeCategoria ?? 'Vale Alimentação/Refeição')
     setNomeGrupoEspanha(c.nomeGrupoEspanha ?? 'Conta Bancária Espanha')
     setNomeGrupoInvestimento(c.nomeGrupoInvestimento ?? 'Investimentos')
+    setNomeGrupoContasBancarias(c.nomeGrupoContasBancarias ?? 'Contas Bancárias')
     setInvestimentoAnosProjecao(c.investimentoAnosProjecao ?? '5')
 
     const sa = loadStaleAlertConfigLocal()
@@ -851,6 +854,7 @@ function ConfiguracoesInner() {
     const dm = loadDespesaMesConfigLocal()
     setDespesaMesFiltrarAnoAtual(dm.filtrarAnoAtual !== 'false')
     setDespesaMesCategoriaPadrao(dm.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
+    setDespesaMesCorProjetado(dm.corProjetado ?? DESPESA_MES_DEFAULT_COR_PROJETADO)
 
     const cp = loadContasPagarSortConfigLocal()
     setContasPagarSortCol((CONTAS_PAGAR_SORT_COLUMNS.some(c => c.value === cp.sortCol) ? cp.sortCol : 'default') as ContasPagarSortCol)
@@ -884,6 +888,7 @@ function ConfiguracoesInner() {
           setValeCategoria(p.valeCategoria ?? '')
           setNomeGrupoEspanha(p.nomeGrupoEspanha ?? '')
           setNomeGrupoInvestimento(p.nomeGrupoInvestimento ?? 'Investimentos')
+          setNomeGrupoContasBancarias(p.nomeGrupoContasBancarias ?? 'Contas Bancárias')
           setInvestimentoAnosProjecao(p.investimentoAnosProjecao ?? '5')
         } catch {}
       }
@@ -914,6 +919,7 @@ function ConfiguracoesInner() {
           saveDespesaMesConfigLocal(d)
           setDespesaMesFiltrarAnoAtual(d.filtrarAnoAtual !== 'false')
           setDespesaMesCategoriaPadrao(d.categoriaPadrao ?? DESPESA_MES_DEFAULT_CATEGORIA)
+          setDespesaMesCorProjetado(d.corProjetado ?? DESPESA_MES_DEFAULT_COR_PROJETADO)
         } catch {}
       }
 
@@ -1011,7 +1017,7 @@ function ConfiguracoesInner() {
     })
 
     // Gráfico → localStorage + API
-    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, investimentoAnosProjecao }
+    const data = { name: plrName, saldoFinalYm, valeCategoria, nomeGrupoEspanha, nomeGrupoInvestimento, nomeGrupoContasBancarias, investimentoAnosProjecao }
     savePlrConfigAll(data)
     const existing = chartRecords.find(r => r.walletKey === 'finance_plr_config')
     tasks.push({
@@ -1039,7 +1045,7 @@ function ConfiguracoesInner() {
     })
 
     // Despesas por Mês/Ano — filtro padrão → localStorage + API
-    const despesaMesData = { filtrarAnoAtual: String(despesaMesFiltrarAnoAtual), categoriaPadrao: despesaMesCategoriaPadrao }
+    const despesaMesData = { filtrarAnoAtual: String(despesaMesFiltrarAnoAtual), categoriaPadrao: despesaMesCategoriaPadrao, corProjetado: despesaMesCorProjetado }
     saveDespesaMesConfigLocal(despesaMesData)
     const despesaMesVal = JSON.stringify(despesaMesData)
     tasks.push({
@@ -1650,6 +1656,19 @@ function ConfiguracoesInner() {
                 </div>
 
                 <div>
+                  <label className="label">Grupo Contas Bancárias</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Nome do grupo na Carteira usado no Saldo Final do gráfico e no destino de transferências entre caixinhas.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={nomeGrupoContasBancarias}
+                    onChange={e => setNomeGrupoContasBancarias(e.target.value)}
+                    placeholder="Ex: Contas Bancárias"
+                  />
+                </div>
+
+                <div>
                   <label className="label">Anos de projeção</label>
                   <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
                     Quantos anos à frente projetar o valor dos investimentos (1–10).
@@ -1704,17 +1723,29 @@ function ConfiguracoesInner() {
                 </div>
               </div>
 
-              <div className="p-5">
-                <label className="label">Categoria padrão</label>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
-                  Categoria pré-selecionada ao abrir o gráfico. Deixe em branco para não filtrar nenhuma.
-                </p>
-                <input
-                  className="input w-full"
-                  value={despesaMesCategoriaPadrao}
-                  onChange={e => setDespesaMesCategoriaPadrao(e.target.value)}
-                  placeholder={DESPESA_MES_DEFAULT_CATEGORIA}
-                />
+              <div className="p-5 space-y-5">
+                <div>
+                  <label className="label">Categoria padrão</label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Categoria pré-selecionada ao abrir o gráfico. Deixe em branco para não filtrar nenhuma.
+                  </p>
+                  <input
+                    className="input w-full"
+                    value={despesaMesCategoriaPadrao}
+                    onChange={e => setDespesaMesCategoriaPadrao(e.target.value)}
+                    placeholder={DESPESA_MES_DEFAULT_CATEGORIA}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>
+                    Cor usada para destacar gastos projetados (conta/fatura fixa ainda não paga) nas colunas e nos cards de resumo do gráfico.
+                  </p>
+                  <ColorPickerField
+                    label="Cor do projetado"
+                    value={despesaMesCorProjetado}
+                    onChange={setDespesaMesCorProjetado}
+                  />
+                </div>
               </div>
             </div>
           )}

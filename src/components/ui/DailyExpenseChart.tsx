@@ -11,7 +11,7 @@ import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
-import { loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao } from '@/lib/wallet'
+import { loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao, loadDespesaMesCorProjetado } from '@/lib/wallet'
 import type { BillToPay } from '@/types'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -48,6 +48,11 @@ const DAILY_FONT_SIZES: Record<ChartSize, { tick: number; tickSub: number; dataL
 interface ChartPoint {
   valueBrl: number
   valueEur: number
+  /** Fatia de valueBrl/valueEur que é "Conta/Fatura Fixa" ainda não paga — gasto
+   *  projetado, não realizado. Renderizada como um trecho mais claro no topo da
+   *  mesma coluna, em vez de uma coluna separada. */
+  valueBrlPlanned: number
+  valueEurPlanned: number
   day?: number
   dayWeek?: string
   weekend?: boolean
@@ -62,6 +67,13 @@ function monthYearOrder(my: string): number {
 
 function isSpain(r: DailyExpenseRecord) {
   return r.taxCountry === 'Espanha'
+}
+
+// Gasto "projetado" — conta/fatura fixa que ainda não foi paga, ou seja, uma
+// previsão já cadastrada em vez de um gasto que de fato aconteceu.
+const PLANNED_REGISTRATION_TYPE = 'Conta/Fatura Fixa'
+function isPlanned(r: DailyExpenseRecord) {
+  return r.registrationType === PLANNED_REGISTRATION_TYPE && !r.hasPay
 }
 
 interface SummaryStat {
@@ -148,6 +160,8 @@ export function DailyExpenseChart() {
   const [allData, setAllData] = useState<DailyExpenseRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [accountFilter, setAccountFilter] = useState('Todos')
+  const [countryFilter, setCountryFilter] = useState<'Todos' | 'Brasil' | 'Espanha'>('Todos')
+  const [plannedFilter, setPlannedFilter] = useState<'Todos' | 'Real' | 'Projetado'>('Todos')
   const [hasLoaded, setHasLoaded] = useState(false)
 
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -161,6 +175,10 @@ export function DailyExpenseChart() {
   const barFilterRef = useRef<{ yearMonth: string | null; day: number | null }>({ yearMonth: null, day: null })
   const accountFilterRef = useRef(accountFilter)
   accountFilterRef.current = accountFilter
+  const countryFilterRef = useRef(countryFilter)
+  countryFilterRef.current = countryFilter
+  const plannedFilterRef = useRef(plannedFilter)
+  plannedFilterRef.current = plannedFilter
   const [sortCol, setSortCol] = useState<string>('purchaseDate')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [editTarget, setEditTarget] = useState<BillToPay | null>(null)
@@ -235,19 +253,28 @@ export function DailyExpenseChart() {
       .catch(() => {})
   }, [selectedYears, dayYear, viewMode, hasLoaded])
 
+  // Filtro combinado de categoria + país + tipo de gasto (real/projetado) — usado
+  // tanto na lista de contas/chips quanto no dataset principal do gráfico.
+  function matchesFilters(r: DailyExpenseRecord): boolean {
+    if (catPath.length && !matchesCategory(r.category, catPath)) return false
+    if (countryFilter !== 'Todos' && (isSpain(r) ? 'Espanha' : 'Brasil') !== countryFilter) return false
+    if (plannedFilter === 'Real' && isPlanned(r)) return false
+    if (plannedFilter === 'Projetado' && !isPlanned(r)) return false
+    return true
+  }
+
   const accounts = useMemo(() => {
     const seen: Record<string, boolean> = {}
     const list: string[] = []
     allData.forEach(d => {
-      if (d.account && d.value > 0 && !seen[d.account] &&
-          (!catPath.length || matchesCategory(d.category, catPath))) {
+      if (d.account && d.value > 0 && !seen[d.account] && matchesFilters(d)) {
         seen[d.account] = true
         list.push(d.account)
       }
     })
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allData, catPath.join(':')])
+  }, [allData, catPath.join(':'), countryFilter, plannedFilter])
 
   useEffect(() => {
     if (!catPath.length || !hasLoaded) return
@@ -269,8 +296,7 @@ export function DailyExpenseChart() {
   }, [catPath.join(':'), hasLoaded])
 
   const filteredData = useMemo(() => {
-    let rows = allData
-    if (catPath.length) rows = rows.filter(r => matchesCategory(r.category, catPath))
+    let rows = allData.filter(matchesFilters)
     if (accountFilter !== 'Todos') rows = rows.filter(r => r.account === accountFilter)
     if (viewMode === 'day') {
       const targetMY = `${MONTH_NAMES[dayMonth - 1]}/${dayYear}`
@@ -283,7 +309,7 @@ export function DailyExpenseChart() {
     }
     return rows
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allData, catPath.join(':'), accountFilter, viewMode, dayMonth, dayYear, selectedYears])
+  }, [allData, catPath.join(':'), countryFilter, plannedFilter, accountFilter, viewMode, dayMonth, dayYear, selectedYears])
 
   // Inclui todos os registros; negativos são tratados como positivos (descontos)
   const positiveRows = useMemo(() => filteredData, [filteredData])
@@ -313,26 +339,40 @@ export function DailyExpenseChart() {
       positiveRows.forEach(d => {
         if (!map[d.day]) {
           map[d.day] = {
-            day: d.day, valueBrl: 0, valueEur: 0,
+            day: d.day, valueBrl: 0, valueEur: 0, valueBrlPlanned: 0, valueEurPlanned: 0,
             dayWeek: d.dayWeek, weekend: d.weekend, holiday: d.holiday,
           }
         }
-        if (isSpain(d)) map[d.day].valueEur += Math.abs(d.value)
-        else             map[d.day].valueBrl += Math.abs(d.value)
+        const abs = Math.abs(d.value)
+        if (isSpain(d)) {
+          map[d.day].valueEur += abs
+          if (isPlanned(d)) map[d.day].valueEurPlanned += abs
+        } else {
+          map[d.day].valueBrl += abs
+          if (isPlanned(d)) map[d.day].valueBrlPlanned += abs
+        }
       })
       return Object.values(map).sort((a, b) => (a.day ?? 0) - (b.day ?? 0))
     }
     const map: Record<string, ChartPoint> = {}
     positiveRows.forEach(d => {
-      if (!map[d.monthYear]) map[d.monthYear] = { monthYear: d.monthYear, valueBrl: 0, valueEur: 0 }
-      if (isSpain(d)) map[d.monthYear].valueEur += Math.abs(d.value)
-      else            map[d.monthYear].valueBrl += Math.abs(d.value)
+      if (!map[d.monthYear]) map[d.monthYear] = { monthYear: d.monthYear, valueBrl: 0, valueEur: 0, valueBrlPlanned: 0, valueEurPlanned: 0 }
+      const abs = Math.abs(d.value)
+      if (isSpain(d)) {
+        map[d.monthYear].valueEur += abs
+        if (isPlanned(d)) map[d.monthYear].valueEurPlanned += abs
+      } else {
+        map[d.monthYear].valueBrl += abs
+        if (isPlanned(d)) map[d.monthYear].valueBrlPlanned += abs
+      }
     })
     return Object.values(map).sort((a, b) => monthYearOrder(a.monthYear ?? '') - monthYearOrder(b.monthYear ?? ''))
   }, [positiveRows, viewMode])
 
   const totalBrl = useMemo(() => positiveRows.filter(d => !isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
   const totalEur = useMemo(() => positiveRows.filter(d =>  isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
+  const totalBrlPlanned = useMemo(() => positiveRows.filter(d => !isSpain(d) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
+  const totalEurPlanned = useMemo(() => positiveRows.filter(d =>  isSpain(d) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
   const hasBrl = totalBrl > 0
   const hasEur = totalEur > 0
 
@@ -459,6 +499,14 @@ export function DailyExpenseChart() {
       if (catPath.length) data = data.filter(b => matchesCategory(b.category, catPath))
       if (accountFilterRef.current !== 'Todos') {
         data = data.filter(b => b.account === accountFilterRef.current)
+      }
+      if (countryFilterRef.current !== 'Todos') {
+        data = data.filter(b => normalizeCountry(b.country) === countryFilterRef.current)
+      }
+      if (plannedFilterRef.current === 'Real') {
+        data = data.filter(b => !(b.registrationType === PLANNED_REGISTRATION_TYPE && !b.hasPay))
+      } else if (plannedFilterRef.current === 'Projetado') {
+        data = data.filter(b => b.registrationType === PLANNED_REGISTRATION_TYPE && !b.hasPay)
       }
       if (day !== null) {
         data = data.filter(b => {
@@ -593,6 +641,12 @@ export function DailyExpenseChart() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountFilter])
 
+  // Recarrega detalhes quando filtro de país ou tipo de gasto (real/projetado) muda
+  useEffect(() => {
+    if (detailsOpen) loadDetailBills()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryFilter, plannedFilter])
+
   const brlBarColor = (pt: ChartPoint) => {
     if (viewMode !== 'day') return '#dc2626'
     if (pt.holiday) return '#a78bfa'
@@ -600,26 +654,91 @@ export function DailyExpenseChart() {
     return '#dc2626'
   }
 
+  // Fatia "projetada" (Conta/Fatura Fixa ainda não paga) desenhada como um trecho
+  // mais claro no topo da própria coluna — não é uma barra separada, é a mesma
+  // barra com uma parte pintada diferente, indicando que aquele tanto é previsão,
+  // não gasto realizado.
+  const PLANNED_COLOR = loadDespesaMesCorProjetado()
+
+  // Monta os stats de um cartão de país considerando o filtro "Tipo de gasto"
+  // ativo — com "Todos" separa Gasto real de Projetado, com "Real"/"Projetado"
+  // mostra só o total do que já está sendo exibido no gráfico (evita mostrar
+  // "Gasto real: R$0,00" quando o filtro já restringiu tudo a projetado, etc.).
+  function buildCountryStats(opts: {
+    total: number
+    planned: number
+    color: string
+    country: 'Brasil' | 'Espanha'
+    totalLabel?: string
+    avg?: number
+    max?: number
+  }): SummaryStat[] {
+    const { total, planned, color, country, totalLabel = 'Total', avg, max } = opts
+    const fmt = (v: number) => formatCurrency(v, country)
+    const secondary: SummaryStat[] = [
+      ...(avg !== undefined && avg > 0 ? [{ label: `Média / ${unitLabel}`, value: fmt(avg), color, emphasis: 'secondary' as const }] : []),
+      ...(max !== undefined && max > 0 ? [{ label: `Maior ${unitLabel}`, value: fmt(max), color, emphasis: 'secondary' as const }] : []),
+    ]
+    if (plannedFilter === 'Projetado') {
+      return [{ label: 'Projetado', value: fmt(total), color: PLANNED_COLOR, emphasis: 'primary' }, ...secondary]
+    }
+    if (plannedFilter === 'Real' || planned <= 0) {
+      return [{ label: totalLabel, value: fmt(total), color, emphasis: 'primary' }, ...secondary]
+    }
+    return [
+      { label: 'Gasto real', value: fmt(total - planned), color, emphasis: 'primary' },
+      { label: 'Projetado', value: fmt(planned), color: PLANNED_COLOR, emphasis: 'primary' },
+      { label: totalLabel, value: fmt(total), color, emphasis: 'secondary' },
+      ...secondary,
+    ]
+  }
+
+  const PlannedOverlay = ({ x, y, width, height }: { x: number; y: number; width: number; height: number }) => {
+    if (height <= 0) return null
+    return (
+      <>
+        <rect x={x} y={y} width={width} height={height} fill={PLANNED_COLOR} fillOpacity={0.75} />
+        <line x1={x} x2={x + width} y1={y + height} y2={y + height} stroke="var(--bg-2)" strokeWidth={1} strokeDasharray="2 2" />
+      </>
+    )
+  }
+
   // Shapes customizados que expandem a barra para o centro quando a moeda irmã é zero no mesmo ponto
   const BrlBarShape = (props: any) => {
-    const { x, y, width, height, fill } = props
+    const { x, y, width, height, fill, payload } = props
     if (!height || height <= 0) return <g />
-    const isAlone = hasEur && !(props.payload?.valueEur > 0)
+    const isAlone = hasEur && !(payload?.valueEur > 0)
     const w = isAlone ? width * 2 + 2 : width
     const cr = Math.min(2, w / 2, height)
     const path = `M${x+cr},${y} h${w-2*cr} a${cr},${cr} 0 0 1 ${cr},${cr} v${height-cr} H${x} V${y+cr} a${cr},${cr} 0 0 1 ${cr},${-cr} z`
-    return <path d={path} fill={fill} />
+    const planned = payload?.valueBrlPlanned ?? 0
+    const total = payload?.valueBrl ?? 0
+    const plannedH = total > 0 ? Math.min(height, height * (planned / total)) : 0
+    return (
+      <g>
+        <path d={path} fill={fill} />
+        <PlannedOverlay x={x} y={y} width={w} height={plannedH} />
+      </g>
+    )
   }
 
   const EurBarShape = (props: any) => {
-    const { x, y, width, height, fill } = props
+    const { x, y, width, height, fill, payload } = props
     if (!height || height <= 0) return <g />
-    const isAlone = hasBrl && !(props.payload?.valueBrl > 0)
+    const isAlone = hasBrl && !(payload?.valueBrl > 0)
     const w = isAlone ? width * 2 + 2 : width
     const xPos = isAlone ? x - width - 2 : x
     const cr = Math.min(2, w / 2, height)
     const path = `M${xPos+cr},${y} h${w-2*cr} a${cr},${cr} 0 0 1 ${cr},${cr} v${height-cr} H${xPos} V${y+cr} a${cr},${cr} 0 0 1 ${cr},${-cr} z`
-    return <path d={path} fill={fill} />
+    const planned = payload?.valueEurPlanned ?? 0
+    const total = payload?.valueEur ?? 0
+    const plannedH = total > 0 ? Math.min(height, height * (planned / total)) : 0
+    return (
+      <g>
+        <path d={path} fill={fill} />
+        <PlannedOverlay x={xPos} y={y} width={w} height={plannedH} />
+      </g>
+    )
   }
 
   const labelStyle = (fontSize: number, color: string) => ({
@@ -755,6 +874,49 @@ export function DailyExpenseChart() {
         ))}
       </div>
 
+      {/* Filtro de país */}
+      <div>
+        <p className="text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
+          País
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {(['Todos', 'Brasil', 'Espanha'] as const).map(c => (
+            <button key={c} type="button" onClick={() => setCountryFilter(c)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: countryFilter === c ? 'var(--green-400)' : 'var(--bg-3)',
+                color: countryFilter === c ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${countryFilter === c ? 'var(--green-400)' : 'var(--border-1)'}`,
+              }}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filtro de tipo de gasto — real ou projetado (conta fixa ainda não paga) */}
+      <div>
+        <p className="text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-3)', fontSize: 10 }}>
+          Tipo de gasto
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {(['Todos', 'Real', 'Projetado'] as const).map(p => {
+            const active = plannedFilter === p
+            const activeColor = p === 'Projetado' ? PLANNED_COLOR : 'var(--green-400)'
+            return (
+              <button key={p} type="button" onClick={() => setPlannedFilter(p)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: active ? activeColor : 'var(--bg-3)',
+                  color: active ? '#fff' : 'var(--text-2)',
+                  border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
+                }}>
+                {p}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Filtro de categoria */}
       {categories.length > 0 && (
@@ -871,7 +1033,7 @@ export function DailyExpenseChart() {
           {accounts.map((acc, i) => {
             const color = PALETTE[i % PALETTE.length]
             const active = accountFilter === acc
-            const accRows = allData.filter(d => d.account === acc && d.value > 0 && matchesCategory(d.category, catPath))
+            const accRows = allData.filter(d => d.account === acc && d.value > 0 && matchesFilters(d))
             const accTotal = accRows.reduce((s, d) => s + d.value, 0)
             const accCurrency = accRows.some(d => isSpain(d)) ? 'Espanha' : 'Brasil'
             return (
@@ -953,14 +1115,26 @@ export function DailyExpenseChart() {
                   <SummaryStatCard
                     header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
                     bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
-                    stats={[{ label: barFilterLabel ?? 'Total', value: formatCurrency(selectedBarPoint.valueBrl, 'Brasil'), color: '#dc2626' }]}
+                    stats={buildCountryStats({
+                      total: selectedBarPoint.valueBrl,
+                      planned: selectedBarPoint.valueBrlPlanned,
+                      color: '#dc2626',
+                      country: 'Brasil',
+                      totalLabel: barFilterLabel ?? 'Total',
+                    })}
                   />
                 )}
                 {selectedBarPoint.valueEur > 0 && (
                   <SummaryStatCard
                     header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
                     bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
-                    stats={[{ label: barFilterLabel ?? 'Total', value: formatCurrency(selectedBarPoint.valueEur, 'Espanha'), color: '#b91c1c' }]}
+                    stats={buildCountryStats({
+                      total: selectedBarPoint.valueEur,
+                      planned: selectedBarPoint.valueEurPlanned,
+                      color: '#b91c1c',
+                      country: 'Espanha',
+                      totalLabel: barFilterLabel ?? 'Total',
+                    })}
                   />
                 )}
                 <SummaryStatCard stats={[{ label: 'Lançamentos', value: String(selectedBarQty ?? 0), color: 'var(--text-1)' }]} />
@@ -971,22 +1145,28 @@ export function DailyExpenseChart() {
                   <SummaryStatCard
                     header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
                     bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
-                    stats={[
-                      { label: 'Total', value: formatCurrency(totalBrl, 'Brasil'), color: '#dc2626', emphasis: 'primary' },
-                      ...(avgBrl > 0 ? [{ label: `Média / ${unitLabel}`, value: formatCurrency(avgBrl, 'Brasil'), color: '#dc2626', emphasis: 'secondary' as const }] : []),
-                      ...(maxBrl > 0 ? [{ label: `Maior ${unitLabel}`, value: formatCurrency(maxBrl, 'Brasil'), color: '#dc2626', emphasis: 'secondary' as const }] : []),
-                    ]}
+                    stats={buildCountryStats({
+                      total: totalBrl,
+                      planned: totalBrlPlanned,
+                      color: '#dc2626',
+                      country: 'Brasil',
+                      avg: avgBrl,
+                      max: maxBrl,
+                    })}
                   />
                 )}
                 {hasEur && (
                   <SummaryStatCard
                     header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
                     bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
-                    stats={[
-                      { label: 'Total', value: formatCurrency(totalEur, 'Espanha'), color: '#b91c1c', emphasis: 'primary' },
-                      ...(avgEur > 0 ? [{ label: `Média / ${unitLabel}`, value: formatCurrency(avgEur, 'Espanha'), color: '#b91c1c', emphasis: 'secondary' as const }] : []),
-                      ...(maxEur > 0 ? [{ label: `Maior ${unitLabel}`, value: formatCurrency(maxEur, 'Espanha'), color: '#b91c1c', emphasis: 'secondary' as const }] : []),
-                    ]}
+                    stats={buildCountryStats({
+                      total: totalEur,
+                      planned: totalEurPlanned,
+                      color: '#b91c1c',
+                      country: 'Espanha',
+                      avg: avgEur,
+                      max: maxEur,
+                    })}
                   />
                 )}
                 <SummaryStatCard stats={[{ label: 'Lançamentos', value: String(qty), color: 'var(--text-1)' }]} />
@@ -1046,10 +1226,24 @@ export function DailyExpenseChart() {
                   }
                   return String(label)
                 }}
-                formatter={(val, name) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(val, name, entry: any) => {
                   const v = val as number
-                  if (name === 'valueBrl') return [formatCurrency(v, 'Brasil'), 'R$ (Brasil)']
-                  if (name === 'valueEur') return [formatCurrency(v, 'Espanha'), '€ (Espanha)']
+                  const pt = entry?.payload as ChartPoint | undefined
+                  if (name === 'valueBrl') {
+                    const planned = pt?.valueBrlPlanned ?? 0
+                    const label = planned > 0.005
+                      ? `R$ (Brasil) — inclui ${formatCurrency(planned, 'Brasil')} projetado`
+                      : 'R$ (Brasil)'
+                    return [formatCurrency(v, 'Brasil'), label]
+                  }
+                  if (name === 'valueEur') {
+                    const planned = pt?.valueEurPlanned ?? 0
+                    const label = planned > 0.005
+                      ? `€ (Espanha) — inclui ${formatCurrency(planned, 'Espanha')} projetado`
+                      : '€ (Espanha)'
+                    return [formatCurrency(v, 'Espanha'), label]
+                  }
                   return [String(v), String(name)]
                 }}
               />
@@ -1098,6 +1292,12 @@ export function DailyExpenseChart() {
               <span className="flex items-center gap-1.5">
                 <span style={{ width: 10, height: 10, background: '#b91c1c', borderRadius: 2, display: 'inline-block' }} />
                 € (Espanha)
+              </span>
+            )}
+            {(totalBrlPlanned > 0 || totalEurPlanned > 0) && (
+              <span className="flex items-center gap-1.5">
+                <span style={{ width: 10, height: 10, background: PLANNED_COLOR, borderRadius: 2, display: 'inline-block' }} />
+                Projetado (conta fixa ainda não paga)
               </span>
             )}
             {viewMode === 'day' && (

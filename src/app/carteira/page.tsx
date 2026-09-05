@@ -4,14 +4,14 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { walletApi } from '@/lib/api'
 import type { WalletRecord } from '@/lib/api'
 import { useState, useEffect, useCallback } from 'react'
-import { PageHeader, Spinner } from '@/components/ui'
+import { PageHeader, Spinner, Modal } from '@/components/ui'
 import { billsToPayApi, cashReceivableApi } from '@/lib/api'
 import { formatCurrency, currentYearMonth, formatYearMonth } from '@/lib/utils'
 import { loadSaldoFinalYm } from '@/lib/wallet'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import {
-  Plus, Trash2, Edit2, Check, X, GripVertical,
+  Plus, Trash2, Edit2, GripVertical,
   TrendingUp, TrendingDown, Wallet, RefreshCw, ChevronDown, ChevronRight,
 } from 'lucide-react'
 
@@ -58,19 +58,6 @@ interface WalletData {
 }
 
 const STORAGE_KEY = 'finance_wallet'
-function loadContasBancariasTotal(): number {
-  try {
-    const wallet: WalletData = loadWalletFromStorage()
-    const group = wallet.groups.find(g =>
-      g.label.trim().toLowerCase() === 'contas bancárias' ||
-      g.label.trim().toLowerCase() === 'contas bancarias'
-    )
-    if (!group) return 0
-    return group.boxes
-      .filter(b => b.currency === 'Brasil')
-      .reduce((s, b) => s + (parseFloat(b.value) || 0), 0)
-  } catch { return 0 }
-}
 
 const BOX_COLORS = [
   '#16a34a', '#2563eb', '#7c3aed', '#db2777',
@@ -152,82 +139,186 @@ function EditableLabel({ value, onSave, className, style }: {
   )
 }
 
-// ─── Box Card ────────────────────────────────────────────────────────────────
+// ─── Box Card (somente leitura — toda ação fica dentro do modal de edição) ────
 
-function BoxCard({ box, onUpdate, onDelete }: {
+function BoxCard({ box, dragging, dragOverActive, onClick, onDragStart, onDragOver, onDrop, onDragEnd }: {
   box: WalletBox
-  onUpdate: (b: WalletBox) => void
-  onDelete: () => void
+  dragging: boolean
+  dragOverActive: boolean
+  onClick: () => void
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  onDragEnd: () => void
 }) {
-  const [colorOpen, setColorOpen] = useState(false)
+  // `draggable` só fica ativo enquanto o usuário segura a alça (GripVertical) —
+  // deixar o card inteiro sempre "draggable" faz o navegador às vezes interpretar
+  // um clique normal como o início de um arraste (mousedown + micro-movimento) e
+  // engolir o evento de click, exigindo um segundo toque pra abrir o modal.
+  const [dragEnabled, setDragEnabled] = useState(false)
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3 relative group"
-      style={{ background: `${box.color}18`, border: `1px solid ${box.color}44`, borderLeft: `3px solid ${box.color}` }}
+      draggable={dragEnabled}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={() => { setDragEnabled(false); onDragEnd() }}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+      title="Toque para editar"
+      className="rounded-xl p-4 flex flex-col gap-3 relative group cursor-pointer transition-all"
+      style={{
+        background: `${box.color}18`,
+        border: `1px solid ${dragOverActive ? box.color : `${box.color}44`}`,
+        borderLeft: `3px solid ${box.color}`,
+        opacity: dragging ? 0.4 : 1,
+        outline: dragOverActive ? `2px dashed ${box.color}` : 'none',
+        outlineOffset: 2,
+      }}
     >
-      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Color picker */}
-          <div className="relative flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setColorOpen(v => !v)}
-              className="w-4 h-4 rounded-full border-2 flex-shrink-0"
-              style={{ background: box.color, borderColor: `${box.color}88` }}
-              title="Mudar cor"
-            />
-            {colorOpen && (
-              <div className="absolute top-6 left-0 z-10 p-2 rounded-lg grid grid-cols-4 gap-1"
-                style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                {BOX_COLORS.map(c => (
-                  <button key={c} type="button"
-                    onClick={() => { onUpdate({ ...box, color: c }); setColorOpen(false) }}
-                    className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-110"
-                    style={{ background: c, borderColor: c === box.color ? 'white' : 'transparent' }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          <EditableLabel
-            value={box.label}
-            onSave={label => onUpdate({ ...box, label })}
-            className="font-medium text-sm truncate"
-            style={{ color: 'var(--text-1)' }}
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: box.color }} />
+          <span className="font-medium text-sm truncate" style={{ color: 'var(--text-1)' }}>{box.label}</span>
+        </div>
+        <span
+          className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-70 transition-opacity"
+          style={{ color: 'var(--text-3)' }}
+          title="Arraste pra reordenar"
+          onMouseDown={e => { e.stopPropagation(); setDragEnabled(true) }}
+          onMouseUp={() => setDragEnabled(false)}
+          onClick={e => e.stopPropagation()}
+        >
+          <Edit2 size={12} />
+          <GripVertical size={14} style={{ cursor: 'grab' }} />
+        </span>
+      </div>
+
+      <span className="text-xs font-medium inline-flex items-center gap-1.5"
+        style={{ color: box.currency === 'Espanha' ? 'var(--amber)' : 'var(--text-3)' }}>
+        {box.currency === 'Espanha' ? <><FlagES size={12} /> Espanha</> : <><FlagBR size={12} /> Brasil</>}
+      </span>
+
+      <p className="font-mono font-bold" style={{ fontSize: 20, color: 'var(--text-1)' }}>
+        {formatCurrency(parseFloat(box.value) || 0, box.currency)}
+      </p>
+    </div>
+  )
+}
+
+// ─── Box Edit Modal — único lugar onde a caixinha pode ser alterada ou excluída
+
+function BoxEditModal({ box, onSave, onDelete, onClose }: {
+  box: WalletBox | null
+  onSave: (b: WalletBox) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const [label, setLabel] = useState('')
+  const [value, setValue] = useState('0')
+  const [currency, setCurrency] = useState<'Brasil' | 'Espanha'>('Brasil')
+  const [color, setColor] = useState(BOX_COLORS[0])
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  useEffect(() => {
+    if (!box) return
+    setLabel(box.label)
+    setValue(box.value)
+    setCurrency(box.currency)
+    setColor(box.color)
+    setConfirmingDelete(false)
+  }, [box])
+
+  if (!box) return null
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!box || !label.trim()) return
+    onSave({ ...box, label: label.trim(), value, currency, color })
+  }
+
+  return (
+    <Modal open={!!box} onClose={onClose} title="Editar caixinha" size="sm">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="label">Nome</label>
+          <input
+            className="input"
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            required
           />
         </div>
-        <button type="button" onClick={onDelete}
-          className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--red-dim)]"
-          style={{ color: 'var(--red)' }}>
-          <Trash2 size={13} />
-        </button>
-      </div>
 
-      {/* Currency toggle */}
-      <div className="flex gap-1">
-        {(['Brasil', 'Espanha'] as const).map(c => (
-          <button key={c} type="button"
-            onClick={() => onUpdate({ ...box, currency: c })}
-            className="flex-1 py-0.5 rounded text-xs font-medium transition-all inline-flex items-center justify-center gap-1"
-            style={{
-              background: box.currency === c ? `${box.color}33` : 'transparent',
-              color: box.currency === c ? box.color : 'var(--text-3)',
-              border: `1px solid ${box.currency === c ? box.color + '66' : 'transparent'}`,
-            }}>
-            {c === 'Brasil' ? <><FlagBR size={14} /> R$</> : <><FlagES size={14} /> €</>}
-          </button>
-        ))}
-      </div>
+        <div>
+          <label className="label">Moeda</label>
+          <div className="flex gap-2">
+            {(['Brasil', 'Espanha'] as const).map(c => (
+              <button key={c} type="button"
+                onClick={() => setCurrency(c)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-all inline-flex items-center justify-center gap-1.5"
+                style={{
+                  background: currency === c ? `${color}22` : 'var(--bg-3)',
+                  color: currency === c ? color : 'var(--text-3)',
+                  border: `1px solid ${currency === c ? `${color}66` : 'var(--border-1)'}`,
+                }}>
+                {c === 'Brasil' ? <><FlagBR size={15} /> Real (R$)</> : <><FlagES size={15} /> Euro (€)</>}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* Value input */}
-      <CurrencyInput
-        value={box.value}
-        country={box.currency}
-        onChange={v => onUpdate({ ...box, value: v })}
-      />
-    </div>
+        <div>
+          <label className="label">Valor</label>
+          <CurrencyInput value={value} country={currency} onChange={setValue} autoFocus />
+        </div>
+
+        <div>
+          <label className="label">Cor</label>
+          <div className="flex flex-wrap gap-2">
+            {BOX_COLORS.map(c => (
+              <button key={c} type="button"
+                onClick={() => setColor(c)}
+                className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
+                style={{ background: c, borderColor: c === color ? 'var(--text-1)' : 'transparent' }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+          {confirmingDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium" style={{ color: 'var(--red)' }}>Excluir de vez?</span>
+              <button type="button" onClick={onDelete}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                style={{ background: 'var(--red)', color: '#fff' }}>
+                Sim, excluir
+              </button>
+              <button type="button" onClick={() => setConfirmingDelete(false)}
+                className="px-2.5 py-1.5 rounded-lg text-xs"
+                style={{ color: 'var(--text-3)' }}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmingDelete(true)}
+              className="flex items-center gap-1.5 text-xs font-medium"
+              style={{ color: 'var(--red)' }}>
+              <Trash2 size={13} /> Excluir caixinha
+            </button>
+          )}
+          {!confirmingDelete && (
+            <button type="submit" className="btn-primary px-4">
+              Salvar
+            </button>
+          )}
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -239,6 +330,10 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
   onDelete: () => void
   onAddBox: () => void
 }) {
+  const [editingBox, setEditingBox] = useState<WalletBox | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+
   const total = group.boxes.reduce((s, b) => {
     const v = parseFloat(b.value) || 0
     return s + (b.currency === 'Espanha' ? 0 : v) // soma BRL direto
@@ -246,6 +341,25 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
   const totalEur = group.boxes.reduce((s, b) => {
     return s + (b.currency === 'Espanha' ? parseFloat(b.value) || 0 : 0)
   }, 0)
+
+  function reorderBoxes(from: number, to: number) {
+    if (from === to) return
+    const boxes = [...group.boxes]
+    const [moved] = boxes.splice(from, 1)
+    boxes.splice(to, 0, moved)
+    onUpdate({ ...group, boxes })
+  }
+
+  function handleSaveBox(updated: WalletBox) {
+    onUpdate({ ...group, boxes: group.boxes.map(b => b.id === updated.id ? updated : b) })
+    setEditingBox(null)
+  }
+
+  function handleDeleteBox() {
+    if (!editingBox) return
+    onUpdate({ ...group, boxes: group.boxes.filter(b => b.id !== editingBox.id) })
+    setEditingBox(null)
+  }
 
   return (
     <div className="card overflow-hidden">
@@ -288,18 +402,20 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
       {!group.collapsed && (
         <div className="p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {group.boxes.map(box => (
+            {group.boxes.map((box, idx) => (
               <BoxCard
                 key={box.id}
                 box={box}
-                onUpdate={updated => onUpdate({
-                  ...group,
-                  boxes: group.boxes.map(b => b.id === box.id ? updated : b),
-                })}
-                onDelete={() => onUpdate({
-                  ...group,
-                  boxes: group.boxes.filter(b => b.id !== box.id),
-                })}
+                dragging={dragIndex === idx}
+                dragOverActive={overIndex === idx && dragIndex !== null && dragIndex !== idx}
+                onClick={() => setEditingBox(box)}
+                onDragStart={() => setDragIndex(idx)}
+                onDragOver={e => { e.preventDefault(); setOverIndex(idx) }}
+                onDrop={() => {
+                  if (dragIndex !== null) reorderBoxes(dragIndex, idx)
+                  setDragIndex(null); setOverIndex(null)
+                }}
+                onDragEnd={() => { setDragIndex(null); setOverIndex(null) }}
               />
             ))}
             {/* Add box button */}
@@ -312,6 +428,13 @@ function GroupSection({ group, onUpdate, onDelete, onAddBox }: {
           </div>
         </div>
       )}
+
+      <BoxEditModal
+        box={editingBox}
+        onSave={handleSaveBox}
+        onDelete={handleDeleteBox}
+        onClose={() => setEditingBox(null)}
+      />
     </div>
   )
 }

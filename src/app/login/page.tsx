@@ -5,6 +5,7 @@ import { AUTH_USER, AUTH_PASSWORD, createSession, saveSession, isAuthenticated }
 import { Spinner } from '@/components/ui'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
+import { CheckForUpdateButton } from '@/components/ui/AppServiceWorker'
 import { LogIn, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
@@ -96,8 +97,9 @@ export default function LoginPage() {
         <p className="text-center text-xs mt-6" style={{ color: 'var(--text-3)' }}>
           Sessão expira após 8 horas
         </p>
-        <div className="flex justify-center mt-3">
+        <div className="flex items-center justify-center gap-2 mt-3">
           <AppVersionBadge />
+          <CheckForUpdateButton />
         </div>
       </div>
     </div>

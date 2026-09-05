@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { billsToPayApi } from '@/lib/api'
-import { currentYearMonth } from '@/lib/utils'
+import { currentYearMonth, todayDateInputValue } from '@/lib/utils'
 import type { Account } from '@/types'
 import { Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
@@ -17,7 +17,7 @@ interface BulkPayModalProps {
 export function BulkPayModal({ accountMap, onSuccess, onClose }: BulkPayModalProps) {
   const [selectedAccount, setSelectedAccount] = useState('')
   const [yearMonth, setYearMonth] = useState(currentYearMonth())
-  const [payDay, setPayDay] = useState(() => new Date().toISOString().slice(0, 10))
+  const [payDay, setPayDay] = useState(() => todayDateInputValue())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)

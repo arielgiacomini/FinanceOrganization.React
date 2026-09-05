@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { billsToPayApi, accountsApi, categoriesApi } from '@/lib/api'
-import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth } from '@/lib/utils'
+import { getFrequences, getRegistrationTypes, generateYearMonthOptions, currentYearMonth, todayDateInputValue, safeDateInputValue } from '@/lib/utils'
 import type { BillToPay, Account } from '@/types'
 import { Spinner, Modal } from '@/components/ui'
 import { Plus, Minus, RefreshCw, LineChart, Lightbulb, Check } from 'lucide-react'
@@ -24,11 +24,7 @@ interface BillToPayFormProps {
 
 const DRAFT_KEY = 'finance_billtopay_draft'
 
-function safeDate(value: string | undefined | null): string {
-  if (!value) return ''
-  const d = new Date(value)
-  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
-}
+const safeDate = safeDateInputValue
 
 function saveDraft(form: Record<string, unknown>) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
@@ -450,7 +446,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
                       ...f,
                       hasPay: value,
                       // Auto-preenche payDay com hoje ao marcar como Pago (se estiver vazio)
-                      payDay: value && !f.payDay ? new Date().toISOString().slice(0, 10) : f.payDay,
+                      payDay: value && !f.payDay ? todayDateInputValue() : f.payDay,
                     }))}
                     className="flex-1 py-2 rounded-lg border text-sm font-medium transition-all"
                     style={{
