@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from 'react'
 import { dashboardApi, categoriesApi, billsToPayApi } from '@/lib/api'
 import type { DailyExpenseRecord } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -11,7 +11,11 @@ import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
-import { loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao, loadDespesaMesCorProjetado } from '@/lib/wallet'
+import {
+  loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao, loadDespesaMesCorProjetado,
+  loadDespesaVerRegistrosOrder, loadDespesaVerRegistrosHidden, DESPESA_VER_REGISTROS_FIELDS,
+} from '@/lib/wallet'
+import type { DespesaVerRegistrosFieldKey } from '@/lib/wallet'
 import type { BillToPay } from '@/types'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -19,7 +23,7 @@ import {
 } from 'recharts'
 import {
   RefreshCw, Pencil, Trash2, CircleDollarSign,
-  History, CheckCircle2, AlertCircle,
+  History, CheckCircle2, AlertCircle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 const MONTH_NAMES = [
@@ -75,6 +79,9 @@ const PLANNED_REGISTRATION_TYPE = 'Conta/Fatura Fixa'
 function isPlanned(r: DailyExpenseRecord) {
   return r.registrationType === PLANNED_REGISTRATION_TYPE && !r.hasPay
 }
+
+const DESPESA_VER_REGISTROS_FIELD_LABELS: Record<DespesaVerRegistrosFieldKey, string> =
+  Object.fromEntries(DESPESA_VER_REGISTROS_FIELDS.map(f => [f.value, f.label])) as Record<DespesaVerRegistrosFieldKey, string>
 
 interface SummaryStat {
   label: string
@@ -167,8 +174,16 @@ export function DailyExpenseChart() {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [detailsBills, setDetailsBills] = useState<BillToPay[]>([])
   const [detailsLoading, setDetailsLoading] = useState(false)
-  const [showDetails, setShowDetails] = useState(true)
   const [hideZero, setHideZero] = useState(false)
+  // Ver registros: clicar na linha expande os campos extras — mesmo padrão do
+  // modal "Registros Relacionados" de Contas a Pagar. Quais campos aparecem e em
+  // que ordem é configurável em Configurações → Gráfico.
+  const [expandedDetailIds, setExpandedDetailIds] = useState<Record<string, boolean>>({})
+  const [verRegistrosOrder] = useState<DespesaVerRegistrosFieldKey[]>(() => loadDespesaVerRegistrosOrder())
+  const [verRegistrosHidden] = useState<Record<DespesaVerRegistrosFieldKey, boolean>>(() => loadDespesaVerRegistrosHidden())
+  function toggleExpandedDetail(id: string) {
+    setExpandedDetailIds(prev => ({ ...prev, [id]: !prev[id] }))
+  }
   const [barFilterLabel, setBarFilterLabel] = useState<string | null>(null)
   const [barSelection, setBarSelection] = useState<{ yearMonth: string | null; day: number | null } | null>(null)
   // ref para que loadDetailBills leia o filtro sem precisar estar nas deps
@@ -536,6 +551,11 @@ export function DailyExpenseChart() {
     }
   }
 
+  // Fecha os detalhes expandidos sempre que a lista de registros é recarregada
+  useEffect(() => {
+    setExpandedDetailIds({})
+  }, [detailsBills])
+
   function toggleDetails() {
     if (!detailsOpen) loadDetailBills()
     setDetailsOpen(v => !v)
@@ -599,17 +619,12 @@ export function DailyExpenseChart() {
       .sort((a, b) => {
       switch (sortCol) {
         case 'name':         return dir * (a.name ?? '').localeCompare(b.name ?? '', 'pt-BR')
-        case 'country':      return dir * (a.country ?? '').localeCompare(b.country ?? '', 'pt-BR')
-        case 'account':      return dir * (a.account ?? '').localeCompare(b.account ?? '', 'pt-BR')
-        case 'yearMonth':    return dir * ((a.yearMonth ?? '') > (b.yearMonth ?? '') ? 1 : -1)
         case 'value':        return dir * (a.value - b.value)
-        case 'dueDate':      return dir * ((a.dueDate ?? '') > (b.dueDate ?? '') ? 1 : -1)
         case 'purchaseDate': {
           const pa = a.purchaseDate ?? a.dueDate ?? ''
           const pb = b.purchaseDate ?? b.dueDate ?? ''
           return dir * (pa > pb ? 1 : -1)
         }
-        case 'payDay':       return dir * ((a.payDay ?? '') > (b.payDay ?? '') ? 1 : -1)
         case 'status':       return dir * ((a.hasPay ? 1 : 0) - (b.hasPay ? 1 : 0))
         default:             return 0
       }
@@ -739,6 +754,26 @@ export function DailyExpenseChart() {
         <PlannedOverlay x={xPos} y={y} width={w} height={plannedH} />
       </g>
     )
+  }
+
+  // Valor de um campo extra do painel expandido em "Ver registros" — quais campos
+  // aparecem e em que ordem vem de Configurações → Gráfico.
+  function renderVerRegistrosField(key: DespesaVerRegistrosFieldKey, b: BillToPay) {
+    switch (key) {
+      case 'country':
+        return b.country ? (
+          <span className="inline-flex items-center gap-1.5">
+            {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
+            {normalizeCountry(b.country)}
+          </span>
+        ) : '—'
+      case 'account': return b.account ?? '—'
+      case 'category': return b.category ?? '—'
+      case 'yearMonth': return b.yearMonth ?? '—'
+      case 'dueDate': return b.dueDate ? formatDate(b.dueDate) : '—'
+      case 'payDay': return b.payDay ? formatDate(b.payDay) : '—'
+      case 'additionalMessage': return b.additionalMessage || null
+    }
   }
 
   const labelStyle = (fontSize: number, color: string) => ({
@@ -1340,12 +1375,6 @@ export function DailyExpenseChart() {
               <div className="mt-3 overflow-hidden rounded-xl" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b" style={{ borderColor: 'var(--border-1)' }}>
                   <button
-                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showDetails ? 'border-[var(--green-border)] text-[var(--green-400)] bg-[var(--green-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
-                    onClick={() => setShowDetails(v => !v)}
-                  >
-                    {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
-                  </button>
-                  <button
                     className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${hideZero ? 'border-[var(--amber-dim)] text-[var(--amber)] bg-[var(--amber-dim)]' : 'border-[var(--border-1)] text-[var(--text-3)]'}`}
                     onClick={() => setHideZero(v => !v)}
                   >
@@ -1360,19 +1389,15 @@ export function DailyExpenseChart() {
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border-1)', background: 'var(--bg-2)' }}>
                         {([
-                          { label: 'Nome',       key: 'name'         },
-                          { label: 'País',       key: 'country'      },
-                          { label: 'Conta',      key: 'account'      },
-                          { label: 'Mês/Ano',    key: 'yearMonth'    },
-                          { label: 'Valor',      key: 'value'        },
-                          { label: 'Vencimento', key: 'dueDate'      },
-                          { label: 'Data Compra',key: 'purchaseDate' },
-                          { label: 'Pago em',    key: 'payDay'       },
-                          { label: 'Status',     key: 'status'       },
-                          { label: 'Ações',      key: null           },
-                        ] as { label: string; key: string | null }[]).map(({ label, key }) => (
+                          { label: '',            key: null           },
+                          { label: 'Descrição',   key: 'name'         },
+                          { label: 'Valor',       key: 'value'        },
+                          { label: 'Data de Compra', key: 'purchaseDate' },
+                          { label: 'Status',      key: 'status'       },
+                          { label: 'Ações',       key: null           },
+                        ] as { label: string; key: string | null }[]).map(({ label, key }, i) => (
                           <th
-                            key={label}
+                            key={`${label}-${i}`}
                             className="px-4 py-3 text-left text-xs font-medium"
                             style={{
                               color: key && sortCol === key ? 'var(--text-1)' : 'var(--text-3)',
@@ -1399,49 +1424,40 @@ export function DailyExpenseChart() {
                     <tbody>
                       {detailsLoading ? (
                         <tr>
-                          <td colSpan={10} className="py-12 text-center">
+                          <td colSpan={6} className="py-12 text-center">
                             <div className="flex justify-center"><Spinner /></div>
                           </td>
                         </tr>
                       ) : sortedBills.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+                          <td colSpan={6} className="py-10 text-center text-sm" style={{ color: 'var(--text-3)' }}>
                             Nenhum registro encontrado
                           </td>
                         </tr>
                       ) : sortedBills.map(b => {
                         const currency = normalizeCountry(b.country) === 'Espanha' ? 'Espanha' : 'Brasil'
                         const bg = b.hasPay ? '#1b2e1d' : 'var(--bg-2)'
+                        const isExpanded = !!expandedDetailIds[b.id]
+                        const visibleFields = verRegistrosOrder.filter(k => !verRegistrosHidden[k])
                         return (
-                          <TRow key={b.id} bg={bg}>
-                            <Td>
-                              <p className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>{b.name}</p>
-                              {showDetails && b.additionalMessage && (
-                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{b.additionalMessage}</p>
-                              )}
-                            </Td>
-                              <Td>
-                                {b.country ? (
-                                  <div className="flex items-center gap-1.5">
-                                    {normalizeCountry(b.country) === 'Espanha'
-                                      ? <FlagEspanha size={15} />
-                                      : <FlagBrasil size={15} />}
-                                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>
-                                      {normalizeCountry(b.country)}
-                                    </span>
-                                  </div>
-                                ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                          <Fragment key={b.id}>
+                            {/* Clicar na linha expande/colapsa os campos extras — mesmo padrão do
+                                modal "Registros Relacionados" de Contas a Pagar */}
+                            <TRow bg={bg} onClick={() => toggleExpandedDetail(b.id)} style={{ cursor: 'pointer' }}>
+                              <Td style={{ width: 24 }}>
+                                <span style={{ color: 'var(--text-3)' }}>
+                                  {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                </span>
                               </Td>
-                              <Td className="text-xs">{b.account ?? '—'}</Td>
-                              <Td className="text-xs">{b.yearMonth ?? '—'}</Td>
+                              <Td>
+                                <p className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>{b.name}</p>
+                              </Td>
                               <Td>
                                 <span className="font-mono text-sm" style={{ color: b.hasPay ? 'var(--green-400)' : 'var(--red)' }}>
                                   {formatCurrency(b.value, currency)}
                                 </span>
                               </Td>
-                              <Td className="text-xs">{formatDate(b.dueDate)}</Td>
                               <Td className="text-xs">{b.purchaseDate ? formatDate(b.purchaseDate) : <span style={{ color: 'var(--text-3)' }}>—</span>}</Td>
-                              <Td className="text-xs">{b.payDay ? formatDate(b.payDay) : <span style={{ color: 'var(--text-3)' }}>—</span>}</Td>
                               <Td>
                                 {b.hasPay
                                   ? <span className="badge-paid"><CheckCircle2 size={10} />Pago</span>
@@ -1453,31 +1469,52 @@ export function DailyExpenseChart() {
                                     <button title="Pagar"
                                       className="p-1.5 rounded-md transition-colors hover:bg-[var(--green-dim)]"
                                       style={{ color: 'var(--green-400)' }}
-                                      onClick={() => setPayTarget(b)}>
+                                      onClick={e => { e.stopPropagation(); setPayTarget(b) }}>
                                       <CircleDollarSign size={15} />
                                     </button>
                                   )}
                                   <button title="Histórico"
                                     className="p-1.5 rounded-md transition-colors hover:bg-[var(--blue-dim)]"
                                     style={{ color: 'var(--blue)' }}
-                                    onClick={() => setHistoryTarget(b)}>
+                                    onClick={e => { e.stopPropagation(); setHistoryTarget(b) }}>
                                     <History size={15} />
                                   </button>
                                   <button title="Editar"
                                     className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-4)]"
                                     style={{ color: 'var(--text-3)' }}
-                                    onClick={() => setEditTarget(b)}>
+                                    onClick={e => { e.stopPropagation(); setEditTarget(b) }}>
                                     <Pencil size={15} />
                                   </button>
                                   <button title="Excluir"
                                     className="p-1.5 rounded-md transition-colors hover:bg-[var(--red-dim)]"
                                     style={{ color: 'var(--text-3)' }}
-                                    onClick={() => setDeleteTarget(b)}>
+                                    onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}>
                                     <Trash2 size={15} />
                                   </button>
                                 </div>
                               </Td>
-                          </TRow>
+                            </TRow>
+                            {isExpanded && (
+                              <TRow bg={bg}>
+                                <Td colSpan={6}>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-xs py-1">
+                                    {visibleFields.filter(k => k !== 'additionalMessage').map(k => (
+                                      <div key={k}>
+                                        <span style={{ color: 'var(--text-3)' }}>{DESPESA_VER_REGISTROS_FIELD_LABELS[k]}: </span>
+                                        <span style={{ color: 'var(--text-2)' }}>{renderVerRegistrosField(k, b)}</span>
+                                      </div>
+                                    ))}
+                                    {visibleFields.includes('additionalMessage') && b.additionalMessage && (
+                                      <div className="col-span-full">
+                                        <span style={{ color: 'var(--text-3)' }}>Observação: </span>
+                                        <span style={{ color: 'var(--text-2)' }}>{b.additionalMessage}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </Td>
+                              </TRow>
+                            )}
+                          </Fragment>
                         )
                       })}
                     </tbody>

@@ -27,9 +27,11 @@ import {
   loadQuickBillEnabledFields, loadQuickBillDefaultValues,
   CONTAS_PAGAR_COLUMNS, loadContasPagarColumnsOrder, loadContasPagarColumnsHidden,
   CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS, loadContasPagarAccountStyle,
+  DESPESA_VER_REGISTROS_FIELDS, loadDespesaVerRegistrosOrder, loadDespesaVerRegistrosHidden,
 } from '@/lib/wallet'
 import type {
   ContasPagarSortCol, ContasReceberSortCol, QuickBillFieldKey, ContasPagarColumnKey, ContasPagarAccountStyle,
+  DespesaVerRegistrosFieldKey,
 } from '@/lib/wallet'
 
 // ─── Chip list ────────────────────────────────────────────────────────────────
@@ -708,6 +710,14 @@ function saveContasPagarColumnsConfigLocal(order: string[], hidden: string[]) {
   localStorage.setItem(CONTAS_PAGAR_COLUMNS_CONFIG_KEY, JSON.stringify({ order, hidden }))
 }
 
+// ─── Despesas por Mês/Ano — "Ver registros" — campos do painel expandido — localStorage ──
+
+const DESPESA_VER_REGISTROS_CONFIG_KEY = 'finance_despesa_ver_registros_config'
+
+function saveDespesaVerRegistrosConfigLocal(order: string[], hidden: string[]) {
+  localStorage.setItem(DESPESA_VER_REGISTROS_CONFIG_KEY, JSON.stringify({ order, hidden }))
+}
+
 // ─── Contas a Pagar — identidade visual por conta na tabela — localStorage ────
 
 const CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY = 'finance_contas_pagar_account_style_config'
@@ -793,6 +803,10 @@ function ConfiguracoesInner() {
 
   const [contasPagarColumnsOrder,  setContasPagarColumnsOrder]  = useState<ContasPagarColumnKey[]>(CONTAS_PAGAR_COLUMNS.map(c => c.value))
   const [contasPagarColumnsHidden, setContasPagarColumnsHidden] = useState<Record<ContasPagarColumnKey, boolean>>({} as Record<ContasPagarColumnKey, boolean>)
+
+  const [despesaVerRegistrosOrder,  setDespesaVerRegistrosOrder]  = useState<DespesaVerRegistrosFieldKey[]>(DESPESA_VER_REGISTROS_FIELDS.map(f => f.value))
+  const [despesaVerRegistrosHidden, setDespesaVerRegistrosHidden] = useState<Record<DespesaVerRegistrosFieldKey, boolean>>({} as Record<DespesaVerRegistrosFieldKey, boolean>)
+  const [despesaVerRegistrosRecord, setDespesaVerRegistrosRecord] = useState<WalletRecord | null>(null)
   const [contasPagarColumnsRecord, setContasPagarColumnsRecord] = useState<WalletRecord | null>(null)
 
   const [contasPagarAccountStyle,       setContasPagarAccountStyle]       = useState<ContasPagarAccountStyle>('tint')
@@ -869,6 +883,9 @@ function ConfiguracoesInner() {
 
     setContasPagarColumnsOrder(loadContasPagarColumnsOrder())
     setContasPagarColumnsHidden(loadContasPagarColumnsHidden())
+
+    setDespesaVerRegistrosOrder(loadDespesaVerRegistrosOrder())
+    setDespesaVerRegistrosHidden(loadDespesaVerRegistrosHidden())
 
     setContasPagarAccountStyle(loadContasPagarAccountStyle())
 
@@ -953,6 +970,17 @@ function ConfiguracoesInner() {
           saveContasPagarColumnsConfigLocal(c.order ?? [], c.hidden ?? [])
           setContasPagarColumnsOrder(loadContasPagarColumnsOrder())
           setContasPagarColumnsHidden(loadContasPagarColumnsHidden())
+        } catch {}
+      }
+
+      const despesaVerRegistrosRec = records.find(r => r.walletKey === 'finance_despesa_ver_registros_config')
+      setDespesaVerRegistrosRecord(despesaVerRegistrosRec ?? null)
+      if (despesaVerRegistrosRec?.walletValue) {
+        try {
+          const c = JSON.parse(despesaVerRegistrosRec.walletValue)
+          saveDespesaVerRegistrosConfigLocal(c.order ?? [], c.hidden ?? [])
+          setDespesaVerRegistrosOrder(loadDespesaVerRegistrosOrder())
+          setDespesaVerRegistrosHidden(loadDespesaVerRegistrosHidden())
         } catch {}
       }
 
@@ -1112,6 +1140,23 @@ function ConfiguracoesInner() {
       }),
     })
 
+    // Despesas por Mês/Ano — campos do painel expandido do "Ver registros" → localStorage + API
+    const hiddenVerRegistrosList = DESPESA_VER_REGISTROS_FIELDS.map(f => f.value).filter(v => despesaVerRegistrosHidden[v])
+    saveDespesaVerRegistrosConfigLocal(despesaVerRegistrosOrder, hiddenVerRegistrosList)
+    const despesaVerRegistrosVal = JSON.stringify({ order: despesaVerRegistrosOrder, hidden: hiddenVerRegistrosList })
+    tasks.push({
+      label: 'Campos do "Ver registros" — Despesas por Mês/Ano',
+      promise: (despesaVerRegistrosRecord
+        ? walletApi.edit(despesaVerRegistrosRecord.id, 'finance_despesa_ver_registros_config', despesaVerRegistrosVal, despesaVerRegistrosRecord.creationDate)
+        : walletApi.register('finance_despesa_ver_registros_config', despesaVerRegistrosVal)
+      ).then(res => {
+        if (!despesaVerRegistrosRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setDespesaVerRegistrosRecord(newRec)
+        }
+      }),
+    })
+
     // Contas a Pagar — identidade visual por conta na tabela → localStorage + API
     saveContasPagarAccountStyleConfigLocal(contasPagarAccountStyle)
     const contasPagarAccountStyleVal = JSON.stringify({ style: contasPagarAccountStyle })
@@ -1225,6 +1270,20 @@ function ConfiguracoesInner() {
 
   function toggleContasPagarColumnHidden(key: ContasPagarColumnKey) {
     setContasPagarColumnsHidden(h => ({ ...h, [key]: !h[key] }))
+  }
+
+  function moveDespesaVerRegistrosField(index: number, dir: -1 | 1) {
+    setDespesaVerRegistrosOrder(order => {
+      const target = index + dir
+      if (target < 0 || target >= order.length) return order
+      const next = [...order]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
+  function toggleDespesaVerRegistrosFieldHidden(key: DespesaVerRegistrosFieldKey) {
+    setDespesaVerRegistrosHidden(h => ({ ...h, [key]: !h[key] }))
   }
 
   return (
@@ -1747,6 +1806,63 @@ function ConfiguracoesInner() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Despesas por Mês/Ano — campos do painel expandido do "Ver registros" */}
+          {activeTab === 'grafico' && (
+            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+              <Section
+                title='Campos do "Ver registros" — Despesas por Mês/Ano'
+                subtitle='A linha principal (Descrição/Valor/Data de Compra/Status/Ações) é fixa, igual ao modal "Registros Relacionados" de Contas a Pagar. Escolha quais campos extras aparecem ao clicar numa linha para expandi-la, e em que ordem.'
+              >
+                <div>
+                  {despesaVerRegistrosOrder.map((key, idx) => {
+                    const field = DESPESA_VER_REGISTROS_FIELDS.find(f => f.value === key)
+                    if (!field) return null
+                    const hidden = !!despesaVerRegistrosHidden[key]
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center gap-3 py-2.5"
+                        style={{ borderBottom: idx < despesaVerRegistrosOrder.length - 1 ? '1px solid var(--border-1)' : undefined }}
+                      >
+                        <div className="flex flex-col flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => moveDespesaVerRegistrosField(idx, -1)}
+                            disabled={idx === 0}
+                            className="p-0.5 rounded disabled:opacity-20"
+                            style={{ color: 'var(--text-3)' }}
+                          >
+                            <ArrowUp size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveDespesaVerRegistrosField(idx, 1)}
+                            disabled={idx === despesaVerRegistrosOrder.length - 1}
+                            className="p-0.5 rounded disabled:opacity-20"
+                            style={{ color: 'var(--text-3)' }}
+                          >
+                            <ArrowDown size={13} />
+                          </button>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
+                          <input
+                            type="checkbox"
+                            checked={!hidden}
+                            onChange={() => toggleDespesaVerRegistrosFieldHidden(key)}
+                            className="w-4 h-4 rounded accent-green-500"
+                          />
+                          <span className="text-sm font-medium" style={{ color: hidden ? 'var(--text-3)' : 'var(--text-1)' }}>
+                            {field.label}
+                          </span>
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Section>
             </div>
           )}
 

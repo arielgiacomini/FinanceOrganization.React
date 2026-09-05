@@ -255,6 +255,52 @@ export function loadDespesaMesCorProjetado(): string {
   return v && /^#[0-9A-Fa-f]{6}$/.test(v) ? v : DESPESA_MES_DEFAULT_COR_PROJETADO
 }
 
+// ─── Despesas por Mês/Ano — "Ver registros" — campos do painel expandido ───────
+// A linha principal (Descrição/Valor/Data de Compra/Status/Ações) segue sempre o
+// mesmo padrão do modal "Registros Relacionados" de Contas a Pagar — só os campos
+// extras, mostrados ao expandir a linha, são configuráveis aqui.
+
+const DESPESA_VER_REGISTROS_CONFIG_KEY = 'finance_despesa_ver_registros_config'
+
+export type DespesaVerRegistrosFieldKey =
+  | 'country' | 'account' | 'category' | 'yearMonth' | 'dueDate' | 'payDay' | 'additionalMessage'
+
+export const DESPESA_VER_REGISTROS_FIELDS: { value: DespesaVerRegistrosFieldKey; label: string }[] = [
+  { value: 'country',           label: 'País' },
+  { value: 'account',           label: 'Conta' },
+  { value: 'category',          label: 'Categoria' },
+  { value: 'yearMonth',         label: 'Mês/Ano' },
+  { value: 'dueDate',           label: 'Vencimento' },
+  { value: 'payDay',            label: 'Pago em' },
+  { value: 'additionalMessage', label: 'Observação' },
+]
+
+const DESPESA_VER_REGISTROS_DEFAULT_ORDER: DespesaVerRegistrosFieldKey[] = DESPESA_VER_REGISTROS_FIELDS.map(f => f.value)
+
+function readDespesaVerRegistrosConfig(): { order?: string[]; hidden?: string[] } {
+  try {
+    const raw = localStorage.getItem(DESPESA_VER_REGISTROS_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+export function loadDespesaVerRegistrosOrder(): DespesaVerRegistrosFieldKey[] {
+  const saved = readDespesaVerRegistrosConfig().order
+  if (!Array.isArray(saved)) return [...DESPESA_VER_REGISTROS_DEFAULT_ORDER]
+  const valid = saved.filter((v): v is DespesaVerRegistrosFieldKey => DESPESA_VER_REGISTROS_DEFAULT_ORDER.includes(v as DespesaVerRegistrosFieldKey))
+  for (const v of DESPESA_VER_REGISTROS_DEFAULT_ORDER) if (!valid.includes(v)) valid.push(v)
+  return valid
+}
+
+export function loadDespesaVerRegistrosHidden(): Record<DespesaVerRegistrosFieldKey, boolean> {
+  const hiddenList = readDespesaVerRegistrosConfig().hidden
+  const list = Array.isArray(hiddenList) ? hiddenList : []
+  const result = {} as Record<DespesaVerRegistrosFieldKey, boolean>
+  for (const f of DESPESA_VER_REGISTROS_DEFAULT_ORDER) result[f] = list.includes(f)
+  return result
+}
+
 // ─── Contas a Pagar — ordenação padrão da tabela ───────────────────────────────
 
 const CONTAS_PAGAR_SORT_CONFIG_KEY = 'finance_contas_pagar_sort_config'
