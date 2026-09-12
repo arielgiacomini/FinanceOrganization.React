@@ -83,14 +83,17 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
   const [categorySuggestions, setCategorySuggestions] = useState<CategorySuggestion[]>([])
 
   // Aquece o cache do histórico assim que o formulário abre, pra sugestão sair rápido.
-  useEffect(() => { if (!isEdit) loadCategoryHistory() }, [isEdit])
+  // Pulado no modo de chave de lançamento rápido: loadCategoryHistory() busca em
+  // /v1/bills-to-pay/search, que exige sessão logada e não está na allowlist da
+  // chave — sem sessão, essa chamada por si só já derruba a tela pro /login/.
+  useEffect(() => { if (!isEdit && !quickCaptureKey) loadCategoryHistory() }, [isEdit, quickCaptureKey])
 
   // Sugestão de categoria com base no nome digitado — só na criação. Roda de novo a cada
   // mudança do nome (mesmo já tendo uma categoria escolhida), pré-carregando a de maior
   // probabilidade e deixando as próximas como alternativa — o usuário pode ajustar a
   // qualquer momento só continuando a editar o nome.
   useEffect(() => {
-    if (isEdit) return
+    if (isEdit || quickCaptureKey) return
     const t = setTimeout(() => {
       suggestCategoriesForName(form.name).then(list => {
         setCategorySuggestions(list)
