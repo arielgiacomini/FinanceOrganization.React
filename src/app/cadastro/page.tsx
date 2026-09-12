@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { login, isAuthenticated, AuthError } from '@/lib/auth'
+import { register, isAuthenticated, AuthError } from '@/lib/auth'
 import { Spinner } from '@/components/ui'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
 import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
-import { CheckForUpdateButton } from '@/components/ui/AppServiceWorker'
-import { LogIn, Eye, EyeOff } from 'lucide-react'
+import { UserPlus, Eye, EyeOff } from 'lucide-react'
 
-export default function LoginPage() {
+export default function CadastroPage() {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
+  const [passConfirm, setPassConfirm] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -28,12 +28,20 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (pass !== passConfirm) {
+      setError('As senhas não coincidem.')
+      return
+    }
+    if (pass.length < 6) {
+      setError('A senha precisa ter pelo menos 6 caracteres.')
+      return
+    }
     setLoading(true)
     try {
-      await login(email.trim(), pass)
+      await register(email.trim(), name.trim(), pass)
       window.location.href = '/'
     } catch (err) {
-      setError(err instanceof AuthError ? err.message : 'Não foi possível entrar. Tente novamente.')
+      setError(err instanceof AuthError ? err.message : 'Não foi possível criar a conta. Tente novamente.')
       setLoading(false)
     }
   }
@@ -53,57 +61,60 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-black font-bold text-2xl mx-auto mb-4"
             style={{ background: 'var(--green-500)' }}>F</div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>Finance Organization</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>Controle financeiro pessoal</p>
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <FlagBrasil size={14} />
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>Brasil</span>
-            <span style={{ color: 'var(--text-3)' }}>·</span>
-            <FlagEspanha size={14} />
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>Espanha</span>
-          </div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-1)' }}>Criar conta</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>Comece grátis no Finance Organization</p>
         </div>
 
         <div className="rounded-2xl p-6" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
           <form onSubmit={submit} className="space-y-4">
             <div>
+              <label className="label">Nome</label>
+              <input className="input" type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Seu nome" autoFocus autoComplete="name" required />
+            </div>
+            <div>
               <label className="label">E-mail</label>
               <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="seu@email.com" autoFocus autoComplete="username" required />
+                placeholder="seu@email.com" autoComplete="username" required />
             </div>
             <div>
               <label className="label">Senha</label>
               <div className="relative">
                 <input className="input pr-10" type={showPass ? 'text' : 'password'}
                   value={pass} onChange={e => setPass(e.target.value)}
-                  placeholder="••••••••" autoComplete="current-password" required />
+                  placeholder="••••••••" autoComplete="new-password" required minLength={6} />
                 <button type="button" onClick={() => setShowPass(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }}>
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
+            <div>
+              <label className="label">Confirmar senha</label>
+              <input className="input" type={showPass ? 'text' : 'password'}
+                value={passConfirm} onChange={e => setPassConfirm(e.target.value)}
+                placeholder="••••••••" autoComplete="new-password" required minLength={6} />
+            </div>
             {error && (
               <p className="text-sm rounded-lg px-3 py-2 text-center"
                 style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>{error}</p>
             )}
             <button type="submit" className="btn-primary w-full justify-center py-2.5" disabled={loading}>
-              {loading ? <Spinner size={18} /> : <LogIn size={18} />}
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading ? <Spinner size={18} /> : <UserPlus size={18} />}
+              {loading ? 'Criando conta...' : 'Criar conta'}
             </button>
           </form>
         </div>
 
         <p className="text-center text-sm mt-4" style={{ color: 'var(--text-3)' }}>
-          Ainda não tem conta?{' '}
-          <Link href="/cadastro/" className="font-medium" style={{ color: 'var(--green-400)' }}>
-            Criar conta grátis
+          Já tem conta?{' '}
+          <Link href="/login/" className="font-medium" style={{ color: 'var(--green-400)' }}>
+            Entrar
           </Link>
         </p>
 
-        <div className="flex items-center justify-center gap-2 mt-4">
+        <div className="flex items-center justify-center mt-4">
           <AppVersionBadge />
-          <CheckForUpdateButton />
         </div>
       </div>
     </div>

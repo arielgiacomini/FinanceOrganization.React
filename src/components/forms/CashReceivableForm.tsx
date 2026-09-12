@@ -8,7 +8,8 @@ import { Spinner } from '@/components/ui'
 import { Plus, Minus, RefreshCw } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryPicker } from '@/components/ui/CountryPicker'
+import { loadDefaultCountryCode } from '@/lib/wallet'
 
 interface CashReceivableFormProps {
   initial?: CashReceivable
@@ -26,10 +27,6 @@ function loadDraft(): Record<string, string | boolean> | null {
 }
 function clearDraft() { sessionStorage.removeItem(DRAFT_KEY) }
 
-const COUNTRIES = [
-  { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
-  { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
-]
 
 const readonlyStyle = {
   background: 'var(--bg-4)',
@@ -67,7 +64,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
     fynallyMonthYear:  initial?.yearMonth ?? draft?.fynallyMonthYear as string ?? currentYearMonth(),
     bestReceivingDay:  draft?.bestReceivingDay as string ?? '',
     additionalMessage: initial?.additionalMessage ?? draft?.additionalMessage as string ?? '',
-    country:           initial?.country ?? draft?.country as string ?? 'Brasil',
+    country:           initial?.country ?? draft?.country as string ?? loadDefaultCountryCode(),
   })
   const hasDraft = !initial && !!draft
   const [adjustOpen, setAdjustOpen] = useState(false)
@@ -126,7 +123,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
       frequence: 'Livre', registrationType: 'Compra Livre',
       agreementDate: '', dueDate: '', dateReceived: '', hasReceived: false,
       initialMonthYear: currentYearMonth(), fynallyMonthYear: currentYearMonth(),
-      bestReceivingDay: '', additionalMessage: '', country: 'Brasil',
+      bestReceivingDay: '', additionalMessage: '', country: loadDefaultCountryCode(),
     })
   }
 
@@ -392,19 +389,7 @@ export function CashReceivableForm({ initial, onSuccess, onCancel }: CashReceiva
         {/* País */}
         <div>
           <label className="label">País</label>
-          <div className="flex gap-2">
-            {COUNTRIES.map(({ value, label, Flag }) => (
-              <button key={value} type="button" onClick={() => set('country', value)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
-                style={{
-                  background: form.country === value ? 'var(--green-dim)' : 'var(--bg-3)',
-                  border: `1px solid ${form.country === value ? 'var(--green-border)' : 'var(--border-1)'}`,
-                  color: form.country === value ? 'var(--green-400)' : 'var(--text-2)',
-                }}>
-                <Flag size={16} />{label}
-              </button>
-            ))}
-          </div>
+          <CountryPicker value={form.country} onChange={v => set('country', v)} />
         </div>
 
         {/* Frequência */}

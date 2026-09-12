@@ -7,19 +7,14 @@ import type { Account } from '@/types'
 import { Spinner } from '@/components/ui'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryPicker } from '@/components/ui/CountryPicker'
 import { Check, Plus, SlidersHorizontal, Lightbulb, CalendarDays, WifiOff, CloudOff, X } from 'lucide-react'
-import { loadQuickBillEnabledFields, loadQuickBillDefaultValues } from '@/lib/wallet'
+import { loadQuickBillEnabledFields, loadQuickBillDefaultValues, loadUserCountries, loadDefaultCountryCode, DEFAULT_ACTIVE_COUNTRY_CODES, syncUserCountriesFromApi } from '@/lib/wallet'
 import { loadCategoryHistory, suggestCategoriesForName } from '@/lib/categorySuggestion'
 import type { CategorySuggestion } from '@/lib/categorySuggestion'
 import { saveCachedAccounts, loadCachedAccounts, saveCachedCategories, loadCachedCategories } from '@/lib/offlineCache'
 import { enqueueBill, getPendingQueue, removeFromQueue, syncPendingQueue } from '@/lib/offlineQueue'
 import type { PendingBill } from '@/lib/offlineQueue'
-
-const COUNTRIES = [
-  { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
-  { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
-]
 
 // Constrói "YYYY-MM-DD" a partir de campos locais — nunca via toISOString(),
 // que reinterpreta como UTC e desloca um dia em fusos negativos (Brasil, UTC-3).
@@ -138,9 +133,15 @@ interface QuickBillToPayFormProps {
   onSwitchFull: (prefill: QuickBillPrefill) => void
   onCancel: () => void
   initialValues?: BillToPayQuickValues
+  /**
+   * Chave de lançamento rápido (?chave= na URL) — quando presente, usa as rotas
+   * autenticadas via header X-Quick-Capture-Key em vez de sessão logada, para
+   * funcionar direto de um atalho externo sem precisar entrar no sistema.
+   */
+  quickCaptureKey?: string
 }
 
-export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, initialValues }: QuickBillToPayFormProps) {
+export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, initialValues, quickCaptureKey }: QuickBillToPayFormProps) {
   const [enabledFields] = useState(() => loadQuickBillEnabledFields())
   const [defaults] = useState(() => loadQuickBillDefaultValues())
 
@@ -170,7 +171,11 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   })
   const [account, setAccount] = useState(initialValues?.account ?? defaults.account)
   const [category, setCategory] = useState(initialValues?.category ?? defaults.category)
-  const [country, setCountry] = useState(initialValues?.country ?? defaults.country)
+  // Começa sempre com o mesmo valor estático do build (SSR não tem acesso ao
+  // localStorage) — o valor real (país ativo configurado, ou rascunho salvo)
+  // é aplicado logo depois de montar, no efeito abaixo, pra não conflitar com
+  // o HTML pré-renderizado.
+  const [country, setCountry] = useState(initialValues?.country ?? DEFAULT_ACTIVE_COUNTRY_CODES[0])
   const [frequence, setFrequence] = useState(initialValues?.frequence ?? defaults.frequence)
   const [registrationType, setRegistrationType] = useState(initialValues?.registrationType ?? defaults.registrationType)
   const [additionalMessage, setAdditionalMessage] = useState(initialValues?.additionalMessage ?? defaults.additionalMessage)
@@ -192,18 +197,19 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
 
     function runSync() {
       setSyncingQueue(true)
-      syncPendingQueue(() => setPendingQueue(getPendingQueue()))
+      syncPendingQueue(() => setPendingQueue(getPendingQueue()), quickCaptureKey)
         .finally(() => setSyncingQueue(false))
     }
     runSync()
 
     window.addEventListener('online', runSync)
     return () => window.removeEventListener('online', runSync)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleManualSync() {
     setSyncingQueue(true)
-    syncPendingQueue(() => setPendingQueue(getPendingQueue())).finally(() => setSyncingQueue(false))
+    syncPendingQueue(() => setPendingQueue(getPendingQueue()), quickCaptureKey).finally(() => setSyncingQueue(false))
   }
 
   function handleRemoveQueued(id: string) {
@@ -216,6 +222,16 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   // initialValues (troca vinda do formulário completo) tem prioridade e ignora
   // qualquer rascunho antigo, por ser a intenção mais recente do usuário.
   useEffect(() => {
+    // País ativo real (lido do localStorage) — só existe no cliente, por isso
+    // só é aplicado aqui dentro do efeito, nunca no useState inicial. Roda
+    // mesmo quando initialValues existe (ex: parâmetros de URL do atalho
+    // externo — ?nome=&valor=&conta= — nunca trazem país), a não ser que
+    // initialValues já traga um país explícito (troca vinda do formulário
+    // completo, que sim deve ser respeitada como está).
+    const activeCountries = loadUserCountries()
+    const freshCountry = loadDefaultCountryCode()
+    if (!initialValues?.country) setCountry(freshCountry)
+
     if (initialValues) return
     const draft = loadQuickDraft()
     if (!draft) return
@@ -229,10 +245,29 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
     }
     if (draft.account) setAccount(draft.account)
     if (draft.category) setCategory(draft.category)
-    if (draft.country) setCountry(draft.country)
+    // Só restaura o país do rascunho se ele ainda estiver ativo — um rascunho
+    // salvo antes de o usuário desativar um país em Configurações não deve
+    // trazer de volta um país que ele não usa mais.
+    setCountry(draft.country && activeCountries.some(c => c.code === draft.country) ? draft.country : freshCountry)
     if (draft.frequence) setFrequence(draft.frequence)
     if (draft.registrationType) setRegistrationType(draft.registrationType)
     if (draft.additionalMessage) setAdditionalMessage(draft.additionalMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Este formulário também é usado standalone em /lancamento-rapido (atalho
+  // externo, sem AppLayout) — que por isso não passa pela sincronização de
+  // países que o AppLayout faz em toda navegação normal. Sem isso, abrir o
+  // atalho num aparelho/navegador que nunca visitou Configurações mostra o
+  // país de fábrica (Brasil/Espanha) em vez do que foi realmente configurado.
+  // Pulado no modo de chave de lançamento rápido: /v1/wallet/search exige
+  // sessão logada (não está na allowlist da chave), e sem sessão a chamada
+  // derrubaria a tela inteira pro /login/ antes mesmo do formulário aparecer.
+  useEffect(() => {
+    if (quickCaptureKey) return
+    syncUserCountriesFromApi().then(changed => {
+      if (changed && !initialValues?.country) setCountry(loadDefaultCountryCode())
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -245,7 +280,10 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   }, [name, value, purchaseDate, account, category, country, frequence, registrationType, additionalMessage])
 
   useEffect(() => {
-    Promise.all([
+    Promise.all(quickCaptureKey ? [
+      accountsApi.searchAllQuickCapture(quickCaptureKey),
+      categoriesApi.searchQuickCapture({ accountType: 'Conta a Pagar', enable: true }, quickCaptureKey),
+    ] : [
       accountsApi.searchAll(),
       categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }),
     ]).then(([accRes, cats]) => {
@@ -285,14 +323,17 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   }, [])
 
   // Aquece o cache do histórico assim que o formulário abre, pra sugestão sair rápido.
-  useEffect(() => { if (enabledFields.category) loadCategoryHistory() }, [enabledFields.category])
+  // Pulado no modo de chave de lançamento rápido: loadCategoryHistory() busca em
+  // /v1/bills-to-pay/search, que exige sessão logada e não está na allowlist da
+  // chave — sem sessão, essa chamada por si só já derruba a tela pro /login/.
+  useEffect(() => { if (enabledFields.category && !quickCaptureKey) loadCategoryHistory() }, [enabledFields.category, quickCaptureKey])
 
   // Sugestão de categoria com base no nome digitado — roda de novo a cada mudança do nome
   // (mesmo já tendo uma categoria escolhida), pré-carregando a de maior probabilidade e
   // deixando as próximas como alternativa. Assim o usuário pode ajustar a qualquer momento
   // só continuando a editar o nome.
   useEffect(() => {
-    if (!enabledFields.category) return
+    if (!enabledFields.category || quickCaptureKey) return
     const t = setTimeout(() => {
       suggestCategoriesForName(name).then(list => {
         setCategorySuggestions(list)
@@ -373,7 +414,11 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
       lastChangeDate: null,
     }
     try {
-      await billsToPayApi.create(vm as never)
+      if (quickCaptureKey) {
+        await billsToPayApi.createQuickCapture(vm as never, quickCaptureKey)
+      } else {
+        await billsToPayApi.create(vm as never)
+      }
       onSaved()
       if (keepOpen) {
         resetQuickFields()
@@ -435,7 +480,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
             {pendingQueue.map(item => (
               <div key={item.id} className="flex items-center justify-between gap-2" style={{ color: 'var(--text-2)' }}>
                 <span className="truncate">
-                  {item.name} — <span className="font-mono">{formatCurrency(item.value, 'Brasil')}</span>
+                  {item.name} — <span className="font-mono">{formatCurrency(item.value, (item.vm.country as string | undefined) ?? 'Brasil')}</span>
                 </span>
                 {item.lastError ? (
                   <button type="button" title={item.lastError} onClick={() => handleRemoveQueued(item.id)}
@@ -510,7 +555,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
         <label className="label">Valor *</label>
         <CurrencyInput
           value={value}
-          country={enabledFields.country ? country : defaults.country}
+          country={country}
           onChange={setValue}
           required
         />
@@ -597,24 +642,7 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
       {enabledFields.country && (
         <div>
           <label className="label">País</label>
-          <div className="flex gap-2">
-            {COUNTRIES.map(({ value: v, label, Flag }) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setCountry(v)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
-                style={{
-                  background: country === v ? 'var(--green-dim)' : 'var(--bg-3)',
-                  border: `1px solid ${country === v ? 'var(--green-border)' : 'var(--border-1)'}`,
-                  color: country === v ? 'var(--green-400)' : 'var(--text-2)',
-                }}
-              >
-                <Flag size={16} />
-                {label}
-              </button>
-            ))}
-          </div>
+          <CountryPicker value={country} onChange={setCountry} />
         </div>
       )}
 

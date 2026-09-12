@@ -78,7 +78,7 @@ let syncing = false
  * `onItemSettled` é chamado depois de cada item processado, pra quem estiver
  * de olho (UI) atualizar a lista sem esperar a fila inteira terminar.
  */
-export async function syncPendingQueue(onItemSettled?: () => void): Promise<SyncResult> {
+export async function syncPendingQueue(onItemSettled?: () => void, quickCaptureKey?: string): Promise<SyncResult> {
   if (syncing) return { synced: 0, failed: 0, stillOffline: false }
   syncing = true
   let synced = 0
@@ -89,7 +89,11 @@ export async function syncPendingQueue(onItemSettled?: () => void): Promise<Sync
     const items = readQueue()
     for (const item of items) {
       try {
-        await billsToPayApi.create(item.vm as never)
+        if (quickCaptureKey) {
+          await billsToPayApi.createQuickCapture(item.vm as never, quickCaptureKey)
+        } else {
+          await billsToPayApi.create(item.vm as never)
+        }
         removeFromQueue(item.id)
         synced++
       } catch (err) {

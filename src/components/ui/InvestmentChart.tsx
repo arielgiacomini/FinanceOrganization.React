@@ -8,6 +8,7 @@ import {
   loadInvestimentoTotal,
   loadInvestimentoBoxes,
 } from '@/lib/wallet'
+import { formatCurrency } from '@/lib/utils'
 import { Spinner } from '@/components/ui'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
@@ -30,11 +31,11 @@ function shortLabel(month: number, year: number): string {
 }
 
 function formatBrl(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
+  return formatCurrency(v, 'Brasil', { compact: true })
 }
 
 function formatEur(v: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
+  return formatCurrency(v, 'Espanha', { compact: true })
 }
 
 export function InvestmentChart() {

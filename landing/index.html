@@ -364,10 +364,253 @@
 
       <div style="display:flex;flex-direction:column;gap:16px;max-width:760px;margin:0 auto;">
 
-        <!-- v383 -->
+        <!-- v402 -->
         <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v383</span>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v402</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: chave de lançamento rápido ainda caía na tela de login (2ª causa)</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A sugestão automática de categoria (baseada no histórico de nomes já cadastrados) também exige sessão logada — como ela dispara sozinha assim que o nome vem preenchido pela URL do atalho, derrubava a tela pro login mesmo com a chave certa</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Sugestão de categoria por histórico agora fica desativada no modo de chave — a seleção manual de categoria continua funcionando normalmente</li>
+          </ul>
+        </div>
+
+        <!-- v401 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v401</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: chave de lançamento rápido ainda caía na tela de login</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Mesmo com a chave pessoal (?chave= na URL) enviada corretamente, a tela sincronizava os países cadastrados usando uma chamada que exige sessão logada — sem sessão, isso jogava a tela direto pro login antes do formulário aparecer</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Essa sincronização agora é pulada quando o acesso é feito via chave — o formulário abre direto, usando o país padrão salvo no aparelho</li>
+          </ul>
+        </div>
+
+        <!-- v400 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v400</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Dashboard: gráficos passam a respeitar os países cadastrados</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">"Gastos da Semana e do Dia" só somava Brasil e Espanha — agora mostra um bloco para cada país cadastrado, com o país padrão em destaque</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">"Evolução Financeira": um gasto de um país diferente de Brasil/Espanha (ex: Portugal) estava sendo somado como se fosse Brasil — corrigido para contar como o 2º país realmente configurado, com rótulos e moeda corretos</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">"Despesas por Mês/Ano": selecionar um país que não fosse Brasil/Espanha no filtro fazia o gráfico ficar completamente vazio — corrigido; os totais por país e a legenda também passaram a refletir o país realmente configurado</li>
+          </ul>
+        </div>
+
+        <!-- v399 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v399</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Lançamento Rápido funciona sem sessão logada, via chave pessoal</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Antes, mesmo sem tela de login, o atalho de Lançamento Rápido dependia de uma sessão já logada e válida no navegador — falhava depois de ~1h ou num app "Adicionado à Tela de Início" isolado do Safari</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Agora aceita uma chave pessoal (?chave= na URL) que autentica só a criação de contas a pagar, sem expirar e sem precisar de sessão — ideal para atalhos externos (ex: iOS) disparados logo após um gasto</li>
+          </ul>
+        </div>
+
+        <!-- v398 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v398</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: país configurado não aparecia em navegador/aparelho novo</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A lista de países só era atualizada localmente ao visitar Configurações — quem abria direto Contas a Pagar/Receber (ou o atalho de Lançamento Rápido) num navegador/aparelho que nunca passou por lá via Brasil/Espanha de fábrica, mesmo já tendo outro país configurado</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Agora toda tela busca a configuração de países direto da conta assim que carrega, sem depender de já ter visitado Configurações antes</li>
+          </ul>
+        </div>
+
+        <!-- v397 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v397</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: país padrão errado no formulário completo de Contas a Pagar/Receber</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">"Nova conta" e "Editar" no formulário completo de Contas a Pagar e Contas a Receber ainda vinham com Brasil pré-selecionado por padrão, ignorando o país padrão definido em Configurações → Países — mesmo salvando certo, isso induzia a cadastrar no país errado sem perceber</li>
+          </ul>
+        </div>
+
+        <!-- v396 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v396</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: cursor voltava pro campo Nome ao digitar em Agência/Número</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">No formulário de nova conta (Configurações → Contas), digitar em qualquer campo além do Nome jogava o cursor de volta pro início do Nome a cada letra — corrigido</li>
+          </ul>
+        </div>
+
+        <!-- v395 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v395</span>
+            <span style="font-size:12.5px;color:var(--text-3);">12 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: cadastro de conta bancária não salvava</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Em Configurações → Contas, criar uma nova conta bancária falhava silenciosamente — a API rejeitava o cadastro porque um campo específico de cartão de crédito nunca era enviado nesse fluxo; agora é sempre enviado corretamente</li>
+          </ul>
+        </div>
+
+        <!-- v394 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v394</span>
+            <span style="font-size:12.5px;color:var(--text-3);">11 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Bandeira de verdade para todos os países</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Todo país cadastrado (não só Brasil e Espanha) agora ganha uma bandeira desenhada, igual às que já existiam — antes dependia do emoji do sistema, que no Windows não desenha bandeira nenhuma</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Como todas as telas já usam o mesmo componente de bandeira, o efeito aparece em Configurações → Países, filtros, tabelas e gráficos ao mesmo tempo</li>
+          </ul>
+        </div>
+
+        <!-- v393 -->
+        <div class="card" style="padding:24px 26px;border-color:var(--green-border);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green-400);background:var(--green-dim);border:1px solid var(--green-border);padding:3px 10px;border-radius:999px;">v393</span>
+            <span style="font-size:12.5px;color:var(--text-3);">11 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Contas a Pagar/Receber também seguem os países cadastrados</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">As abas de país, resumo do mês, seleção em massa, filtro por dia e o resumo de busca/categoria em Contas a Pagar e Contas a Receber ainda mostravam só Brasil/Espanha — agora refletem exatamente os países cadastrados em Configurações → Países, na ordem e quantidade certas</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Mesma correção nas barras de seleção em massa dos históricos (modal de Registros Relacionados)</li>
+          </ul>
+        </div>
+
+        <!-- v392 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v392</span>
+            <span style="font-size:12.5px;color:var(--text-3);">11 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Países além de Brasil e Espanha</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A tela Configurações → Países agora deixa adicionar qualquer país de uma lista (com moeda própria) e escolher qual é o padrão — não só Brasil/Espanha</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção de fundo: o campo de valor tinha sua própria lógica separada de moeda, que ignorava a configuração de país — corrigido para seguir o país escolhido em qualquer tela</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Os filtros de país nos gráficos (Despesas por Mês/Ano e Evolução Financeira) agora mostram só os países que você configurou usar</li>
+          </ul>
+        </div>
+
+        <!-- v391 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v391</span>
+            <span style="font-size:12.5px;color:var(--text-3);">11 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: Lançamento Rápido via atalho ainda caía em Real</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A correção da versão anterior não cobria quando o Lançamento Rápido é aberto com parâmetros na URL (atalho externo com nome/valor/conta pré-preenchidos) — esse caminho também respeita o país ativo agora</li>
+          </ul>
+        </div>
+
+        <!-- v390 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v390</span>
+            <span style="font-size:12.5px;color:var(--text-3);">11 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: Lançamento Rápido ignorava o país configurado</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">O Cadastro Rápido/Lançamento Rápido sempre caíam em Real, mesmo com só Espanha ativado em Configurações → Países — corrigido para seguir de verdade o país escolhido</li>
+          </ul>
+        </div>
+
+        <!-- v389 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v389</span>
+            <span style="font-size:12.5px;color:var(--text-3);">8 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Escolha quais países usar</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Nova aba "Países" em Configurações — escolha se quer usar só um país ou os dois (Brasil e Espanha). Desativar um país só afeta cadastros novos: nada que já existe é apagado ou escondido</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Os formulários de cadastro e os históricos de edição agora só oferecem os países ativos</li>
+          </ul>
+        </div>
+
+        <!-- v388 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v388</span>
+            <span style="font-size:12.5px;color:var(--text-3);">8 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Bastidores: preparação para escolha de país</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Correção: no Cadastro Rápido, a prévia do valor na fila offline mostrava sempre em Real mesmo quando o lançamento era em Euro</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Reorganização interna do código de moeda/país (sem mudança visível) — primeiro passo para no futuro cada conta poder escolher usar só um país em vez de Brasil+Espanha</li>
+          </ul>
+        </div>
+
+        <!-- v387 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v387</span>
+            <span style="font-size:12.5px;color:var(--text-3);">7 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Identidade visual de quem está logado</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Um avatar com nome/e-mail da conta logada aparece no menu lateral (e na barra do topo no celular) — fica claro qual conta está em uso, principalmente em aparelhos compartilhados por mais de uma pessoa</li>
+          </ul>
+        </div>
+
+        <!-- v386 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v386</span>
+            <span style="font-size:12.5px;color:var(--text-3);">7 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Login de verdade — cada pessoa com sua própria conta</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">O login deixou de ser um usuário fixo e passou a validar e-mail/senha de verdade contra a API — abrindo caminho pra cada pessoa ter sua própria conta e seus próprios dados, sem nenhum compartilhado com outra</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Nova tela de cadastro — quem não tem conta consegue criar uma e já entra direto</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Nova tela de aviso de período de teste encerrado, preparando o terreno pra assinatura</li>
+          </ul>
+        </div>
+
+        <!-- v385 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v385</span>
+            <span style="font-size:12.5px;color:var(--text-3);">5 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Correção: botão "Checar atualizações" parava de detectar versões novas</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">O servidor estava mandando o navegador guardar sw.js em cache por 1 ano inteiro, então o botão às vezes comparava contra uma cópia antiga e nunca via a versão nova publicada — corrigido para sw.js (e manifest.json) nunca ficarem em cache</li>
+          </ul>
+        </div>
+
+        <!-- v384 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v384</span>
+            <span style="font-size:12.5px;color:var(--text-3);">5 set 2026</span>
+          </div>
+          <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">"Ver registros" com o mesmo visual de Registros Relacionados</h3>
+          <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">A tabela "Ver registros" do gráfico Despesas por Mês/Ano agora segue o mesmo padrão do modal "Registros Relacionados" de Contas a Pagar — linha compacta (Descrição/Valor/Data de Compra/Status/Ações) que expande ao clicar, mostrando os campos extras</li>
+            <li style="font-size:13.5px;color:var(--text-2);line-height:1.5;">Quais campos extras aparecem no painel expandido (País, Conta, Categoria, Mês/Ano, Vencimento, Pago em, Observação) e em que ordem agora é configurável em Configurações → Gráfico</li>
+          </ul>
+        </div>
+
+        <!-- v383 -->
+        <div class="card" style="padding:24px 26px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-2);background:var(--bg-3);border:1px solid var(--border-1);padding:3px 10px;border-radius:999px;">v383</span>
             <span style="font-size:12.5px;color:var(--text-3);">5 set 2026</span>
           </div>
           <h3 style="font-size:16px;font-weight:600;margin-bottom:10px;">Filtros de País e Tipo de Gasto no gráfico Despesas por Mês/Ano</h3>
@@ -639,7 +882,7 @@
         <div style="width:20px;height:20px;border-radius:6px;background:var(--green-500);display:flex;align-items:center;justify-content:center;color:#08120a;font-weight:700;font-size:11px;">F</div>
         © 2026 Finance Organization
       </div>
-      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v383 · 5 set 2026</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);">v402 · 12 set 2026</div>
     </div>
   </footer>
 

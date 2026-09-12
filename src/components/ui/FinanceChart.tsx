@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, type ReactNode } from 'react'
+import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import { dashboardApi, walletApi } from '@/lib/api'
 import type { MonthlyCashflowItem, WalletRecord } from '@/lib/api'
 import {
@@ -21,10 +21,13 @@ import {
   saveChartMilestonesLocal,
   mergeChartMilestoneRecords,
   loadChartMilestoneStyle,
+  loadUserCountries,
 } from '@/lib/wallet'
 import type { ChartMilestone, ChartMilestoneStyle } from '@/lib/wallet'
+import { findCountryInfo } from '@/lib/countries'
+import { formatCurrency } from '@/lib/utils'
 import { Modal, Spinner } from '@/components/ui'
-import { FlagBrasil, FlagEspanha, FlagGlobe, MilestoneIcon, flagEmojiIcon } from '@/components/ui/Flags'
+import { CountryFlag, MilestoneIcon, flagEmojiIcon } from '@/components/ui/Flags'
 import { ChevronDown, ChevronUp, AlertTriangle, ArrowRight, Trash2, Plus, MapPin } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis,
@@ -81,10 +84,10 @@ function formatMonthGap(ymA: string, ymB: string): string {
 }
 
 function formatEur(v: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
+  return formatCurrency(v, 'Espanha', { compact: true })
 }
 function formatBrl(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v)
+  return formatCurrency(v, 'Brasil', { compact: true })
 }
 
 
@@ -545,6 +548,16 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   const [milestoneModalYm, setMilestoneModalYm] = useState<string | null>(null)
   const [milestoneStyle, setMilestoneStyle] = useState<ChartMilestoneStyle>(() => loadChartMilestoneStyle())
 
+  // País "2" (o não-principal) das duas linhas do gráfico — hoje ele só sabe
+  // desenhar duas linhas (uma pro país principal, outra pro segundo), então
+  // um 3º país configurado continua caindo na linha do país principal. Usa
+  // ref (não state) pra estar sempre atualizado dentro do load() assíncrono
+  // abaixo sem precisar disparar nova busca à API a cada sincronização.
+  const country2Ref = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    country2Ref.current = loadUserCountries()[1]?.code
+  }, [])
+
   // A tela de Marcos pode mudar tamanho/cor a qualquer momento — reflete na
   // hora se o usuário voltar pra essa aba (evita precisar recarregar a página)
   useEffect(() => {
@@ -674,7 +687,11 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         for (const item of cashflow) monthNumsSet.add(ymToNum(item.monthYear))
         const monthList = Array.from(monthNumsSet).sort((a, b) => a - b).map(numToYm)
 
-        const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
+        // "isEs" é o nome histórico (linha 2 do gráfico era sempre Espanha) —
+        // hoje bate com o 2º país ativo de Configurações → Países, seja lá
+        // qual for (ex: Portugal), não mais com o texto fixo "espanha".
+        const country2 = country2Ref.current
+        const isEs = (c?: string | null) => !!country2 && (c ?? '').trim().toLowerCase() === country2.trim().toLowerCase()
 
         // ── PLR total = soma dos "type 4" ainda pendentes no range ────────────
         const plrTotal = cashflow
@@ -790,7 +807,20 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   }, [monthsRange, reloadKey, fetchRangeMode])
 
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({})
-  const [countryFilter, setCountryFilter] = useState<'todos' | 'brasil' | 'espanha'>('todos')
+  const [countryFilter, setCountryFilter] = useState<string>('todos')
+
+  // Lista de filtro de país vem de Configurações → Países (fonte única) — não
+  // só Brasil/Espanha. As linhas do gráfico (LINES, mais abaixo) só existem
+  // pra Brasil/Espanha hoje, então selecionar um país novo mostra o gráfico
+  // vazio (nenhuma linha bate) em vez de fingir que tem dado que não existe.
+  const [userCountryOptions, setUserCountryOptions] = useState<{ code: string }[]>([{ code: 'Brasil' }, { code: 'Espanha' }])
+  useEffect(() => {
+    setUserCountryOptions(loadUserCountries())
+  }, [])
+  useEffect(() => {
+    if (countryFilter === 'todos') return
+    if (!userCountryOptions.some(c => c.code.toLowerCase() === countryFilter)) setCountryFilter('todos')
+  }, [countryFilter, userCountryOptions])
 
   // Preferência de tamanho de fonte do gráfico — persiste em localStorage
   const [chartSize, setChartSize] = useState<ChartSize>('normal')
@@ -828,7 +858,8 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
   // Recalcula a memória de cálculo respeitando os filtros ativos
   const calc = useMemo(() => {
     if (!calcBase) return null
-    const isEs = (c?: string | null) => (c ?? '').trim().toLowerCase() === 'espanha'
+    const country2 = country2Ref.current
+    const isEs = (c?: string | null) => !!country2 && (c ?? '').trim().toLowerCase() === country2.trim().toLowerCase()
     const filteredYms = new Set(filteredData.map(d => d.yearMonth))
 
     const despesaEspanhaTotal = Object.entries(byMonthState)
@@ -1072,15 +1103,24 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
     )
   }
 
+  // País 1 (principal) e país 2 (segundo) das duas linhas do gráfico — vêm da
+  // ordem configurada em Configurações → Países, não mais fixos em Brasil/Espanha.
+  // O gráfico continua sabendo desenhar só duas linhas de país; um 3º país
+  // configurado não ganha linha própria (ver country2Ref acima).
+  const country1 = userCountryOptions[0]?.code ?? 'Brasil'
+  const country2Name = userCountryOptions[1]?.code
+  const symbol1 = findCountryInfo(country1)?.symbol ?? 'R$'
+  const symbol2 = country2Name ? (findCountryInfo(country2Name)?.symbol ?? '€') : '€'
+
   const LINES = [
-    { key: 'despesaEspanha',    name: 'Despesa Espanha (€)',          color: '#dc2626', country: 'espanha' as const },
-    { key: 'investAcumEspanha', name: 'Acumulado Invest. Espanha (€)', color: '#3b82f6', country: 'espanha' as const },
-    { key: 'saldoBrasil',       name: 'Saldo Brasil (R$)',             color: '#16a34a', country: 'brasil' as const },
-    { key: 'despesaBrasil',     name: 'Despesa Brasil (R$)',           color: '#f87171', country: 'brasil' as const },
+    { key: 'despesaEspanha',    name: `Despesa ${country2Name ?? 'Espanha'} (${symbol2})`,          color: '#dc2626', country: (country2Name ?? 'espanha').toLowerCase() },
+    { key: 'investAcumEspanha', name: `Acumulado Invest. ${country2Name ?? 'Espanha'} (${symbol2})`, color: '#3b82f6', country: (country2Name ?? 'espanha').toLowerCase() },
+    { key: 'saldoBrasil',       name: `Saldo ${country1} (${symbol1})`,                              color: '#16a34a', country: country1.toLowerCase() },
+    { key: 'despesaBrasil',     name: `Despesa ${country1} (${symbol1})`,                            color: '#f87171', country: country1.toLowerCase() },
   ]
 
   // Visibilidade efetiva de uma linha: combina o toggle manual da legenda
-  // com o filtro de país (Todos / Brasil / Espanha)
+  // com o filtro de país (Todos / país 1 / país 2)
   function isLineVisible(key: string) {
     // "Só marcos" é pra focar só nos marcadores — com o gráfico esparso (só os
     // meses com marco), linhas conectando pontos distantes ficam enganosas.
@@ -1129,7 +1169,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
             Evolução Financeira
           </h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-            Despesa Espanha (€), Investimento Acumulado (€), Saldo Brasil (R$) e Despesa Brasil (R$) — {filterMode === 'next6' ? 'próximos 6 meses' : filterMode === 'last12' ? 'últimos 12 meses' : 'período personalizado'}
+            Despesa {country2Name ?? 'Espanha'} ({symbol2}), Investimento Acumulado ({symbol2}), Saldo {country1} ({symbol1}) e Despesa {country1} ({symbol1}) — {filterMode === 'next6' ? 'próximos 6 meses' : filterMode === 'last12' ? 'últimos 12 meses' : 'período personalizado'}
           </p>
         </div>
         {/* Toggle de tamanho de fonte */}
@@ -1161,13 +1201,13 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
         </div>
       </div>
 
-      {/* Filtro de país — restringe as linhas exibidas ao país selecionado */}
+      {/* Filtro de país — restringe as linhas exibidas ao país selecionado.
+          Lista vem de Configurações → Países (fonte única). */}
       <div className="flex flex-wrap gap-1.5 mb-3">
         {([
-          { key: 'todos', label: 'Todos', Icon: FlagGlobe },
-          { key: 'brasil', label: 'Brasil', Icon: FlagBrasil },
-          { key: 'espanha', label: 'Espanha', Icon: FlagEspanha },
-        ] as const).map(({ key, label, Icon }) => {
+          { key: 'todos', code: null as string | null, label: 'Todos' },
+          ...userCountryOptions.map(c => ({ key: c.code.toLowerCase(), code: c.code, label: c.code })),
+        ]).map(({ key, code, label }) => {
           const active = countryFilter === key
           return (
             <button
@@ -1180,7 +1220,7 @@ export function FinanceChart({ monthsRange = 12 }: FinanceChartProps) {
                 color: active ? '#fff' : 'var(--text-2)',
                 border: `1px solid ${active ? 'var(--green-400)' : 'var(--border-1)'}`,
               }}>
-              <Icon size={14} />
+              <CountryFlag code={code} size={14} />
               {label}
             </button>
           )

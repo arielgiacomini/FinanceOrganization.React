@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { findCountryInfo } from '@/lib/countries'
 
 interface CurrencyInputProps {
   value: string        // valor numérico como string ex: "150.50" ou "-50.00"
-  country: string      // 'Brasil' ou 'Espanha'
+  country: string      // nome do país (ver src/lib/countries.ts) — define moeda/locale
   onChange: (raw: string) => void  // retorna string numérica ex: "150.50"
   placeholder?: string
   required?: boolean
@@ -14,10 +15,10 @@ interface CurrencyInputProps {
 function formatCurrencyDisplay(raw: string, country: string): string {
   const num = parseFloat(raw.replace(',', '.'))
   if (isNaN(num)) return ''
-  const isSpain = country === 'Espanha'
-  return new Intl.NumberFormat(isSpain ? 'es-ES' : 'pt-BR', {
+  const info = findCountryInfo(country)
+  return new Intl.NumberFormat(info?.locale ?? 'pt-BR', {
     style: 'currency',
-    currency: isSpain ? 'EUR' : 'BRL',
+    currency: info?.currency ?? 'BRL',
     minimumFractionDigits: 2,
   }).format(num)
 }
@@ -41,8 +42,11 @@ export function CurrencyInput({ value, country, onChange, placeholder, required,
   const [display, setDisplay] = useState('')
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // isSpain só decide o acento visual (âmbar) — mantido exatamente como já
+  // era pra não mudar a aparência de quem usa Brasil/Espanha; um país novo
+  // qualquer usa o mesmo verde do Brasil, sem uma cor própria dedicada.
   const isSpain = country === 'Espanha'
-  const symbol = isSpain ? '€' : 'R$'
+  const symbol = findCountryInfo(country)?.symbol ?? 'R$'
 
   // Quando value muda externamente (ex: reset do form), atualiza o display
   useEffect(() => {
@@ -121,7 +125,7 @@ export function CurrencyInput({ value, country, onChange, placeholder, required,
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        placeholder={focused ? '0,00' : (placeholder ?? (isSpain ? '0,00 €' : 'R$ 0,00'))}
+        placeholder={focused ? '0,00' : (placeholder ?? (isSpain ? `0,00 ${symbol}` : `${symbol} 0,00`))}
         required={required}
         autoFocus={autoFocus}
         style={{

@@ -19,8 +19,16 @@ function parseValorParam(raw: string | null): string | undefined {
 // Página standalone, sem AppLayout/AuthGuard — pensada para ser aberta direto
 // (atalho na tela inicial do celular) logo após um gasto, sem precisar logar.
 // Aceita parâmetros de URL pra pré-preencher: ?nome=...&valor=...&conta=...
+//
+// ?chave= carrega a chave de lançamento rápido (gerada em Configurações,
+// POST /v1/auth/quick-capture-key) — quando presente, as chamadas à API usam
+// o header X-Quick-Capture-Key em vez de depender de sessão logada no
+// navegador, que é o que de fato torna essa tela usável a partir de um atalho
+// externo (a sessão comum expira em ~1h e não sobrevive entre o Safari e um
+// app "Adicionado à Tela de Início", que têm localStorage isolados).
 function LancamentoRapidoInner() {
   const searchParams = useSearchParams()
+  const quickCaptureKey = searchParams.get('chave')?.trim() || undefined
 
   const urlPrefill = useMemo<BillToPayQuickValues | undefined>(() => {
     const name = searchParams.get('nome')?.trim() || undefined
@@ -82,6 +90,7 @@ function LancamentoRapidoInner() {
               onDone={(queued) => setDone(queued ? 'queued' : 'saved')}
               onSwitchFull={(prefill) => { setFullPrefill(prefill); setMode('full') }}
               onCancel={resetAll}
+              quickCaptureKey={quickCaptureKey}
             />
           ) : (
             <BillToPayForm
@@ -89,6 +98,7 @@ function LancamentoRapidoInner() {
               onSuccess={() => setDone('saved')}
               onCancel={resetAll}
               onSwitchQuick={(values) => { setQuickPrefill(values); setMode('quick') }}
+              quickCaptureKey={quickCaptureKey}
             />
           )}
         </div>

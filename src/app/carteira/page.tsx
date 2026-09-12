@@ -10,31 +10,11 @@ import { formatCurrency, currentYearMonth, formatYearMonth } from '@/lib/utils'
 import { loadSaldoFinalYm } from '@/lib/wallet'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
+import { FlagBrasil as FlagBR, FlagEspanha as FlagES } from '@/components/ui/Flags'
 import {
   Plus, Trash2, Edit2, GripVertical,
   TrendingUp, TrendingDown, Wallet, RefreshCw, ChevronDown, ChevronRight,
 } from 'lucide-react'
-
-function FlagBR({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" style={{ display: 'inline-block', verticalAlign: 'middle', borderRadius: 2, flexShrink: 0 }}>
-      <rect width="64" height="64" fill="#009739" />
-      <polygon points="32,8 60,32 32,56 4,32" fill="#FEDD00" />
-      <circle cx="32" cy="32" r="12" fill="#012169" />
-      <path d="M20,32 Q32,26 44,32 Q32,38 20,32Z" fill="white" />
-    </svg>
-  )
-}
-
-function FlagES({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" style={{ display: 'inline-block', verticalAlign: 'middle', borderRadius: 2, flexShrink: 0 }}>
-      <rect width="64" height="16" fill="#c60b1e" />
-      <rect y="16" width="64" height="32" fill="#ffc400" />
-      <rect y="48" width="64" height="16" fill="#c60b1e" />
-    </svg>
-  )
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

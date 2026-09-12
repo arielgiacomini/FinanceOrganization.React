@@ -1,29 +1,34 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { FlagBrasil, FlagEspanha, FlagGlobe } from '@/components/ui/Flags'
+import { CountryFlag, FlagGlobe } from '@/components/ui/Flags'
+import { findCountryInfo } from '@/lib/countries'
+import { loadUserCountryCodes, DEFAULT_ACTIVE_COUNTRY_CODES } from '@/lib/wallet'
 
-export type CountryFilter = 'Todos' | 'Brasil' | 'Espanha'
-
-const TABS: { value: CountryFilter; Flag: React.ComponentType<{ size?: number }>; label: string }[] = [
-  { value: 'Todos',   Flag: FlagGlobe,   label: 'Todos'   },
-  { value: 'Brasil',  Flag: FlagBrasil,  label: 'Brasil'  },
-  { value: 'Espanha', Flag: FlagEspanha, label: 'Espanha' },
-]
+/** 'Todos' ou o código de um país ativo (ex: 'Brasil', 'Portugal') — a lista
+ *  de abas vem sempre de Configurações → Países, nunca mais fixa. */
+export type CountryFilter = string
 
 interface CountryTabsProps {
   value: CountryFilter
   onChange: (v: CountryFilter) => void
-  counts?: Partial<Record<CountryFilter, number>>
+  counts?: Partial<Record<string, number>>
 }
 
 export function CountryTabs({ value, onChange, counts }: CountryTabsProps) {
+  // Estado inicial estático (SSR-safe) — corrigido pra lista real assim que monta no cliente.
+  const [codes, setCodes] = useState<string[]>(DEFAULT_ACTIVE_COUNTRY_CODES)
+  useEffect(() => { setCodes(loadUserCountryCodes()) }, [])
+
+  const tabs = ['Todos', ...codes]
+
   return (
     <div
       className="inline-flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto max-w-full"
       style={{ background: 'var(--bg-3)', border: '1px solid var(--border-1)' }}
     >
-      {TABS.map(({ value: tabValue, Flag, label }) => {
+      {tabs.map((tabValue) => {
         const active = value === tabValue
         const count = counts?.[tabValue]
         return (
@@ -39,8 +44,8 @@ export function CountryTabs({ value, onChange, counts }: CountryTabsProps) {
             )}
             style={active ? { background: 'var(--bg-5)' } : {}}
           >
-            <Flag size={tabValue === 'Todos' ? 16 : 18} />
-            <span>{label}</span>
+            {tabValue === 'Todos' ? <FlagGlobe size={16} /> : <CountryFlag code={tabValue} size={18} />}
+            <span>{tabValue}</span>
             {count !== undefined && (
               <span
                 className="text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center"
@@ -66,7 +71,5 @@ export function normalizeCountry(country?: string | null): string {
 
 export function countryFlag(country?: string): string {
   const normalized = normalizeCountry(country)
-  if (normalized === 'Brasil') return '🇧🇷'
-  if (normalized === 'Espanha') return '🇪🇸'
-  return '🌎'
+  return findCountryInfo(normalized)?.flag ?? '🌎'
 }

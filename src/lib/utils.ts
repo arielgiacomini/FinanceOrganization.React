@@ -1,14 +1,24 @@
 import { format, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { YearMonth } from '@/types'
+import { getSession } from '@/lib/auth'
+import { findCountryInfo } from '@/lib/countries'
 
 // ─── Currency ─────────────────────────────────────────────────────────────────
 
-export function formatCurrency(value: number, country?: string | null): string {
-  const isSpain = country?.trim() === 'Espanha'
-  return new Intl.NumberFormat(isSpain ? 'es-ES' : 'pt-BR', {
+// Fallback pra país vazio/desconhecido (nunca deveria acontecer com dado
+// válido, mas mantém o comportamento de sempre em vez de quebrar a formatação).
+const FALLBACK_CURRENCY = 'BRL'
+const FALLBACK_LOCALE = 'pt-BR'
+
+export function formatCurrency(value: number, country?: string | null, opts?: { compact?: boolean }): string {
+  const info = findCountryInfo(country)
+  return new Intl.NumberFormat(info?.locale ?? FALLBACK_LOCALE, {
     style: 'currency',
-    currency: isSpain ? 'EUR' : 'BRL',
+    currency: info?.currency ?? FALLBACK_CURRENCY,
+    // compact: números grandes/redondos (gráficos de projeção) mostram sem
+    // ",00" — só usa casas decimais quando o valor realmente tem centavos.
+    ...(opts?.compact ? { minimumFractionDigits: 0 } : {}),
   }).format(value)
 }
 
@@ -120,10 +130,19 @@ export const DEFAULT_REGISTRATION_TYPES = ['Compra Livre', 'Conta/Fatura Fixa']
 const FREQ_KEY = 'finance_frequences'
 const REG_KEY  = 'finance_registration_types'
 
+// Essas duas listas não têm espelho no backend (ao contrário das outras
+// configs em wallet.ts) — não dá pra simplesmente limpar no login de um
+// usuário novo sem perder o que o dono já tinha customizado. Em vez disso,
+// cada usuário tem a sua própria chave, sufixada pelo id da sessão.
+function scopedKey(base: string): string {
+  const userId = getSession()?.userId
+  return userId ? `${base}:${userId}` : base
+}
+
 export function getFrequences(): string[] {
   if (typeof window === 'undefined') return DEFAULT_FREQUENCES
   try {
-    const v = localStorage.getItem(FREQ_KEY)
+    const v = localStorage.getItem(scopedKey(FREQ_KEY))
     return v ? JSON.parse(v) : DEFAULT_FREQUENCES
   } catch { return DEFAULT_FREQUENCES }
 }
@@ -131,17 +150,17 @@ export function getFrequences(): string[] {
 export function getRegistrationTypes(): string[] {
   if (typeof window === 'undefined') return DEFAULT_REGISTRATION_TYPES
   try {
-    const v = localStorage.getItem(REG_KEY)
+    const v = localStorage.getItem(scopedKey(REG_KEY))
     return v ? JSON.parse(v) : DEFAULT_REGISTRATION_TYPES
   } catch { return DEFAULT_REGISTRATION_TYPES }
 }
 
 export function saveFrequences(list: string[]) {
-  localStorage.setItem(FREQ_KEY, JSON.stringify(list))
+  localStorage.setItem(scopedKey(FREQ_KEY), JSON.stringify(list))
 }
 
 export function saveRegistrationTypes(list: string[]) {
-  localStorage.setItem(REG_KEY, JSON.stringify(list))
+  localStorage.setItem(scopedKey(REG_KEY), JSON.stringify(list))
 }
 
 // Manter retrocompatibilidade

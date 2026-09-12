@@ -12,7 +12,7 @@ import {
 import {
   Plus, RotateCcw, Save, CreditCard,
   TrendingUp, Check, X, SlidersHorizontal, Building2,
-  Pencil, Trash2, Bell, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle,
+  Pencil, Trash2, Bell, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Globe,
 } from 'lucide-react'
 import { walletApi, accountsApi, categoriesApi } from '@/lib/api'
 import type { WalletRecord, RegisterAccountViewModel, EditAccountViewModel } from '@/lib/api'
@@ -27,10 +27,14 @@ import {
   loadQuickBillEnabledFields, loadQuickBillDefaultValues,
   CONTAS_PAGAR_COLUMNS, loadContasPagarColumnsOrder, loadContasPagarColumnsHidden,
   CONTAS_PAGAR_ACCOUNT_STYLE_OPTIONS, loadContasPagarAccountStyle,
+  DESPESA_VER_REGISTROS_FIELDS, loadDespesaVerRegistrosOrder, loadDespesaVerRegistrosHidden,
+  COUNTRY_CATALOG, loadUserCountryCodes, loadDefaultCountryCode, saveUserCountriesConfigLocal,
 } from '@/lib/wallet'
 import type {
   ContasPagarSortCol, ContasReceberSortCol, QuickBillFieldKey, ContasPagarColumnKey, ContasPagarAccountStyle,
+  DespesaVerRegistrosFieldKey, CountryCurrencyInfo,
 } from '@/lib/wallet'
+import { CountryFlag } from '@/components/ui/Flags'
 
 // ─── Chip list ────────────────────────────────────────────────────────────────
 
@@ -219,6 +223,20 @@ const EMPTY_FORM: RegisterAccountViewModel = {
   colors: undefined,
 }
 
+// Precisa ficar fora de AccountFormModal: um componente definido dentro do
+// corpo de outro é recriado (nova identidade) a cada render, então o React
+// desmonta/remonta os inputs a cada tecla digitada — e como o campo Nome tem
+// autoFocus, o cursor "pulava" de volta pra ele a cada letra digitada em
+// qualquer outro campo (Agência, Número, etc).
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      {children}
+    </div>
+  )
+}
+
 function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
     <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -305,9 +323,13 @@ function AccountFormModal({
         enable:       form.enable,
         considerPaid: form.considerPaid,
         colors:       hasColors ? form.colors : undefined,
+        isCreditCard,
+        // Sempre presente (nunca ausente/undefined) — ver comentário no tipo
+        // RegisterAccountViewModel: a API quebra com 500 ao cadastrar uma
+        // conta bancária porque esse campo nunca era enviado nesse caso.
+        cardNumber: isCreditCard ? (form.cardNumber ?? '') : '',
       }
       if (isCreditCard) {
-        if (form.cardNumber)           payload.cardNumber           = form.cardNumber
         if (form.dueDate)              payload.dueDate              = Number(form.dueDate)
         if (form.closingDay)           payload.closingDay           = Number(form.closingDay)
         if (form.commissionPercentage) payload.commissionPercentage = Number(form.commissionPercentage)
@@ -331,13 +353,6 @@ function AccountFormModal({
       setSaving(false)
     }
   }
-
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-    </div>
-  )
 
   const typeLabel = isCreditCard ? 'Cartão de Crédito' : 'Conta Bancária'
 
@@ -708,6 +723,14 @@ function saveContasPagarColumnsConfigLocal(order: string[], hidden: string[]) {
   localStorage.setItem(CONTAS_PAGAR_COLUMNS_CONFIG_KEY, JSON.stringify({ order, hidden }))
 }
 
+// ─── Despesas por Mês/Ano — "Ver registros" — campos do painel expandido — localStorage ──
+
+const DESPESA_VER_REGISTROS_CONFIG_KEY = 'finance_despesa_ver_registros_config'
+
+function saveDespesaVerRegistrosConfigLocal(order: string[], hidden: string[]) {
+  localStorage.setItem(DESPESA_VER_REGISTROS_CONFIG_KEY, JSON.stringify({ order, hidden }))
+}
+
 // ─── Contas a Pagar — identidade visual por conta na tabela — localStorage ────
 
 const CONTAS_PAGAR_ACCOUNT_STYLE_CONFIG_KEY = 'finance_contas_pagar_account_style_config'
@@ -734,11 +757,12 @@ function saveQuickBillConfigLocal(data: Record<string, string>) {
 
 // ─── Tabs definition ──────────────────────────────────────────────────────────
 
-type TabId = 'formularios' | 'contas' | 'grafico' | 'alertas' | 'ordenacao'
+type TabId = 'formularios' | 'contas' | 'paises' | 'grafico' | 'alertas' | 'ordenacao'
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'formularios',     label: 'Formulários',              Icon: SlidersHorizontal },
   { id: 'contas',          label: 'Contas',                    Icon: Building2         },
+  { id: 'paises',          label: 'Países',                    Icon: Globe             },
   { id: 'grafico',         label: 'Gráfico',                   Icon: TrendingUp        },
   { id: 'alertas',         label: 'Alertas',                   Icon: Bell              },
   { id: 'ordenacao',       label: 'Contas a Pagar/Receber',     Icon: ArrowUpDown       },
@@ -793,13 +817,22 @@ function ConfiguracoesInner() {
 
   const [contasPagarColumnsOrder,  setContasPagarColumnsOrder]  = useState<ContasPagarColumnKey[]>(CONTAS_PAGAR_COLUMNS.map(c => c.value))
   const [contasPagarColumnsHidden, setContasPagarColumnsHidden] = useState<Record<ContasPagarColumnKey, boolean>>({} as Record<ContasPagarColumnKey, boolean>)
+
+  const [despesaVerRegistrosOrder,  setDespesaVerRegistrosOrder]  = useState<DespesaVerRegistrosFieldKey[]>(DESPESA_VER_REGISTROS_FIELDS.map(f => f.value))
+  const [despesaVerRegistrosHidden, setDespesaVerRegistrosHidden] = useState<Record<DespesaVerRegistrosFieldKey, boolean>>({} as Record<DespesaVerRegistrosFieldKey, boolean>)
+  const [despesaVerRegistrosRecord, setDespesaVerRegistrosRecord] = useState<WalletRecord | null>(null)
   const [contasPagarColumnsRecord, setContasPagarColumnsRecord] = useState<WalletRecord | null>(null)
 
   const [contasPagarAccountStyle,       setContasPagarAccountStyle]       = useState<ContasPagarAccountStyle>('tint')
   const [contasPagarAccountStyleRecord, setContasPagarAccountStyleRecord] = useState<WalletRecord | null>(null)
 
+  const [activeCountryCodes,      setActiveCountryCodes]      = useState<string[]>(['Brasil', 'Espanha'])
+  const [defaultCountryCode,      setDefaultCountryCode]      = useState('Brasil')
+  const [newCountryCode,          setNewCountryCode]          = useState('')
+  const [userCountriesRecord,     setUserCountriesRecord]     = useState<WalletRecord | null>(null)
+
   const [quickBillEnabled, setQuickBillEnabled] = useState<Record<QuickBillFieldKey, boolean>>({ ...QUICK_BILL_ENABLED_DEFAULT })
-  const [quickBillDefaults, setQuickBillDefaults] = useState<Record<QuickBillFieldKey, string>>({ ...QUICK_BILL_VALUE_DEFAULT })
+  const [quickBillDefaults, setQuickBillDefaults] = useState<Record<QuickBillFieldKey, string>>({ ...QUICK_BILL_VALUE_DEFAULT, country: '' })
   const [quickBillRecord, setQuickBillRecord] = useState<WalletRecord | null>(null)
   const [quickBillCategories, setQuickBillCategories] = useState<string[]>([])
 
@@ -870,7 +903,13 @@ function ConfiguracoesInner() {
     setContasPagarColumnsOrder(loadContasPagarColumnsOrder())
     setContasPagarColumnsHidden(loadContasPagarColumnsHidden())
 
+    setDespesaVerRegistrosOrder(loadDespesaVerRegistrosOrder())
+    setDespesaVerRegistrosHidden(loadDespesaVerRegistrosHidden())
+
     setContasPagarAccountStyle(loadContasPagarAccountStyle())
+
+    setActiveCountryCodes(loadUserCountryCodes())
+    setDefaultCountryCode(loadDefaultCountryCode())
 
     categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }).then(cats => setQuickBillCategories(cats ?? [])).catch(() => {})
 
@@ -956,6 +995,17 @@ function ConfiguracoesInner() {
         } catch {}
       }
 
+      const despesaVerRegistrosRec = records.find(r => r.walletKey === 'finance_despesa_ver_registros_config')
+      setDespesaVerRegistrosRecord(despesaVerRegistrosRec ?? null)
+      if (despesaVerRegistrosRec?.walletValue) {
+        try {
+          const c = JSON.parse(despesaVerRegistrosRec.walletValue)
+          saveDespesaVerRegistrosConfigLocal(c.order ?? [], c.hidden ?? [])
+          setDespesaVerRegistrosOrder(loadDespesaVerRegistrosOrder())
+          setDespesaVerRegistrosHidden(loadDespesaVerRegistrosHidden())
+        } catch {}
+      }
+
       const contasPagarAccountStyleRec = records.find(r => r.walletKey === 'finance_contas_pagar_account_style_config')
       setContasPagarAccountStyleRecord(contasPagarAccountStyleRec ?? null)
       if (contasPagarAccountStyleRec?.walletValue) {
@@ -966,6 +1016,25 @@ function ConfiguracoesInner() {
         } catch {}
       }
 
+      const userCountriesRec = records.find(r => r.walletKey === 'finance_user_countries_config')
+      setUserCountriesRecord(userCountriesRec ?? null)
+      if (userCountriesRec?.walletValue) {
+        try {
+          const c = JSON.parse(userCountriesRec.walletValue)
+          // Aceita o formato antigo (v389–v391: só uma lista de países ativos,
+          // sem padrão separado) e migra sozinho pro formato novo.
+          const codes: string[] = Array.isArray(c.codes) && c.codes.length > 0
+            ? c.codes
+            : Array.isArray(c.countries) ? c.countries.map((x: { code: string }) => x.code) : []
+          if (codes.length > 0) {
+            const defaultCode = codes.includes(c.defaultCode) ? c.defaultCode : codes[0]
+            saveUserCountriesConfigLocal(codes, defaultCode)
+            setActiveCountryCodes(loadUserCountryCodes())
+            setDefaultCountryCode(loadDefaultCountryCode())
+          }
+        } catch {}
+      }
+
       const quickBillRec = records.find(r => r.walletKey === 'finance_quick_bill_config')
       setQuickBillRecord(quickBillRec ?? null)
       if (quickBillRec?.walletValue) {
@@ -973,10 +1042,11 @@ function ConfiguracoesInner() {
           const q = JSON.parse(quickBillRec.walletValue)
           saveQuickBillConfigLocal(q)
           const enabled = { ...QUICK_BILL_ENABLED_DEFAULT }
-          const vals = { ...QUICK_BILL_VALUE_DEFAULT }
+          const vals: Record<QuickBillFieldKey, string> = { ...QUICK_BILL_VALUE_DEFAULT, country: '' }
           for (const f of QUICK_BILL_FIELDS) {
             const rawEnabled = q[`enabled_${f.value}`]
             if (rawEnabled === 'true' || rawEnabled === 'false') enabled[f.value] = rawEnabled === 'true'
+            if (f.value === 'country') continue
             const rawVal = q[`default_${f.value}`]
             if (rawVal !== undefined) vals[f.value] = rawVal
           }
@@ -1112,6 +1182,23 @@ function ConfiguracoesInner() {
       }),
     })
 
+    // Despesas por Mês/Ano — campos do painel expandido do "Ver registros" → localStorage + API
+    const hiddenVerRegistrosList = DESPESA_VER_REGISTROS_FIELDS.map(f => f.value).filter(v => despesaVerRegistrosHidden[v])
+    saveDespesaVerRegistrosConfigLocal(despesaVerRegistrosOrder, hiddenVerRegistrosList)
+    const despesaVerRegistrosVal = JSON.stringify({ order: despesaVerRegistrosOrder, hidden: hiddenVerRegistrosList })
+    tasks.push({
+      label: 'Campos do "Ver registros" — Despesas por Mês/Ano',
+      promise: (despesaVerRegistrosRecord
+        ? walletApi.edit(despesaVerRegistrosRecord.id, 'finance_despesa_ver_registros_config', despesaVerRegistrosVal, despesaVerRegistrosRecord.creationDate)
+        : walletApi.register('finance_despesa_ver_registros_config', despesaVerRegistrosVal)
+      ).then(res => {
+        if (!despesaVerRegistrosRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setDespesaVerRegistrosRecord(newRec)
+        }
+      }),
+    })
+
     // Contas a Pagar — identidade visual por conta na tabela → localStorage + API
     saveContasPagarAccountStyleConfigLocal(contasPagarAccountStyle)
     const contasPagarAccountStyleVal = JSON.stringify({ style: contasPagarAccountStyle })
@@ -1128,10 +1215,28 @@ function ConfiguracoesInner() {
       }),
     })
 
+    // Países usados pelo usuário → localStorage + API
+    saveUserCountriesConfigLocal(activeCountryCodes, defaultCountryCode)
+    const userCountriesVal = JSON.stringify({ codes: activeCountryCodes, defaultCode: defaultCountryCode })
+    tasks.push({
+      label: 'Países',
+      promise: (userCountriesRecord
+        ? walletApi.edit(userCountriesRecord.id, 'finance_user_countries_config', userCountriesVal, userCountriesRecord.creationDate)
+        : walletApi.register('finance_user_countries_config', userCountriesVal)
+      ).then(res => {
+        if (!userCountriesRecord) {
+          const newRec = (res as { output?: { data?: WalletRecord } })?.output?.data
+          if (newRec) setUserCountriesRecord(newRec)
+        }
+      }),
+    })
+
     // Cadastro Rápido — Contas a Pagar → localStorage + API
     const quickBillData: Record<string, string> = {}
     for (const f of QUICK_BILL_FIELDS) {
       quickBillData[`enabled_${f.value}`] = String(quickBillEnabled[f.value])
+      // País não tem valor padrão próprio — segue sempre o país padrão global.
+      if (f.value === 'country') continue
       quickBillData[`default_${f.value}`] = quickBillDefaults[f.value] ?? ''
     }
     saveQuickBillConfigLocal(quickBillData)
@@ -1179,19 +1284,9 @@ function ConfiguracoesInner() {
         return <SearchableSelect value={val} options={quickBillCategories} onChange={v => setQuickDefault(key, v)} />
       case 'country':
         return (
-          <div className="flex gap-2 max-w-xs">
-            {['Brasil', 'Espanha'].map(c => (
-              <button key={c} type="button" onClick={() => setQuickDefault(key, c)}
-                className="flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all"
-                style={{
-                  background: val === c ? 'var(--green-dim)' : 'var(--bg-3)',
-                  border: `1px solid ${val === c ? 'var(--green-border)' : 'var(--border-1)'}`,
-                  color: val === c ? 'var(--green-400)' : 'var(--text-2)',
-                }}>
-                {c}
-              </button>
-            ))}
-          </div>
+          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+            Segue o país padrão definido na aba <strong>Países</strong>
+          </p>
         )
       case 'frequence':
         return (
@@ -1225,6 +1320,38 @@ function ConfiguracoesInner() {
 
   function toggleContasPagarColumnHidden(key: ContasPagarColumnKey) {
     setContasPagarColumnsHidden(h => ({ ...h, [key]: !h[key] }))
+  }
+
+  function moveDespesaVerRegistrosField(index: number, dir: -1 | 1) {
+    setDespesaVerRegistrosOrder(order => {
+      const target = index + dir
+      if (target < 0 || target >= order.length) return order
+      const next = [...order]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
+  function toggleDespesaVerRegistrosFieldHidden(key: DespesaVerRegistrosFieldKey) {
+    setDespesaVerRegistrosHidden(h => ({ ...h, [key]: !h[key] }))
+  }
+
+  function addCountry() {
+    const code = newCountryCode
+    if (!code || activeCountryCodes.includes(code)) return
+    setActiveCountryCodes(codes => [...codes, code])
+    setNewCountryCode('')
+  }
+
+  // Nunca deixa remover o último país — sempre precisa sobrar pelo menos um,
+  // senão nenhum formulário de cadastro teria o que oferecer.
+  function removeCountry(code: string) {
+    setActiveCountryCodes(codes => {
+      if (codes.length === 1) return codes
+      const next = codes.filter(c => c !== code)
+      if (defaultCountryCode === code) setDefaultCountryCode(next[0])
+      return next
+    })
   }
 
   return (
@@ -1571,6 +1698,80 @@ function ConfiguracoesInner() {
             </>
           )}
 
+          {/* Países */}
+          {activeTab === 'paises' && (
+            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+              <Section
+                title="Países"
+                subtitle="Quais países você usa e qual é o padrão. O padrão vem pré-selecionado ao cadastrar algo novo, mas dá pra escolher qualquer outro da lista nesse lançamento. Remover um país não apaga nem esconde nada que já existe: registros antigos continuam visíveis e filtráveis normalmente."
+              >
+                <div className="flex gap-2 mb-4">
+                  <select
+                    className="input flex-1"
+                    value={newCountryCode}
+                    onChange={e => setNewCountryCode(e.target.value)}
+                  >
+                    <option value="">Adicionar país...</option>
+                    {COUNTRY_CATALOG.filter((c: CountryCurrencyInfo) => !activeCountryCodes.includes(c.code)).map((c: CountryCurrencyInfo) => (
+                      <option key={c.code} value={c.code}>{c.code} — {c.currency}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={addCountry} disabled={!newCountryCode} className="btn-secondary flex-shrink-0 disabled:opacity-40">
+                    <Plus size={15} /> Adicionar
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {activeCountryCodes.map(code => {
+                    const info = COUNTRY_CATALOG.find((c: CountryCurrencyInfo) => c.code === code)
+                    const isDefault = defaultCountryCode === code
+                    const isOnlyOne = activeCountryCodes.length === 1
+                    return (
+                      <div
+                        key={code}
+                        className="flex items-center gap-3 px-4 py-3 rounded-lg"
+                        style={{
+                          background: isDefault ? 'var(--green-dim)' : 'var(--bg-3)',
+                          border: `1px solid ${isDefault ? 'var(--green-border)' : 'var(--border-1)'}`,
+                        }}
+                      >
+                        <CountryFlag code={code} size={18} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{code}</span>
+                          {info && <span className="text-xs ml-2" style={{ color: 'var(--text-3)' }}>{info.currency}</span>}
+                        </div>
+                        {isDefault ? (
+                          <span className="text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0" style={{ color: 'var(--green-400)' }}>
+                            Padrão
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDefaultCountryCode(code)}
+                            className="text-xs px-2.5 py-1 rounded-full border flex-shrink-0 transition-colors hover:bg-[var(--bg-4)]"
+                            style={{ borderColor: 'var(--border-1)', color: 'var(--text-3)' }}
+                          >
+                            Definir como padrão
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeCountry(code)}
+                          disabled={isOnlyOne}
+                          title={isOnlyOne ? 'Precisa manter pelo menos um país' : 'Remover'}
+                          className="p-1.5 rounded-md flex-shrink-0 transition-colors hover:bg-[var(--red-dim)] disabled:opacity-30 disabled:hover:bg-transparent"
+                          style={{ color: 'var(--text-3)' }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Section>
+            </div>
+          )}
+
           {/* Gráfico */}
           {activeTab === 'grafico' && (
             <div
@@ -1747,6 +1948,63 @@ function ConfiguracoesInner() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Despesas por Mês/Ano — campos do painel expandido do "Ver registros" */}
+          {activeTab === 'grafico' && (
+            <div className="card p-5" style={{ border: '1px solid var(--border-1)' }}>
+              <Section
+                title='Campos do "Ver registros" — Despesas por Mês/Ano'
+                subtitle='A linha principal (Descrição/Valor/Data de Compra/Status/Ações) é fixa, igual ao modal "Registros Relacionados" de Contas a Pagar. Escolha quais campos extras aparecem ao clicar numa linha para expandi-la, e em que ordem.'
+              >
+                <div>
+                  {despesaVerRegistrosOrder.map((key, idx) => {
+                    const field = DESPESA_VER_REGISTROS_FIELDS.find(f => f.value === key)
+                    if (!field) return null
+                    const hidden = !!despesaVerRegistrosHidden[key]
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center gap-3 py-2.5"
+                        style={{ borderBottom: idx < despesaVerRegistrosOrder.length - 1 ? '1px solid var(--border-1)' : undefined }}
+                      >
+                        <div className="flex flex-col flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => moveDespesaVerRegistrosField(idx, -1)}
+                            disabled={idx === 0}
+                            className="p-0.5 rounded disabled:opacity-20"
+                            style={{ color: 'var(--text-3)' }}
+                          >
+                            <ArrowUp size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveDespesaVerRegistrosField(idx, 1)}
+                            disabled={idx === despesaVerRegistrosOrder.length - 1}
+                            className="p-0.5 rounded disabled:opacity-20"
+                            style={{ color: 'var(--text-3)' }}
+                          >
+                            <ArrowDown size={13} />
+                          </button>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
+                          <input
+                            type="checkbox"
+                            checked={!hidden}
+                            onChange={() => toggleDespesaVerRegistrosFieldHidden(key)}
+                            className="w-4 h-4 rounded accent-green-500"
+                          />
+                          <span className="text-sm font-medium" style={{ color: hidden ? 'var(--text-3)' : 'var(--text-1)' }}>
+                            {field.label}
+                          </span>
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Section>
             </div>
           )}
 

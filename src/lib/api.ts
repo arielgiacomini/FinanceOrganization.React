@@ -20,6 +20,7 @@ import type {
   SearchMonthlyAverageAnalysisOutput,
   RecordsAwaitingOutput,
 } from '@/types'
+import { getSession, clearSession } from '@/lib/auth'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://api.financeiro.arielgiacomini.com.br'
 
@@ -65,6 +66,8 @@ async function request<T>(
     )
   }
 
+  handleAuthStatus(res)
+
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
     throw new Error(`Erro ${res.status} em ${method} ${path}: ${text}`)
@@ -76,41 +79,27 @@ async function request<T>(
   return normalizeResponse(parsed) as T
 }
 
-// ─── API token ────────────────────────────────────────────────────────────────
+/** Sessão inválida ou expirada — ver tratamento do 401 em `handleAuthStatus()`. */
+export class AuthSessionError extends Error {}
 
-const API_CLIENT_ID     = process.env.NEXT_PUBLIC_API_CLIENT_ID     ?? ''
-const API_CLIENT_SECRET = process.env.NEXT_PUBLIC_API_CLIENT_SECRET ?? ''
+/** Trial encerrado / sem assinatura ativa (HTTP 402, TrialGateFilter da API). */
+export class TrialExpiredError extends Error {}
 
-let _apiToken: string | null = null
-let _apiTokenExpiry = 0
-
-async function getApiToken(): Promise<string> {
-  const now = Date.now()
-  if (_apiToken && now < _apiTokenExpiry - 60_000) return _apiToken
-
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: API_CLIENT_ID,
-    client_secret: API_CLIENT_SECRET,
-  })
-
-  let res: Response
-  try {
-    res = await fetch(`${BASE_URL}/v1/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    })
-  } catch (err) {
-    throw new NetworkError(`Erro de rede ao autenticar: ${err instanceof Error ? err.message : String(err)}`)
+// 401: sessão inválida/expirada no servidor (mesmo que o relógio local ainda
+// ache que não). 402: TrialGateFilter — trial acabou ou não tem assinatura
+// ativa. Os dois cortam o fluxo normal e mandam pra fora da área logada, em
+// vez de aparecer como "erro" numa tela qualquer — compartilhado entre
+// `request()` e os dois endpoints que fazem fetch manual (searchByRegistration).
+function handleAuthStatus(res: Response): void {
+  if (res.status === 401) {
+    clearSession()
+    if (typeof window !== 'undefined') window.location.href = '/login/'
+    throw new AuthSessionError('Sessão expirada. Faça login novamente.')
   }
-
-  if (!res.ok) throw new Error(`Falha na autenticação (${res.status}).`)
-
-  const data = await res.json()
-  _apiToken = data.access_token as string
-  _apiTokenExpiry = now + ((data.expires_in as number) ?? 3600) * 1000
-  return _apiToken
+  if (res.status === 402) {
+    if (typeof window !== 'undefined') window.location.href = '/assinatura/'
+    throw new TrialExpiredError('Período de teste encerrado.')
+  }
 }
 
 async function requestAuth<T>(
@@ -119,13 +108,77 @@ async function requestAuth<T>(
   body?: unknown,
   extraHeaders?: Record<string, string>,
 ): Promise<T> {
-  const token = await getApiToken()
+  const session = getSession()
+  if (!session) {
+    if (typeof window !== 'undefined') window.location.href = '/login/'
+    throw new AuthSessionError('Nenhuma sessão ativa.')
+  }
   const result = await request<T>(path, method, body, {
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${session.token}`,
     ...extraHeaders,
   })
 
   // Verifica output.status da API (0 = Success) — usado nos endpoints de Account
+  const out = (result as Record<string, unknown>)?.output as Record<string, unknown> | undefined
+  if (out && typeof out.status === 'number' && out.status !== 0) {
+    const validations = out.validations as Record<string, string> | undefined
+    const errors      = out.errors      as Record<string, string> | undefined
+    const msgs = [
+      ...(validations ? Object.values(validations) : []),
+      ...(errors      ? Object.values(errors)      : []),
+    ]
+    throw new Error(msgs.length ? msgs.join(' ') : String(out.message ?? 'Erro desconhecido.'))
+  }
+
+  return result
+}
+
+/** Chave de lançamento rápido (header X-Quick-Capture-Key) inválida ou revogada. */
+export class QuickCaptureKeyError extends Error {}
+
+// Variante de requestAuth para a chave de lançamento rápido — usada só nas 3 rotas
+// liberadas no backend para o header X-Quick-Capture-Key (bills-to-pay/register,
+// account/search-all, category/search). Não usa handleAuthStatus/getSession de
+// propósito: essa tela não tem sessão nenhuma, então 401 aqui significa "chave
+// inválida/revogada", não "sessão expirada" — não deve redirecionar pro /login/.
+async function requestQuickCapture<T>(
+  path: string,
+  method: 'GET' | 'POST',
+  quickCaptureKey: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Quick-Capture-Key': quickCaptureKey,
+        ...extraHeaders,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  } catch (err) {
+    const isCors = err instanceof TypeError
+    throw new NetworkError(
+      isCors
+        ? `Erro de CORS: a API bloqueou ${method} ${path}.`
+        : `Erro de rede: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new QuickCaptureKeyError('Chave de lançamento rápido inválida ou revogada.')
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`Erro ${res.status} em ${method} ${path}: ${text}`)
+  }
+
+  const text = await res.text()
+  const result = (text ? normalizeResponse(JSON.parse(text)) : {}) as T
+
   const out = (result as Record<string, unknown>)?.output as Record<string, unknown> | undefined
   if (out && typeof out.status === 'number' && out.status !== 0) {
     const validations = out.validations as Record<string, string> | undefined
@@ -149,15 +202,19 @@ export const billsToPayApi = {
   // Serializa manualmente para garantir Int32 + inclui Bearer token
   searchByRegistration: async (id: number) => {
     const intId = Math.trunc(Number(id))
-    console.log('[searchByRegistration] id recebido:', id, '| tipo:', typeof id, '| intId:', intId)
     if (isNaN(intId) || intId <= 0) throw new Error(`ID inválido para histórico: "${id}" (tipo: ${typeof id})`)
-    const token = await getApiToken()
+    const session = getSession()
+    if (!session) {
+      if (typeof window !== 'undefined') window.location.href = '/login/'
+      throw new AuthSessionError('Nenhuma sessão ativa.')
+    }
     const body = `{"idBillToPayRegistrations":[${intId}],"showDetails":true}`
     const res = await fetch(`${BASE_URL}/v1/bills-to-pay/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
       body,
     })
+    handleAuthStatus(res)
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText)
       throw new Error(`Erro ${res.status} em POST /v1/bills-to-pay/search: ${text}`)
@@ -168,6 +225,11 @@ export const billsToPayApi = {
 
   create: (vm: CreateBillToPayViewModel) =>
     requestAuth<{ output?: unknown }>('/v1/bills-to-pay/register', 'POST', vm),
+
+  // Mesma rota de create(), mas autenticada via chave de lançamento rápido
+  // (header X-Quick-Capture-Key) em vez de sessão logada — ver src/app/lancamento-rapido.
+  createQuickCapture: (vm: CreateBillToPayViewModel, quickCaptureKey: string) =>
+    requestQuickCapture<{ output?: unknown }>('/v1/bills-to-pay/register', 'POST', quickCaptureKey, vm),
 
   edit: (vm: EditBillToPayViewModel) =>
     requestAuth<{ output?: unknown }>('/v1/bills-to-pay/edit', 'PUT', vm),
@@ -214,13 +276,18 @@ export const cashReceivableApi = {
 
   searchByRegistration: async (id: number) => {
     const intId = Math.trunc(Number(id))
-    const token = await getApiToken()
+    const session = getSession()
+    if (!session) {
+      if (typeof window !== 'undefined') window.location.href = '/login/'
+      throw new AuthSessionError('Nenhuma sessão ativa.')
+    }
     const body = `{"idCashReceivableRegistrations":[${intId}],"showDetails":true}`
     const res = await fetch(`${BASE_URL}/v1/cash-receivable/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
       body,
     })
+    handleAuthStatus(res)
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText)
       throw new Error(`Erro ${res.status}: ${text}`)
@@ -248,9 +315,14 @@ export interface RegisterAccountViewModel {
   accountAgency?: string
   accountNumber?: string
   accountDigit?: string
+  // Sempre enviar (mesmo string vazia) em POST /v1/account/register — a API
+  // responde 500 quando esse campo vem ausente/null nesse endpoint, mesmo
+  // para conta bancária (que nunca usa cartão). PUT /v1/account/edit não tem
+  // esse problema, mas manter sempre presente por segurança/consistência.
   cardNumber?: string
   commissionPercentage?: number
   enable: boolean
+  isCreditCard?: boolean
   colors?: AccountColorsViewModel
 }
 
@@ -261,6 +333,11 @@ export interface EditAccountViewModel extends RegisterAccountViewModel {
 export const accountsApi = {
   searchAll: () =>
     requestAuth<SearchAccountOutput>('/v1/account/search-all', 'GET'),
+
+  // Mesma rota de searchAll(), autenticada via chave de lançamento rápido — só
+  // pra popular o dropdown de contas na tela de lançamento rápido sem sessão logada.
+  searchAllQuickCapture: (quickCaptureKey: string) =>
+    requestQuickCapture<SearchAccountOutput>('/v1/account/search-all', 'GET', quickCaptureKey),
 
   register: (vm: RegisterAccountViewModel) =>
     requestAuth<unknown>('/v1/account/register', 'POST', vm),
@@ -403,6 +480,16 @@ export const categoriesApi = {
     requestAuth<string[]>(
       '/v1/category/search' + (vm.enable !== undefined ? `?enable=${vm.enable}` : ''),
       'GET',
+      undefined,
+      { accountType: vm.accountType ?? '' },
+    ),
+
+  // Mesma rota de search(), autenticada via chave de lançamento rápido.
+  searchQuickCapture: (vm: SearchCategoryViewModel, quickCaptureKey: string) =>
+    requestQuickCapture<string[]>(
+      '/v1/category/search' + (vm.enable !== undefined ? `?enable=${vm.enable}` : ''),
+      'GET',
+      quickCaptureKey,
       undefined,
       { accountType: vm.accountType ?? '' },
     ),
