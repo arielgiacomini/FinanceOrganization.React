@@ -7,14 +7,16 @@ import { formatCurrency, formatDate, formatYearMonth, currentYearMonth, DEFAULT_
 import {
   loadSaldoFinalYm, loadContasPagarSortCol, loadContasPagarSortDir,
   loadContasPagarColumnsOrder, loadContasPagarColumnsHidden, loadContasPagarAccountStyle,
+  loadUserCountryCodes, loadDefaultCountryCode,
 } from '@/lib/wallet'
 import type { ContasPagarSortCol, ContasPagarColumnKey, ContasPagarAccountStyle } from '@/lib/wallet'
+import { DEFAULT_ACTIVE_COUNTRY_CODES, groupByCountry } from '@/lib/countries'
 import type { BillToPay, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CountryTabs, normalizeCountry } from '@/components/ui/CountryTabs'
 import type { CountryFilter } from '@/components/ui/CountryTabs'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryFlag } from '@/components/ui/Flags'
 import { CategoryFilter, matchesCategory } from '@/components/ui/CategoryFilter'
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
 import { QuickBillToPayForm } from '@/components/forms/QuickBillToPayForm'
@@ -23,6 +25,7 @@ import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BulkPayModal } from '@/components/ui/BulkPayModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
 import { SummaryCards } from '@/components/ui/SummaryCards'
+import type { CountrySummaryItem } from '@/components/ui/SummaryCards'
 import {
   Plus, CheckCircle2, Pencil, Trash2,
   ChevronDown, ChevronUp, AlertCircle, History, CircleDollarSign, CreditCard,
@@ -77,24 +80,23 @@ function purchaseDateTag(dateStr?: string | null): { label: string; color: strin
 
 // Soma os "Compra Livre" relacionados por país — o campo agregado `detailsAmount`
 // vem do backend somando o `value` cru sem considerar a moeda, então um registro
-// com compras em Brasil e Espanha misturadas soma R$ e € juntos como se fosse um
-// valor só. Recalcula aqui a partir de `details` (cada item já tem seu `country`).
-function detailsCountryTotals(details: BillToPay[] | undefined): { brl: number; eur: number } {
-  let brl = 0
-  let eur = 0
+// com compras em mais de um país misturadas soma valores de moedas diferentes
+// como se fosse um valor só. Recalcula aqui a partir de `details` (cada item já
+// tem seu `country`) — funciona pra qualquer quantidade de países, não só dois.
+function detailsCountryTotals(details: BillToPay[] | undefined): Record<string, number> {
+  const totals: Record<string, number> = {}
   for (const d of details ?? []) {
-    if (normalizeCountry(d.country) === 'Espanha') eur += d.value ?? 0
-    else brl += d.value ?? 0
+    const code = normalizeCountry(d.country)
+    totals[code] = (totals[code] ?? 0) + (d.value ?? 0)
   }
-  return { brl, eur }
+  return totals
 }
 
-/** Texto pronto pro badge "Qtd Compras": um valor só, ou os dois lado a lado quando mistura Brasil e Espanha. */
+/** Texto pronto pro badge "Qtd Compras": um valor só, ou vários lado a lado quando mistura países. */
 function formatDetailsAmount(b: BillToPay): string {
-  const { brl, eur } = detailsCountryTotals(b.details)
-  if (brl > 0 && eur > 0) return `${formatCurrency(brl, 'Brasil')} · ${formatCurrency(eur, 'Espanha')}`
-  if (eur > 0) return formatCurrency(eur, 'Espanha')
-  if (brl > 0) return formatCurrency(brl, 'Brasil')
+  const totals = detailsCountryTotals(b.details)
+  const parts = Object.entries(totals).filter(([, v]) => v > 0)
+  if (parts.length > 0) return parts.map(([code, v]) => formatCurrency(v, code)).join(' · ')
   return formatCurrency(b.detailsAmount ?? 0, b.country)
 }
 
@@ -155,6 +157,14 @@ function ContasAPagarPageInner() {
     })
   }
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
+  // Países ativos (Configurações → Países) — estado inicial estático (SSR-safe),
+  // corrigido pra lista real assim que monta no cliente.
+  const [activeCountryCodes, setActiveCountryCodes] = useState<string[]>(DEFAULT_ACTIVE_COUNTRY_CODES)
+  const [defaultCountryCode, setDefaultCountryCode] = useState<string>(DEFAULT_ACTIVE_COUNTRY_CODES[0])
+  useEffect(() => {
+    setActiveCountryCodes(loadUserCountryCodes())
+    setDefaultCountryCode(loadDefaultCountryCode())
+  }, [])
   const [accountFilter, setAccountFilter] = useState<string>('Todos')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Pago' | 'Pendente'>('Todos')
@@ -276,15 +286,16 @@ function ContasAPagarPageInner() {
 
   useEffect(() => { if (!configLoaded) return; load() }, [load, configLoaded])
 
-  // Contadores por país para as abas
+  // Contadores por país para as abas — reflete os países cadastrados em Configurações
   const countryCounts = useMemo(() => {
-    const counts = { Todos: bills.length, Brasil: 0, Espanha: 0 } as Record<CountryFilter, number>
+    const counts: Record<string, number> = { Todos: bills.length }
+    for (const code of activeCountryCodes) counts[code] = 0
     for (const b of bills) {
-      const gc = normalizeCountry(b.country) === 'Espanha' ? 'Espanha' : 'Brasil'
-      counts[gc]++
+      const code = normalizeCountry(b.country)
+      if (counts[code] !== undefined) counts[code]++
     }
     return counts
-  }, [bills])
+  }, [bills, activeCountryCodes])
 
   // Filtragem local por país — todos os filtros MENOS o de conta. Serve de base
   // pros botões de conta (e pro resumo por conta): cada botão mostra o total
@@ -293,8 +304,7 @@ function ContasAPagarPageInner() {
   const filteredExceptAccount = useMemo(() => {
     let result = bills
     if (countryFilter !== 'Todos') {
-      const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
-      result = result.filter(b => getCountry(b.country) === countryFilter)
+      result = result.filter(b => normalizeCountry(b.country) === countryFilter)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -332,22 +342,17 @@ function ContasAPagarPageInner() {
 
   // Valor gasto em cada dia (Hoje/Ontem/Anteontem), separado por país — exibido na própria pill do filtro
   const dayFilterTotals = useMemo(() => {
-    const result: Record<typeof DAY_FILTER_OPTIONS[number], { brasil: number; espanha: number; hasBrasil: boolean; hasEspanha: boolean }> = {
-      Hoje:      { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
-      Ontem:     { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
-      Anteontem: { brasil: 0, espanha: 0, hasBrasil: false, hasEspanha: false },
+    const result: Record<typeof DAY_FILTER_OPTIONS[number], { byCountry: Record<string, number> }> = {
+      Hoje:      { byCountry: {} },
+      Ontem:     { byCountry: {} },
+      Anteontem: { byCountry: {} },
     }
     for (const b of bills) {
       const diff = purchaseDateDiffDays(b.purchaseDate)
       const key = diff === 0 ? 'Hoje' : diff === 1 ? 'Ontem' : diff === 2 ? 'Anteontem' : null
       if (!key) continue
-      if (normalizeCountry(b.country) === 'Espanha') {
-        result[key].espanha += b.value
-        result[key].hasEspanha = true
-      } else {
-        result[key].brasil += b.value
-        result[key].hasBrasil = true
-      }
+      const code = normalizeCountry(b.country)
+      result[key].byCountry[code] = (result[key].byCountry[code] ?? 0) + b.value
     }
     return result
   }, [bills])
@@ -359,10 +364,18 @@ function ContasAPagarPageInner() {
   const totalPending = filtered.filter((b) => !b.hasPay).reduce((s, b) => s + b.value, 0)
   const total        = filtered.reduce((s, b) => s + b.value, 0)
 
-  const brasilBills  = byCountry('Brasil')
-  const espanhaBills = byCountry('Espanha')
-  const summaryBrasil  = { total: sumValues(brasilBills),  positive: sumValues(brasilBills.filter(b => b.hasPay)),  pending: sumValues(brasilBills.filter(b => !b.hasPay))  }
-  const summaryEspanha = { total: sumValues(espanhaBills), positive: sumValues(espanhaBills.filter(b => b.hasPay)), pending: sumValues(espanhaBills.filter(b => !b.hasPay)) }
+  const countrySummaries: CountrySummaryItem[] = useMemo(() => activeCountryCodes.map(code => {
+    const items = byCountry(code)
+    return {
+      code,
+      summary: {
+        total: sumValues(items),
+        positive: sumValues(items.filter(b => b.hasPay)),
+        pending: sumValues(items.filter(b => !b.hasPay)),
+      },
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [bills, activeCountryCodes])
 
   // Selection helpers
   const selectedItems = filtered.filter(b => !!selected[b.id])
@@ -491,7 +504,7 @@ function ContasAPagarPageInner() {
           <Td key="country" className="text-xs" style={NOWRAP_TIGHT}>
             {b.country ? (
               <div className="flex items-center gap-1.5">
-                {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
+                <CountryFlag code={b.country} size={13} />
                 <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{normalizeCountry(b.country)}</span>
               </div>
             ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
@@ -592,8 +605,7 @@ function ContasAPagarPageInner() {
       {/* Summary com resumo por conta embutido */}
       <SummaryCards
         countryFilter={countryFilter}
-        brasil={summaryBrasil}
-        espanha={summaryEspanha}
+        countries={countrySummaries}
         labels={{ total: 'Total do mês', positive: 'Pago', pending: 'Pendente' }}
         accountSummary={accountSummary.map(([name, data]) => ({
           name,
@@ -601,7 +613,7 @@ function ContasAPagarPageInner() {
           pending: data.pending,
           hex: data.hex,
           isCreditCard: data.isCreditCard,
-          currency: data.countries.size === 1 && data.countries.has('Espanha') ? 'Espanha' : 'Brasil',
+          currency: data.countries.size === 1 ? Array.from(data.countries)[0] : defaultCountryCode,
         }))}
       />
 
@@ -621,7 +633,7 @@ function ContasAPagarPageInner() {
           <span className="ml-auto font-mono font-semibold text-sm" style={{ color: 'var(--green-400)' }}>
             {accountSaldoLoading
               ? <Spinner size={14} />
-              : formatCurrency(accountSaldo ?? 0, 'Brasil')}
+              : formatCurrency(accountSaldo ?? 0, defaultCountryCode)}
           </span>
         </div>
       )}
@@ -634,26 +646,20 @@ function ContasAPagarPageInner() {
               <span style={{ color: 'var(--green-400)', fontWeight: 700 }}>{Object.keys(selected).length}</span> selecionado(s)
             </span>
             {(() => {
-              const brItems = selectedItems.filter(b => normalizeCountry(b.country) !== 'Espanha')
-              const esItems = selectedItems.filter(b => normalizeCountry(b.country) === 'Espanha')
-              const brTotal = brItems.reduce((s, b) => s + (b.value ?? 0), 0)
-              const esTotal = esItems.reduce((s, b) => s + (b.value ?? 0), 0)
-              const hasBoth = brItems.length > 0 && esItems.length > 0
+              const groups = groupByCountry(selectedItems, b => b.country, activeCountryCodes)
+              const hasMultiple = groups.length > 1
               return (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
                   <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {brItems.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      {hasBoth && <FlagBrasil size={12} />}
-                      <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(brTotal, 'Brasil')}</span>
+                  {groups.map((g, i) => (
+                    <span key={g.code} className="flex items-center gap-1">
+                      {i > 0 && <span style={{ color: 'var(--border-2)' }}>·</span>}
+                      {hasMultiple && <CountryFlag code={g.code} size={12} />}
+                      <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>
+                        {formatCurrency(g.items.reduce((s, b) => s + (b.value ?? 0), 0), g.code)}
+                      </span>
                     </span>
-                  )}
-                  {esItems.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      {hasBoth && <><span style={{ color: 'var(--border-2)' }}>·</span><FlagEspanha size={12} /></>}
-                      <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(esTotal, 'Espanha')}</span>
-                    </span>
-                  )}
+                  ))}
                 </div>
               )
             })()}
@@ -695,7 +701,8 @@ function ContasAPagarPageInner() {
                 const activeColor = d === 'Hoje' ? 'var(--amber)' : d === 'Ontem' ? 'var(--blue)' : 'var(--text-2)'
                 const activeBg = d === 'Hoje' ? 'rgba(245,158,11,0.1)' : d === 'Ontem' ? 'var(--blue-dim)' : 'var(--bg-4)'
                 const t = dayFilterTotals[d]
-                const hasBoth = t.hasBrasil && t.hasEspanha
+                const codesToShow = activeCountryCodes.filter(code => t.byCountry[code])
+                const hasBoth = codesToShow.length > 1
                 return (
                   <button key={d} type="button" onClick={() => setDayFilter(active ? 'Todos' : d)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
@@ -705,21 +712,15 @@ function ContasAPagarPageInner() {
                       border: `1px solid ${active ? activeColor : 'var(--border-1)'}`,
                     }}>
                     {d}
-                    {(t.hasBrasil || t.hasEspanha) && (
+                    {codesToShow.length > 0 && (
                       <span className="font-mono" style={{ opacity: active ? 1 : 0.7 }}>
-                        {t.hasBrasil && (
-                          <span className="inline-flex items-center gap-1">
-                            <FlagBrasil size={11} />
-                            {formatCurrency(t.brasil, 'Brasil')}
+                        {codesToShow.map((code, i) => (
+                          <span key={code} className="inline-flex items-center gap-1">
+                            {i > 0 && hasBoth && <span style={{ margin: '0 3px' }}>·</span>}
+                            <CountryFlag code={code} size={11} />
+                            {formatCurrency(t.byCountry[code], code)}
                           </span>
-                        )}
-                        {hasBoth && <span style={{ margin: '0 3px' }}>·</span>}
-                        {t.hasEspanha && (
-                          <span className="inline-flex items-center gap-1">
-                            <FlagEspanha size={11} />
-                            {formatCurrency(t.espanha, 'Espanha')}
-                          </span>
-                        )}
+                        ))}
                       </span>
                     )}
                   </button>
@@ -737,32 +738,23 @@ function ContasAPagarPageInner() {
         />
 
         {(search.trim() || catPath.length > 0) && (() => {
-          const brItems = filtered.filter(b => normalizeCountry(b.country) !== 'Espanha')
-          const esItems = filtered.filter(b => normalizeCountry(b.country) === 'Espanha')
-          const brTotal = brItems.reduce((s, b) => s + (b.value ?? 0), 0)
-          const esTotal = esItems.reduce((s, b) => s + (b.value ?? 0), 0)
-          const brPending = brItems.filter(b => !b.hasPay).reduce((s, b) => s + (b.value ?? 0), 0)
-          const esPending = esItems.filter(b => !b.hasPay).reduce((s, b) => s + (b.value ?? 0), 0)
-          const hasBoth = brItems.length > 0 && esItems.length > 0
+          const groups = groupByCountry(filtered, b => b.country, activeCountryCodes)
+          const hasMultiple = groups.length > 1
           return (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
               <span><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{filtered.length}</span> {filtered.length === 1 ? 'item' : 'itens'}</span>
-              {brItems.length > 0 && (
-                <>
-                  <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <FlagBrasil size={14} />}
-                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(brTotal, 'Brasil')}</span></span>
-                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(brPending, 'Brasil')}</span></span>
-                </>
-              )}
-              {esItems.length > 0 && (
-                <>
-                  <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <FlagEspanha size={14} />}
-                  <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(esTotal, 'Espanha')}</span></span>
-                  <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(esPending, 'Espanha')}</span></span>
-                </>
-              )}
+              {groups.map(g => {
+                const gTotal = g.items.reduce((s, b) => s + (b.value ?? 0), 0)
+                const gPending = g.items.filter(b => !b.hasPay).reduce((s, b) => s + (b.value ?? 0), 0)
+                return (
+                  <Fragment key={g.code}>
+                    <span style={{ color: 'var(--border-2)' }}>·</span>
+                    {hasMultiple && <CountryFlag code={g.code} size={14} />}
+                    <span>Total: <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>{formatCurrency(gTotal, g.code)}</span></span>
+                    <span>Pendente: <span className="font-mono font-semibold" style={{ color: 'var(--amber)' }}>{formatCurrency(gPending, g.code)}</span></span>
+                  </Fragment>
+                )
+              })}
             </div>
           )
         })()}
@@ -788,8 +780,8 @@ function ContasAPagarPageInner() {
               const active = accountFilter === acc
               const accBills = filteredExceptAccount.filter(b => b.account === acc)
               const accTotal = accBills.reduce((s, b) => s + b.value, 0)
-              const onlySpain = accBills.length > 0 && accBills.every(b => b.country?.trim() === 'Espanha')
-              const accCurr = onlySpain ? 'Espanha' : 'Brasil'
+              const accCountries = Array.from(new Set(accBills.map(b => normalizeCountry(b.country))))
+              const accCurr = accCountries.length === 1 ? accCountries[0] : defaultCountryCode
               return (
                 <div key={acc} className="flex flex-col items-start gap-1">
                   <button
@@ -815,7 +807,7 @@ function ContasAPagarPageInner() {
                     >
                       {accountSaldoLoading
                         ? <><Spinner size={10} /> Saldo disponível atual...</>
-                        : <>Saldo disponível atual:<span className="font-mono font-semibold">{formatCurrency(accountSaldo ?? 0, 'Brasil')}</span></>}
+                        : <>Saldo disponível atual:<span className="font-mono font-semibold">{formatCurrency(accountSaldo ?? 0, defaultCountryCode)}</span></>}
                     </span>
                   )}
                 </div>
@@ -977,7 +969,7 @@ function ContasAPagarPageInner() {
                 )}
                 {b.country && (
                   <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
-                    {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={12} /> : <FlagBrasil size={12} />}
+                    <CountryFlag code={b.country} size={12} />
                     {normalizeCountry(b.country)}
                   </span>
                 )}
@@ -1228,7 +1220,12 @@ function ContasAPagarPageInner() {
             entry.total += d.value ?? 0
             accountTotals.set(key, entry)
           }
-          const { brl: detailsBrl, eur: detailsEur } = detailsCountryTotals(sortedDetails)
+          const detailsTotals = detailsCountryTotals(sortedDetails)
+          const mainCode = normalizeCountry(relatedTarget.country)
+          const combinedTotals = { ...detailsTotals, [mainCode]: (detailsTotals[mainCode] ?? 0) + relatedTarget.value }
+          const combinedParts = Object.entries(combinedTotals)
+            .filter(([, v]) => v > 0)
+            .sort(([a], [b]) => (a === mainCode ? -1 : b === mainCode ? 1 : 0))
           return (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -1251,9 +1248,7 @@ function ContasAPagarPageInner() {
               <div>
                 <p className="text-xs" style={{ color: 'var(--text-3)' }}>Valor total</p>
                 <p className="text-sm font-semibold font-mono" style={{ color: 'var(--text-1)' }}>
-                  {normalizeCountry(relatedTarget.country) === 'Espanha'
-                    ? formatCurrency(relatedTarget.value + detailsEur, 'Espanha') + (detailsBrl > 0 ? ` · ${formatCurrency(detailsBrl, 'Brasil')}` : '')
-                    : formatCurrency(relatedTarget.value + detailsBrl, 'Brasil') + (detailsEur > 0 ? ` · ${formatCurrency(detailsEur, 'Espanha')}` : '')}
+                  {combinedParts.map(([code, v]) => formatCurrency(v, code)).join(' · ')}
                 </p>
               </div>
               {/* Soma por conta — só aparece quando os registros vêm de mais de uma conta */}

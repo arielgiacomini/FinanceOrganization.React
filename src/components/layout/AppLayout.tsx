@@ -5,6 +5,7 @@ import { AuthGuard } from '@/components/layout/AuthGuard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { RecordsAwaitingAlert } from '@/components/ui/RecordsAwaitingAlert'
 import { cn } from '@/lib/utils'
+import { syncUserCountriesFromApi } from '@/lib/wallet'
 
 const SIDEBAR_COLLAPSED_KEY = 'finance_sidebar_collapsed'
 
@@ -14,6 +15,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true') setCollapsed(true)
   }, [])
+
+  // Sincroniza a config de países ativos (Configurações → Países) da API pro
+  // localStorage assim que qualquer tela carrega — sem isso, quem abre direto
+  // Contas a Pagar/Receber (ou qualquer outra tela) num aparelho/navegador que
+  // nunca visitou a tela de Configurações continua vendo o valor padrão de
+  // fábrica (Brasil/Espanha) em vez do que foi realmente configurado.
+  useEffect(() => { syncUserCountriesFromApi() }, [])
 
   function toggleCollapsed() {
     setCollapsed(v => {

@@ -4,6 +4,12 @@
  * (que causam erros de build no Next.js).
  */
 
+import { COUNTRY_CATALOG, DEFAULT_ACTIVE_COUNTRY_CODES, findCountryInfo } from '@/lib/countries'
+import type { CountryCurrencyInfo } from '@/lib/countries'
+import { walletApi } from '@/lib/api'
+export { COUNTRY_CATALOG, DEFAULT_ACTIVE_COUNTRY_CODES, findCountryInfo }
+export type { CountryCurrencyInfo }
+
 const WALLET_KEY = 'finance_wallet'
 const PLR_CONFIG_KEY = 'finance_plr_config'
 const STALE_ALERT_CONFIG_KEY = 'finance_stale_alert_config'
@@ -11,6 +17,90 @@ const STALE_ALERT_CONFIG_KEY = 'finance_stale_alert_config'
 export const STALE_ALERT_DEFAULT_MENSAGEM =
   'Os dados desta tela podem estar desatualizados. Recomendamos atualizar a página para ver as informações mais recentes.'
 export const STALE_ALERT_DEFAULT_INTERVALO_MINUTOS = 5
+
+// ─── Países usados pelo usuário ─────────────────────────────────────────────────
+// Base para o país deixar de ser fixo em "Brasil + Espanha" em todo o app —
+// qualquer país do catálogo (ver src/lib/countries.ts) pode ser adicionado.
+// Um deles é o "padrão" (pré-selecionado ao cadastrar algo novo); os outros
+// continuam disponíveis pra escolher manualmente nesse cadastro. Sem nenhuma
+// configuração salva, cai em Brasil + Espanha com Brasil como padrão — o
+// comportamento de sempre, pra não mudar nada de quem já usa os dois.
+
+const USER_COUNTRIES_CONFIG_KEY = 'finance_user_countries_config'
+
+interface UserCountriesStoredConfig {
+  codes?: string[]
+  defaultCode?: string
+  /** Formato usado nas versões v389–v391 — migrado sozinho na leitura. */
+  countries?: { code: string }[]
+}
+
+function readUserCountriesConfig(): UserCountriesStoredConfig {
+  try {
+    const raw = localStorage.getItem(USER_COUNTRIES_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return {}
+}
+
+/** Códigos dos países que o usuário escolheu usar, na ordem salva. */
+export function loadUserCountryCodes(): string[] {
+  const c = readUserCountriesConfig()
+  if (Array.isArray(c.codes) && c.codes.length > 0) return c.codes
+  if (Array.isArray(c.countries) && c.countries.length > 0) return c.countries.map(x => x.code)
+  return [...DEFAULT_ACTIVE_COUNTRY_CODES]
+}
+
+/** Países que o usuário escolheu usar — usar em vez de escrever 'Brasil'/
+ *  'Espanha' direto num componente novo. */
+export function loadUserCountries(): CountryCurrencyInfo[] {
+  return loadUserCountryCodes()
+    .map(code => findCountryInfo(code))
+    .filter((c): c is CountryCurrencyInfo => !!c)
+}
+
+/** País padrão — pré-selecionado ao cadastrar algo novo. Cai no primeiro país
+ *  ativo se nenhum padrão foi definido, ou se o que foi salvo não está mais
+ *  na lista de países usados. */
+export function loadDefaultCountryCode(): string {
+  const c = readUserCountriesConfig()
+  const codes = loadUserCountryCodes()
+  if (c.defaultCode && codes.includes(c.defaultCode)) return c.defaultCode
+  return codes[0] ?? DEFAULT_ACTIVE_COUNTRY_CODES[0]
+}
+
+/** Grava a config de países ativos no localStorage (espelho local — a fonte
+ *  de verdade fica no wallet da API). Usado tanto pela tela de Configurações
+ *  (ao salvar) quanto pelo AppLayout (ao sincronizar a partir da API em toda
+ *  navegação, pra qualquer tela que leia país já começar com o valor certo,
+ *  sem depender do usuário ter aberto Configurações naquela sessão/aparelho). */
+export function saveUserCountriesConfigLocal(codes: string[], defaultCode: string) {
+  localStorage.setItem(USER_COUNTRIES_CONFIG_KEY, JSON.stringify({ codes, defaultCode }))
+}
+
+/** Busca a config de países ativos direto da API e sincroniza no localStorage.
+ *  Chamar em toda tela que possa ser a primeira a abrir numa sessão/aparelho
+ *  (AppLayout cobre as telas normais; lançamento rápido standalone chama
+ *  também, por não passar pelo AppLayout) — sem isso, quem nunca visitou
+ *  Configurações nesse navegador via um valor de fábrica desatualizado em vez
+ *  do que foi realmente configurado. Resolve com `true` se algo mudou. */
+export async function syncUserCountriesFromApi(): Promise<boolean> {
+  try {
+    const res = await walletApi.search()
+    const rec = res.output?.data?.find(r => r.walletKey === USER_COUNTRIES_CONFIG_KEY)
+    if (!rec?.walletValue) return false
+    const c = JSON.parse(rec.walletValue) as UserCountriesStoredConfig
+    const codes: string[] = Array.isArray(c.codes) && c.codes.length > 0
+      ? c.codes
+      : Array.isArray(c.countries) ? c.countries.map(x => x.code) : []
+    if (codes.length === 0) return false
+    const defaultCode = c.defaultCode && codes.includes(c.defaultCode) ? c.defaultCode : codes[0]
+    saveUserCountriesConfigLocal(codes, defaultCode)
+    return true
+  } catch {
+    return false
+  }
+}
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
 
@@ -482,10 +572,13 @@ export const QUICK_BILL_ENABLED_DEFAULT: Record<QuickBillFieldKey, boolean> = {
   additionalMessage: false,
 }
 
-export const QUICK_BILL_VALUE_DEFAULT: Record<QuickBillFieldKey, string> = {
+// País não tem valor padrão próprio aqui — segue sempre o país padrão global
+// (Configurações → Países, ver loadDefaultCountryCode). Só o "aparece no
+// cadastro rápido" (QUICK_BILL_ENABLED_DEFAULT.country) continua valendo,
+// controlando se o seletor de país aparece pra trocar nesse lançamento.
+export const QUICK_BILL_VALUE_DEFAULT: Record<Exclude<QuickBillFieldKey, 'country'>, string> = {
   account: '',
   category: '',
-  country: 'Brasil',
   frequence: 'Livre',
   registrationType: 'Compra Livre',
   additionalMessage: '',
@@ -511,8 +604,9 @@ export function loadQuickBillEnabledFields(): Record<QuickBillFieldKey, boolean>
 
 export function loadQuickBillDefaultValues(): Record<QuickBillFieldKey, string> {
   const c = readQuickBillConfig()
-  const result = { ...QUICK_BILL_VALUE_DEFAULT }
+  const result: Record<QuickBillFieldKey, string> = { ...QUICK_BILL_VALUE_DEFAULT, country: loadDefaultCountryCode() }
   for (const f of QUICK_BILL_FIELDS) {
+    if (f.value === 'country') continue
     const v = c[`default_${f.value}`]
     if (v !== undefined) result[f.value] = v
   }

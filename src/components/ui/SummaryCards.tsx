@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryFlag } from '@/components/ui/Flags'
 import { CreditCard, ChevronDown, ChevronUp } from 'lucide-react'
 import type { CountryFilter } from '@/components/ui/CountryTabs'
 
@@ -10,6 +10,11 @@ interface CountrySummary {
   total: number
   positive: number  // pago (bills) ou recebido (receivables)
   pending: number
+}
+
+export interface CountrySummaryItem {
+  code: string
+  summary: CountrySummary
 }
 
 export interface AccountSummaryItem {
@@ -23,8 +28,7 @@ export interface AccountSummaryItem {
 
 interface SummaryCardsProps {
   countryFilter: CountryFilter
-  brasil: CountrySummary
-  espanha: CountrySummary
+  countries: CountrySummaryItem[]
   labels: { total: string; positive: string; pending: string }
   accountSummary?: AccountSummaryItem[]
 }
@@ -41,10 +45,9 @@ function MiniCard({ label, value, color, currency }: {
 }
 
 // Resumo escrito em fonte pequena, exibido na linha do colapso (quando fechado)
-function InlineSummary({ countryFilter, brasil, espanha, labels }: {
+function InlineSummary({ countryFilter, countries, labels }: {
   countryFilter: CountryFilter
-  brasil: CountrySummary
-  espanha: CountrySummary
+  countries: CountrySummaryItem[]
   labels: { total: string; positive: string; pending: string }
 }) {
   function block(data: CountrySummary, currency: string, flag?: React.ReactNode) {
@@ -59,15 +62,18 @@ function InlineSummary({ countryFilter, brasil, espanha, labels }: {
   }
 
   if (countryFilter !== 'Todos') {
-    const data = countryFilter === 'Brasil' ? brasil : espanha
+    const data = countries.find(c => c.code === countryFilter)?.summary ?? { total: 0, positive: 0, pending: 0 }
     return <div className="flex items-center gap-x-3 gap-y-1 text-xs flex-wrap">{block(data, countryFilter)}</div>
   }
 
   return (
     <div className="flex items-center gap-x-3 gap-y-1 text-xs flex-wrap">
-      {block(brasil, 'Brasil', <FlagBrasil size={13} />)}
-      <span style={{ color: 'var(--border-2)' }}>·</span>
-      {block(espanha, 'Espanha', <FlagEspanha size={13} />)}
+      {countries.map((c, i) => (
+        <span key={c.code} className="inline-flex items-center gap-x-2 flex-wrap">
+          {i > 0 && <span style={{ color: 'var(--border-2)' }}>·</span>}
+          {block(c.summary, c.code, <CountryFlag code={c.code} size={13} />)}
+        </span>
+      ))}
     </div>
   )
 }
@@ -97,7 +103,7 @@ function AccountBreakdown({ items }: { items: AccountSummaryItem[] }) {
   )
 }
 
-export function SummaryCards({ countryFilter, brasil, espanha, labels, accountSummary = [] }: SummaryCardsProps) {
+export function SummaryCards({ countryFilter, countries, labels, accountSummary = [] }: SummaryCardsProps) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -109,7 +115,7 @@ export function SummaryCards({ countryFilter, brasil, espanha, labels, accountSu
         className="w-full flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--bg-3)]"
       >
         <div className="min-w-0 text-left">
-          {!open && <InlineSummary countryFilter={countryFilter} brasil={brasil} espanha={espanha} labels={labels} />}
+          {!open && <InlineSummary countryFilter={countryFilter} countries={countries} labels={labels} />}
           {open && <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Resumo do mês</span>}
         </div>
         <span className="flex items-center gap-1 flex-shrink-0 text-xs" style={{ color: 'var(--text-3)' }}>
@@ -124,7 +130,7 @@ export function SummaryCards({ countryFilter, brasil, espanha, labels, accountSu
           {countryFilter !== 'Todos' ? (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
               {(() => {
-                const data = countryFilter === 'Brasil' ? brasil : espanha
+                const data = countries.find(c => c.code === countryFilter)?.summary ?? { total: 0, positive: 0, pending: 0 }
                 const currency = countryFilter
                 return [
                   { label: labels.total,    value: data.total,    color: 'var(--text-1)'    },
@@ -139,31 +145,20 @@ export function SummaryCards({ countryFilter, brasil, espanha, labels, accountSu
               })()}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
-              {/* Brasil */}
-              <div className="rounded-lg px-5 py-4" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
-                <div className="flex items-center gap-2 mb-4 pb-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
-                  <FlagBrasil size={20} />
-                  <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Brasil</span>
+            <div className="grid grid-cols-1 gap-4 pt-3" style={{ gridTemplateColumns: countries.length > 1 ? 'repeat(auto-fit, minmax(240px, 1fr))' : undefined }}>
+              {countries.map(c => (
+                <div key={c.code} className="rounded-lg px-5 py-4" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
+                  <div className="flex items-center gap-2 mb-4 pb-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
+                    <CountryFlag code={c.code} size={20} />
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>{c.code}</span>
+                  </div>
+                  <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 sm:gap-3">
+                    <MiniCard label={labels.total}    value={c.summary.total}    color="var(--text-1)"    currency={c.code} />
+                    <MiniCard label={labels.positive} value={c.summary.positive} color="var(--green-400)" currency={c.code} />
+                    <MiniCard label={labels.pending}  value={c.summary.pending}  color="var(--amber)"     currency={c.code} />
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 sm:gap-3">
-                  <MiniCard label={labels.total}    value={brasil.total}    color="var(--text-1)"    currency="Brasil"  />
-                  <MiniCard label={labels.positive} value={brasil.positive} color="var(--green-400)" currency="Brasil"  />
-                  <MiniCard label={labels.pending}  value={brasil.pending}  color="var(--amber)"     currency="Brasil"  />
-                </div>
-              </div>
-              {/* Espanha */}
-              <div className="rounded-lg px-5 py-4" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-1)' }}>
-                <div className="flex items-center gap-2 mb-4 pb-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
-                  <FlagEspanha size={20} />
-                  <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Espanha</span>
-                </div>
-                <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 sm:gap-3">
-                  <MiniCard label={labels.total}    value={espanha.total}    color="var(--text-1)"    currency="Espanha" />
-                  <MiniCard label={labels.positive} value={espanha.positive} color="var(--green-400)" currency="Espanha" />
-                  <MiniCard label={labels.pending}  value={espanha.pending}  color="var(--amber)"     currency="Espanha" />
-                </div>
-              </div>
+              ))}
             </div>
           )}
 

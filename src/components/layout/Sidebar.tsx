@@ -9,8 +9,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearSession } from '@/lib/auth'
+import { getPendingQueue } from '@/lib/offlineQueue'
 import { AppVersionBadge } from '@/components/ui/AppVersionBadge'
 import { CheckForUpdateButton } from '@/components/ui/AppServiceWorker'
+import { UserBadge } from '@/components/ui/UserBadge'
 
 const nav = [
   { href: '/',                   label: 'Dashboard',        icon: LayoutDashboard },
@@ -30,6 +32,17 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   const path = usePathname()
   const [open, setOpen] = useState(false)
   function logout() {
+    // A fila offline guarda lançamentos que ainda não chegaram no servidor —
+    // sair sem sincronizar antes perderia esse dado (e ele fica preso local,
+    // sem dono, já que a próxima sessão pode ser de outro usuário).
+    const pending = getPendingQueue()
+    if (pending.length > 0) {
+      const ok = window.confirm(
+        `Você tem ${pending.length} lançamento(s) ainda não sincronizado(s) (feitos offline). ` +
+        'Se sair agora, eles ficam perdidos. Conecte à internet e espere sincronizar antes de sair. Sair mesmo assim?'
+      )
+      if (!ok) return
+    }
     clearSession()
     window.location.href = '/login/'
   }
@@ -102,6 +115,13 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5"><NavLinks collapsed={collapsed} /></nav>
         <div className={cn('py-4 border-t', collapsed ? 'px-2' : 'px-3')} style={{ borderColor: 'var(--border-1)' }}>
+          {collapsed ? (
+            <UserBadge avatarOnly className="flex justify-center mb-3" />
+          ) : (
+            <div className="rounded-lg px-3 py-2.5 mb-2" style={{ background: 'var(--bg-2)' }}>
+              <UserBadge />
+            </div>
+          )}
           <button onClick={logout}
             title={collapsed ? 'Sair' : undefined}
             className={cn(
@@ -134,14 +154,17 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
             style={{ background: 'var(--green-500)' }}>F</div>
           <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>Finance Org</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(v => !v)}
-          className="p-2 rounded-lg transition-colors hover:bg-[var(--bg-3)]"
-          style={{ color: 'var(--text-2)' }}
-        >
-          {open ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <UserBadge avatarOnly />
+          <button
+            type="button"
+            onClick={() => setOpen(v => !v)}
+            className="p-2 rounded-lg transition-colors hover:bg-[var(--bg-3)]"
+            style={{ color: 'var(--text-2)' }}
+          >
+            {open ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </header>
 
       {/* ── Mobile overlay ── */}
@@ -173,6 +196,9 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto"><NavLinks /></nav>
         <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--border-1)' }}>
+          <div className="rounded-lg px-3 py-2.5 mb-2" style={{ background: 'var(--bg-2)' }}>
+            <UserBadge />
+          </div>
           <button onClick={logout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-[var(--red-dim)]"
             style={{ color: 'var(--text-3)' }}>

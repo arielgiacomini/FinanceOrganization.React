@@ -1,21 +1,23 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import { cashReceivableApi, accountsApi } from '@/lib/api'
 import { formatCurrency, formatDate, formatYearMonth, currentYearMonth } from '@/lib/utils'
-import { loadSaldoFinalYm, loadContasReceberSortCol, loadContasReceberSortDir } from '@/lib/wallet'
+import { loadSaldoFinalYm, loadContasReceberSortCol, loadContasReceberSortDir, loadUserCountryCodes } from '@/lib/wallet'
 import type { ContasReceberSortCol } from '@/lib/wallet'
+import { DEFAULT_ACTIVE_COUNTRY_CODES, groupByCountry } from '@/lib/countries'
 import type { CashReceivable, Account } from '@/types'
 import { Modal, PageHeader, Table, Td, TRow, Spinner } from '@/components/ui'
 import { YearMonthSelector } from '@/components/ui/YearMonthSelector'
 import { CountryTabs, normalizeCountry } from '@/components/ui/CountryTabs'
 import type { CountryFilter } from '@/components/ui/CountryTabs'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryFlag } from '@/components/ui/Flags'
 import { CategoryFilter, matchesCategory } from '@/components/ui/CategoryFilter'
 import { CashReceivableForm } from '@/components/forms/CashReceivableForm'
 import { CashReceivableHistory } from '@/components/ui/CashReceivableHistory'
 import { ReceiveModal } from '@/components/ui/ReceiveModal'
 import { SummaryCards } from '@/components/ui/SummaryCards'
+import type { CountrySummaryItem } from '@/components/ui/SummaryCards'
 import { Plus, CheckCircle2, Pencil, Trash2, Clock, CircleDollarSign, History, ChevronDown, ChevronUp } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 
@@ -61,6 +63,10 @@ function ContasAReceberPageInner() {
   const [accountMap, setAccountMap] = useState<Record<string, Account>>({})
   const [loading, setLoading] = useState(true)
   const [countryFilter, setCountryFilter] = useState<CountryFilter>('Todos')
+  // Países ativos (Configurações → Países) — estado inicial estático (SSR-safe),
+  // corrigido pra lista real assim que monta no cliente.
+  const [activeCountryCodes, setActiveCountryCodes] = useState<string[]>(DEFAULT_ACTIVE_COUNTRY_CODES)
+  useEffect(() => { setActiveCountryCodes(loadUserCountryCodes()) }, [])
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<CashReceivable | null>(null)
@@ -122,19 +128,19 @@ function ContasAReceberPageInner() {
   useEffect(() => { if (!configLoaded) return; load() }, [load, configLoaded])
 
   const countryCounts = useMemo(() => {
-    const counts = { Todos: items.length, Brasil: 0, Espanha: 0 } as Record<CountryFilter, number>
+    const counts: Record<string, number> = { Todos: items.length }
+    for (const code of activeCountryCodes) counts[code] = 0
     for (const r of items) {
-      const gc = normalizeCountry(r.country) === 'Espanha' ? 'Espanha' : 'Brasil'
-      counts[gc]++
+      const code = normalizeCountry(r.country)
+      if (counts[code] !== undefined) counts[code]++
     }
     return counts
-  }, [items])
+  }, [items, activeCountryCodes])
 
   const filtered = useMemo(() => {
     let result = items
     if (countryFilter !== 'Todos') {
-      const getCountry = (country?: string | null) => normalizeCountry(country) === 'Espanha' ? 'Espanha' : 'Brasil'
-      result = result.filter(r => getCountry(r.country) === countryFilter)
+      result = result.filter(r => normalizeCountry(r.country) === countryFilter)
     }
     if (catPath.length) {
       result = result.filter(r => matchesCategory(r.category, catPath))
@@ -159,10 +165,18 @@ function ContasAReceberPageInner() {
   const totalReceived = filtered.filter((r) => r.hasReceived).reduce((s, r) => s + r.value, 0)
   const totalPending  = totalValue - totalReceived
 
-  const brasilItems   = byCountry('Brasil')
-  const espanhaItems  = byCountry('Espanha')
-  const summaryBrasil  = { total: sumValues(brasilItems),  positive: sumValues(brasilItems.filter(r => r.hasReceived)),  pending: sumValues(brasilItems.filter(r => !r.hasReceived))  }
-  const summaryEspanha = { total: sumValues(espanhaItems), positive: sumValues(espanhaItems.filter(r => r.hasReceived)), pending: sumValues(espanhaItems.filter(r => !r.hasReceived)) }
+  const countrySummaries: CountrySummaryItem[] = useMemo(() => activeCountryCodes.map(code => {
+    const countryItems = byCountry(code)
+    return {
+      code,
+      summary: {
+        total: sumValues(countryItems),
+        positive: sumValues(countryItems.filter(r => r.hasReceived)),
+        pending: sumValues(countryItems.filter(r => !r.hasReceived)),
+      },
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [items, activeCountryCodes])
 
   async function handleDelete() {
     if (!deleteTarget) return
@@ -209,8 +223,7 @@ function ContasAReceberPageInner() {
       {/* Summary */}
       <SummaryCards
         countryFilter={countryFilter}
-        brasil={summaryBrasil}
-        espanha={summaryEspanha}
+        countries={countrySummaries}
         labels={{ total: 'Total previsto', positive: 'Recebido', pending: 'Aguardando' }}
       />
 
@@ -247,32 +260,23 @@ function ContasAReceberPageInner() {
           onPathChange={setCatPath}
         />
         {catPath.length > 0 && (() => {
-          const brItems = filtered.filter(r => normalizeCountry(r.country) !== 'Espanha')
-          const esItems = filtered.filter(r => normalizeCountry(r.country) === 'Espanha')
-          const brValue   = brItems.reduce((s, r) => s + (r.value ?? 0), 0)
-          const esValue   = esItems.reduce((s, r) => s + (r.value ?? 0), 0)
-          const brSaldo   = brItems.reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
-          const esSaldo   = esItems.reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
-          const hasBoth   = brItems.length > 0 && esItems.length > 0
+          const groups = groupByCountry(filtered, r => r.country, activeCountryCodes)
+          const hasMultiple = groups.length > 1
           return (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
               <span><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{filtered.length}</span> {filtered.length === 1 ? 'item' : 'itens'}</span>
-              {brItems.length > 0 && (
-                <>
-                  <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <FlagBrasil size={14} />}
-                  <span>Valor: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(brValue, 'Brasil')}</span></span>
-                  <span>Saldo: <span className="font-mono font-semibold" style={{ color: 'var(--blue)' }}>{formatCurrency(brSaldo, 'Brasil')}</span></span>
-                </>
-              )}
-              {esItems.length > 0 && (
-                <>
-                  <span style={{ color: 'var(--border-2)' }}>·</span>
-                  {hasBoth && <FlagEspanha size={14} />}
-                  <span>Valor: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(esValue, 'Espanha')}</span></span>
-                  <span>Saldo: <span className="font-mono font-semibold" style={{ color: 'var(--blue)' }}>{formatCurrency(esSaldo, 'Espanha')}</span></span>
-                </>
-              )}
+              {groups.map(g => {
+                const gValue = g.items.reduce((s, r) => s + (r.value ?? 0), 0)
+                const gSaldo = g.items.reduce((s, r) => s + (r.manipulatedValue ?? 0), 0)
+                return (
+                  <Fragment key={g.code}>
+                    <span style={{ color: 'var(--border-2)' }}>·</span>
+                    {hasMultiple && <CountryFlag code={g.code} size={14} />}
+                    <span>Valor: <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>{formatCurrency(gValue, g.code)}</span></span>
+                    <span>Saldo: <span className="font-mono font-semibold" style={{ color: 'var(--blue)' }}>{formatCurrency(gSaldo, g.code)}</span></span>
+                  </Fragment>
+                )
+              })}
             </div>
           )
         })()}
@@ -351,7 +355,7 @@ function ContasAReceberPageInner() {
                 ) : null}
                 {r.country && (
                   <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
-                    {normalizeCountry(r.country) === 'Espanha' ? <FlagEspanha size={12} /> : <FlagBrasil size={12} />}
+                    <CountryFlag code={r.country} size={12} />
                     {normalizeCountry(r.country)}
                   </span>
                 )}
@@ -447,9 +451,7 @@ function ContasAReceberPageInner() {
               <Td>
                 {r.country ? (
                   <div className="flex items-center gap-1.5">
-                    {normalizeCountry(r.country) === 'Espanha'
-                      ? <FlagEspanha size={16} />
-                      : <FlagBrasil size={16} />}
+                    <CountryFlag code={r.country} size={16} />
                     <span className="text-xs" style={{ color: 'var(--text-2)' }}>{normalizeCountry(r.country)}</span>
                   </div>
                 ) : (

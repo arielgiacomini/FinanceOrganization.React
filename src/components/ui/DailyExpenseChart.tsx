@@ -9,11 +9,13 @@ import { CategoryFilter, matchesCategory, parseCategory } from '@/components/ui/
 import { BillToPayForm } from '@/components/forms/BillToPayForm'
 import { PayBillModal } from '@/components/ui/PayBillModal'
 import { BillToPayHistory } from '@/components/ui/BillToPayHistory'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryFlag } from '@/components/ui/Flags'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
+import { findCountryInfo } from '@/lib/countries'
 import {
   loadDespesaMesFiltrarAnoAtual, loadDespesaMesCategoriaPadrao, loadDespesaMesCorProjetado,
   loadDespesaVerRegistrosOrder, loadDespesaVerRegistrosHidden, DESPESA_VER_REGISTROS_FIELDS,
+  loadUserCountries,
 } from '@/lib/wallet'
 import type { DespesaVerRegistrosFieldKey } from '@/lib/wallet'
 import type { BillToPay } from '@/types'
@@ -69,8 +71,12 @@ function monthYearOrder(my: string): number {
   return (parseInt(y) || 0) * 12 + MONTH_NAMES.indexOf(m)
 }
 
-function isSpain(r: DailyExpenseRecord) {
-  return r.taxCountry === 'Espanha'
+// Nome histórico (a "2ª barra" do gráfico era sempre Espanha) — hoje bate com
+// o 2º país ativo de Configurações → Países (`country2`), seja lá qual for
+// (ex: Portugal), não mais com o texto fixo "Espanha". Sem country2 (só um
+// país configurado), nunca bate — tudo cai na 1ª barra.
+function isSpain(r: DailyExpenseRecord, country2?: string) {
+  return !!country2 && r.taxCountry === country2
 }
 
 // Gasto "projetado" — conta/fatura fixa que ainda não foi paga, ou seja, uma
@@ -95,7 +101,7 @@ interface SummaryStat {
 function SummaryStatCard({
   header, stats, bg = 'var(--bg-3)', border = 'var(--border-1)',
 }: {
-  header?: { Flag: React.ComponentType<{ size?: number }>; label: string; color: string }
+  header?: { code: string; label: string; color: string }
   stats: SummaryStat[]
   bg?: string
   border?: string
@@ -104,7 +110,7 @@ function SummaryStatCard({
     <div className="w-full sm:w-auto sm:flex-1 sm:min-w-[180px] rounded-xl px-4 py-3" style={{ background: bg, border: `1px solid ${border}` }}>
       {header && (
         <div className="flex items-center gap-1.5 mb-2.5">
-          <header.Flag size={16} />
+          <CountryFlag code={header.code} size={16} />
           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: header.color, fontSize: 10, letterSpacing: '0.06em' }}>
             {header.label}
           </span>
@@ -167,9 +173,26 @@ export function DailyExpenseChart() {
   const [allData, setAllData] = useState<DailyExpenseRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [accountFilter, setAccountFilter] = useState('Todos')
-  const [countryFilter, setCountryFilter] = useState<'Todos' | 'Brasil' | 'Espanha'>('Todos')
+  const [countryFilter, setCountryFilter] = useState<string>('Todos')
   const [plannedFilter, setPlannedFilter] = useState<'Todos' | 'Real' | 'Projetado'>('Todos')
   const [hasLoaded, setHasLoaded] = useState(false)
+
+  // Lista de filtro de país vem de Configurações → Países (fonte única) — não
+  // só Brasil/Espanha. As barras do gráfico (mais abaixo) só sabem desenhar
+  // duas barras (país 1 e país 2, ver `country2`); um 3º país configurado
+  // continua caindo na barra do país 1.
+  const [userCountryOptions, setUserCountryOptions] = useState<{ code: string }[]>([{ code: 'Brasil' }, { code: 'Espanha' }])
+  useEffect(() => {
+    setUserCountryOptions(loadUserCountries())
+  }, [])
+  const country1 = userCountryOptions[0]?.code ?? 'Brasil'
+  const country2 = userCountryOptions[1]?.code
+  const symbol1 = findCountryInfo(country1)?.symbol ?? 'R$'
+  const symbol2 = findCountryInfo(country2)?.symbol ?? '€'
+  useEffect(() => {
+    if (countryFilter === 'Todos') return
+    if (!userCountryOptions.some(c => c.code === countryFilter)) setCountryFilter('Todos')
+  }, [countryFilter, userCountryOptions])
 
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [detailsBills, setDetailsBills] = useState<BillToPay[]>([])
@@ -272,7 +295,7 @@ export function DailyExpenseChart() {
   // tanto na lista de contas/chips quanto no dataset principal do gráfico.
   function matchesFilters(r: DailyExpenseRecord): boolean {
     if (catPath.length && !matchesCategory(r.category, catPath)) return false
-    if (countryFilter !== 'Todos' && (isSpain(r) ? 'Espanha' : 'Brasil') !== countryFilter) return false
+    if (countryFilter !== 'Todos' && normalizeCountry(r.taxCountry) !== countryFilter) return false
     if (plannedFilter === 'Real' && isPlanned(r)) return false
     if (plannedFilter === 'Projetado' && !isPlanned(r)) return false
     return true
@@ -333,20 +356,20 @@ export function DailyExpenseChart() {
   const discountBrlSet = useMemo(() => {
     const s: Record<string, boolean> = {}
     filteredData.forEach(d => {
-      if (!isSpain(d) && d.value < 0)
+      if (!isSpain(d, country2) && d.value < 0)
         s[viewMode === 'day' ? String(d.day) : d.monthYear] = true
     })
     return s
-  }, [filteredData, viewMode])
+  }, [filteredData, viewMode, country2])
 
   const discountEurSet = useMemo(() => {
     const s: Record<string, boolean> = {}
     filteredData.forEach(d => {
-      if (isSpain(d) && d.value < 0)
+      if (isSpain(d, country2) && d.value < 0)
         s[viewMode === 'day' ? String(d.day) : d.monthYear] = true
     })
     return s
-  }, [filteredData, viewMode])
+  }, [filteredData, viewMode, country2])
 
   const chartData = useMemo((): ChartPoint[] => {
     if (viewMode === 'day') {
@@ -359,7 +382,7 @@ export function DailyExpenseChart() {
           }
         }
         const abs = Math.abs(d.value)
-        if (isSpain(d)) {
+        if (isSpain(d, country2)) {
           map[d.day].valueEur += abs
           if (isPlanned(d)) map[d.day].valueEurPlanned += abs
         } else {
@@ -373,7 +396,7 @@ export function DailyExpenseChart() {
     positiveRows.forEach(d => {
       if (!map[d.monthYear]) map[d.monthYear] = { monthYear: d.monthYear, valueBrl: 0, valueEur: 0, valueBrlPlanned: 0, valueEurPlanned: 0 }
       const abs = Math.abs(d.value)
-      if (isSpain(d)) {
+      if (isSpain(d, country2)) {
         map[d.monthYear].valueEur += abs
         if (isPlanned(d)) map[d.monthYear].valueEurPlanned += abs
       } else {
@@ -382,12 +405,12 @@ export function DailyExpenseChart() {
       }
     })
     return Object.values(map).sort((a, b) => monthYearOrder(a.monthYear ?? '') - monthYearOrder(b.monthYear ?? ''))
-  }, [positiveRows, viewMode])
+  }, [positiveRows, viewMode, country2])
 
-  const totalBrl = useMemo(() => positiveRows.filter(d => !isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
-  const totalEur = useMemo(() => positiveRows.filter(d =>  isSpain(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
-  const totalBrlPlanned = useMemo(() => positiveRows.filter(d => !isSpain(d) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
-  const totalEurPlanned = useMemo(() => positiveRows.filter(d =>  isSpain(d) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows])
+  const totalBrl = useMemo(() => positiveRows.filter(d => !isSpain(d, country2)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows, country2])
+  const totalEur = useMemo(() => positiveRows.filter(d =>  isSpain(d, country2)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows, country2])
+  const totalBrlPlanned = useMemo(() => positiveRows.filter(d => !isSpain(d, country2) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows, country2])
+  const totalEurPlanned = useMemo(() => positiveRows.filter(d =>  isSpain(d, country2) && isPlanned(d)).reduce((s, d) => s + Math.abs(d.value), 0), [positiveRows, country2])
   const hasBrl = totalBrl > 0
   const hasEur = totalEur > 0
 
@@ -430,8 +453,8 @@ export function DailyExpenseChart() {
   }
 
   const formatTickY = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
-  const fmtBrl = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v.toFixed(0)}`
-  const fmtEur = (v: number) => v >= 1000 ? `€${(v / 1000).toFixed(1)}k`  : `€${v.toFixed(0)}`
+  const fmtBrl = (v: number) => v >= 1000 ? `${symbol1}${(v / 1000).toFixed(1)}k` : `${symbol1}${v.toFixed(0)}`
+  const fmtEur = (v: number) => v >= 1000 ? `${symbol2}${(v / 1000).toFixed(1)}k`  : `${symbol2}${v.toFixed(0)}`
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const CustomDayTick = ({ x, y, payload }: any) => {
@@ -683,7 +706,7 @@ export function DailyExpenseChart() {
     total: number
     planned: number
     color: string
-    country: 'Brasil' | 'Espanha'
+    country: string
     totalLabel?: string
     avg?: number
     max?: number
@@ -763,7 +786,7 @@ export function DailyExpenseChart() {
       case 'country':
         return b.country ? (
           <span className="inline-flex items-center gap-1.5">
-            {normalizeCountry(b.country) === 'Espanha' ? <FlagEspanha size={13} /> : <FlagBrasil size={13} />}
+            <CountryFlag code={b.country} size={13} />
             {normalizeCountry(b.country)}
           </span>
         ) : '—'
@@ -915,7 +938,7 @@ export function DailyExpenseChart() {
           País
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {(['Todos', 'Brasil', 'Espanha'] as const).map(c => (
+          {['Todos', ...userCountryOptions.map(c => c.code)].map(c => (
             <button key={c} type="button" onClick={() => setCountryFilter(c)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
@@ -1070,7 +1093,8 @@ export function DailyExpenseChart() {
             const active = accountFilter === acc
             const accRows = allData.filter(d => d.account === acc && d.value > 0 && matchesFilters(d))
             const accTotal = accRows.reduce((s, d) => s + d.value, 0)
-            const accCurrency = accRows.some(d => isSpain(d)) ? 'Espanha' : 'Brasil'
+            const accCountries = Array.from(new Set(accRows.map(d => normalizeCountry(d.taxCountry))))
+            const accCurrency = accCountries.length === 1 ? accCountries[0] : (userCountryOptions[0]?.code ?? 'Brasil')
             return (
               <button key={acc} type="button"
                 onClick={() => setAccountFilter(active ? 'Todos' : acc)}
@@ -1148,26 +1172,26 @@ export function DailyExpenseChart() {
               <>
                 {selectedBarPoint.valueBrl > 0 && (
                   <SummaryStatCard
-                    header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
+                    header={{ code: country1, label: country1, color: '#dc2626' }}
                     bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
                     stats={buildCountryStats({
                       total: selectedBarPoint.valueBrl,
                       planned: selectedBarPoint.valueBrlPlanned,
                       color: '#dc2626',
-                      country: 'Brasil',
+                      country: country1,
                       totalLabel: barFilterLabel ?? 'Total',
                     })}
                   />
                 )}
                 {selectedBarPoint.valueEur > 0 && (
                   <SummaryStatCard
-                    header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
+                    header={{ code: country2 ?? 'Espanha', label: country2 ?? 'Espanha', color: '#b91c1c' }}
                     bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
                     stats={buildCountryStats({
                       total: selectedBarPoint.valueEur,
                       planned: selectedBarPoint.valueEurPlanned,
                       color: '#b91c1c',
-                      country: 'Espanha',
+                      country: country2 ?? 'Espanha',
                       totalLabel: barFilterLabel ?? 'Total',
                     })}
                   />
@@ -1178,13 +1202,13 @@ export function DailyExpenseChart() {
               <>
                 {hasBrl && (
                   <SummaryStatCard
-                    header={{ Flag: FlagBrasil, label: 'Brasil', color: '#dc2626' }}
+                    header={{ code: country1, label: country1, color: '#dc2626' }}
                     bg="rgba(220,38,38,0.08)" border="rgba(220,38,38,0.25)"
                     stats={buildCountryStats({
                       total: totalBrl,
                       planned: totalBrlPlanned,
                       color: '#dc2626',
-                      country: 'Brasil',
+                      country: country1,
                       avg: avgBrl,
                       max: maxBrl,
                     })}
@@ -1192,13 +1216,13 @@ export function DailyExpenseChart() {
                 )}
                 {hasEur && (
                   <SummaryStatCard
-                    header={{ Flag: FlagEspanha, label: 'Espanha', color: '#b91c1c' }}
+                    header={{ code: country2 ?? 'Espanha', label: country2 ?? 'Espanha', color: '#b91c1c' }}
                     bg="rgba(185,28,28,0.08)" border="rgba(185,28,28,0.25)"
                     stats={buildCountryStats({
                       total: totalEur,
                       planned: totalEurPlanned,
                       color: '#b91c1c',
-                      country: 'Espanha',
+                      country: country2 ?? 'Espanha',
                       avg: avgEur,
                       max: maxEur,
                     })}
@@ -1268,16 +1292,17 @@ export function DailyExpenseChart() {
                   if (name === 'valueBrl') {
                     const planned = pt?.valueBrlPlanned ?? 0
                     const label = planned > 0.005
-                      ? `R$ (Brasil) — inclui ${formatCurrency(planned, 'Brasil')} projetado`
-                      : 'R$ (Brasil)'
-                    return [formatCurrency(v, 'Brasil'), label]
+                      ? `${symbol1} (${country1}) — inclui ${formatCurrency(planned, country1)} projetado`
+                      : `${symbol1} (${country1})`
+                    return [formatCurrency(v, country1), label]
                   }
                   if (name === 'valueEur') {
+                    const c2 = country2 ?? 'Espanha'
                     const planned = pt?.valueEurPlanned ?? 0
                     const label = planned > 0.005
-                      ? `€ (Espanha) — inclui ${formatCurrency(planned, 'Espanha')} projetado`
-                      : '€ (Espanha)'
-                    return [formatCurrency(v, 'Espanha'), label]
+                      ? `${symbol2} (${c2}) — inclui ${formatCurrency(planned, c2)} projetado`
+                      : `${symbol2} (${c2})`
+                    return [formatCurrency(v, c2), label]
                   }
                   return [String(v), String(name)]
                 }}
@@ -1320,13 +1345,13 @@ export function DailyExpenseChart() {
             {hasBrl && (
               <span className="flex items-center gap-1.5">
                 <span style={{ width: 10, height: 10, background: '#dc2626', borderRadius: 2, display: 'inline-block' }} />
-                R$ (Brasil)
+                {symbol1} ({country1})
               </span>
             )}
             {hasEur && (
               <span className="flex items-center gap-1.5">
                 <span style={{ width: 10, height: 10, background: '#b91c1c', borderRadius: 2, display: 'inline-block' }} />
-                € (Espanha)
+                {symbol2} ({country2 ?? 'Espanha'})
               </span>
             )}
             {(totalBrlPlanned > 0 || totalEurPlanned > 0) && (
@@ -1435,7 +1460,7 @@ export function DailyExpenseChart() {
                           </td>
                         </tr>
                       ) : sortedBills.map(b => {
-                        const currency = normalizeCountry(b.country) === 'Espanha' ? 'Espanha' : 'Brasil'
+                        const currency = normalizeCountry(b.country)
                         const bg = b.hasPay ? '#1b2e1d' : 'var(--bg-2)'
                         const isExpanded = !!expandedDetailIds[b.id]
                         const visibleFields = verRegistrosOrder.filter(k => !verRegistrosHidden[k])

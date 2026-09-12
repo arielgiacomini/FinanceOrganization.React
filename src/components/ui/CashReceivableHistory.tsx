@@ -9,7 +9,10 @@ import { CashReceivableForm } from '@/components/forms/CashReceivableForm'
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { ReceiveModal } from '@/components/ui/ReceiveModal'
 import { normalizeCountry } from '@/components/ui/CountryTabs'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryFlag } from '@/components/ui/Flags'
+import { CountryPicker } from '@/components/ui/CountryPicker'
+import { loadUserCountryCodes, loadDefaultCountryCode } from '@/lib/wallet'
+import { DEFAULT_ACTIVE_COUNTRY_CODES, groupByCountry } from '@/lib/countries'
 import {
   X, CheckCircle2, AlertCircle, CircleDollarSign,
   TrendingUp, Calendar, Pencil, Trash2, ReceiptText,
@@ -85,7 +88,7 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
     value:             first?.value?.toString() ?? '',
     manipulatedValue:  first?.manipulatedValue?.toString() ?? '',
     additionalMessage: first?.additionalMessage ?? '',
-    country:           first?.country ?? 'Brasil',
+    country:           first?.country ?? loadDefaultCountryCode(),
     dueDate:           first?.dueDate ? String(first.dueDate).slice(0, 10) : '',
     agreementDate:     first?.agreementDate ? String(first.agreementDate).slice(0, 10) : '',
     dateReceived:      first?.dateReceived ? String(first.dateReceived).slice(0, 10) : '',
@@ -316,19 +319,7 @@ function BulkEditForm({ selected, onSuccess, onCancel }: {
         </div>
         <div>
           <label className="label">País</label>
-          <div className="flex gap-2">
-            {([{ value: 'Brasil', Flag: FlagBrasil }, { value: 'Espanha', Flag: FlagEspanha }] as const).map(({ value, Flag }) => (
-              <button key={value} type="button" onClick={() => set('country', value)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
-                style={{
-                  background: form.country === value ? 'var(--green-dim)' : 'var(--bg-3)',
-                  border: `1px solid ${form.country === value ? 'var(--green-border)' : 'var(--border-1)'}`,
-                  color: form.country === value ? 'var(--green-400)' : 'var(--text-2)',
-                }}>
-                <Flag size={16} />{value}
-              </button>
-            ))}
-          </div>
+          <CountryPicker value={form.country} onChange={v => set('country', v)} />
         </div>
 
         {/* Frequência + Tipo de Registro */}
@@ -422,6 +413,8 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
   const [bulkEditOpen, setBulkEditOpen]     = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting]     = useState(false)
+  const [activeCountryCodes, setActiveCountryCodes] = useState<string[]>(DEFAULT_ACTIVE_COUNTRY_CODES)
+  useEffect(() => { setActiveCountryCodes(loadUserCountryCodes()) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -566,31 +559,20 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
                   <span style={{ color: 'var(--green-400)' }}>{selected.size}</span> selecionado(s)
                 </span>
                 {(() => {
-                  const brItems = selectedItems.filter(h => (h.country ?? '').trim().toLowerCase() !== 'espanha')
-                  const esItems = selectedItems.filter(h => (h.country ?? '').trim().toLowerCase() === 'espanha')
-                  const brTotal = brItems.reduce((s, h) => s + (h.manipulatedValue ?? h.value ?? 0), 0)
-                  const esTotal = esItems.reduce((s, h) => s + (h.manipulatedValue ?? h.value ?? 0), 0)
-                  const hasBoth = brItems.length > 0 && esItems.length > 0
+                  const groups = groupByCountry(selectedItems, h => h.country, activeCountryCodes)
+                  const hasMultiple = groups.length > 1
                   return (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-3)' }}>
                       <span style={{ color: 'var(--border-2)' }}>·</span>
-                      {brItems.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          {hasBoth && <FlagBrasil size={12} />}
+                      {groups.map((g, i) => (
+                        <span key={g.code} className="flex items-center gap-1">
+                          {i > 0 && <span style={{ color: 'var(--border-2)' }}>·</span>}
+                          {hasMultiple && <CountryFlag code={g.code} size={12} />}
                           <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
-                            {formatCurrency(brTotal, 'Brasil')}
+                            {formatCurrency(g.items.reduce((s, h) => s + (h.manipulatedValue ?? h.value ?? 0), 0), g.code)}
                           </span>
                         </span>
-                      )}
-                      {esItems.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          {hasBoth && <span style={{ color: 'var(--border-2)' }}>·</span>}
-                          {hasBoth && <FlagEspanha size={12} />}
-                          <span className="font-mono font-semibold" style={{ color: 'var(--green-400)' }}>
-                            {formatCurrency(esTotal, 'Espanha')}
-                          </span>
-                        </span>
-                      )}
+                      ))}
                     </div>
                   )
                 })()}
@@ -702,7 +684,7 @@ export function CashReceivableHistory({ item, onClose, onRefreshParent }: CashRe
                       <Td>
                         {h.country ? (
                           <div className="flex items-center gap-1.5">
-                            {normalizeCountry(h.country) === 'Espanha' ? <FlagEspanha size={15} /> : <FlagBrasil size={15} />}
+                            <CountryFlag code={h.country} size={15} />
                             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{normalizeCountry(h.country)}</span>
                           </div>
                         ) : <span style={{ color: 'var(--text-3)' }}>—</span>}

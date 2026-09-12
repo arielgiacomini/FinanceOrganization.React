@@ -9,7 +9,8 @@ import { Plus, Minus, RefreshCw, LineChart, Lightbulb, Check } from 'lucide-reac
 import { CurrencyInput } from '@/components/ui/CurrencyInput'
 import { FinanceChart } from '@/components/ui/FinanceChart'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
-import { FlagBrasil, FlagEspanha } from '@/components/ui/Flags'
+import { CountryPicker } from '@/components/ui/CountryPicker'
+import { loadDefaultCountryCode } from '@/lib/wallet'
 import type { QuickBillPrefill, BillToPayQuickValues } from '@/components/forms/QuickBillToPayForm'
 import { loadCategoryHistory, suggestCategoriesForName } from '@/lib/categorySuggestion'
 import type { CategorySuggestion } from '@/lib/categorySuggestion'
@@ -20,6 +21,12 @@ interface BillToPayFormProps {
   onCancel: () => void
   onSwitchQuick?: (values: BillToPayQuickValues) => void
   prefill?: QuickBillPrefill
+  /**
+   * Chave de lançamento rápido (?chave= na URL) — quando presente, cria via
+   * header X-Quick-Capture-Key em vez de sessão logada. Só se aplica à criação
+   * (nunca a edição, fora da allowlist do backend para essa chave).
+   */
+  quickCaptureKey?: string
 }
 
 const DRAFT_KEY = 'finance_billtopay_draft'
@@ -34,12 +41,7 @@ function loadDraft(): Record<string, string> | null {
 }
 function clearDraft() { sessionStorage.removeItem(DRAFT_KEY) }
 
-const COUNTRIES = [
-  { value: 'Brasil',  label: 'Brasil',  Flag: FlagBrasil  },
-  { value: 'Espanha', label: 'Espanha', Flag: FlagEspanha },
-]
-
-export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, prefill }: BillToPayFormProps) {
+export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, prefill, quickCaptureKey }: BillToPayFormProps) {
   const isEdit = !!initial
   const ymOptions = generateYearMonthOptions()
 
@@ -68,7 +70,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
     fynallyMonthYear: initial?.yearMonth ?? prefill?.fynallyMonthYear ?? draft?.fynallyMonthYear ?? currentYearMonth(),
     bestPayDay: prefill?.bestPayDay ?? draft?.bestPayDay ?? '',
     additionalMessage: initial?.additionalMessage ?? prefill?.additionalMessage ?? draft?.additionalMessage ?? '',
-    country: initial?.country ?? prefill?.country ?? draft?.country ?? 'Brasil',
+    country: initial?.country ?? prefill?.country ?? draft?.country ?? loadDefaultCountryCode(),
     hasPay: initial?.hasPay ?? false,
   })
   const hasDraft = !initial && !!draft
@@ -100,7 +102,10 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
   }, [form.name, isEdit])
 
   useEffect(() => {
-    Promise.all([
+    Promise.all(quickCaptureKey ? [
+      accountsApi.searchAllQuickCapture(quickCaptureKey),
+      categoriesApi.searchQuickCapture({ accountType: 'Conta a Pagar', enable: true }, quickCaptureKey),
+    ] : [
       accountsApi.searchAll(),
       categoriesApi.search({ accountType: 'Conta a Pagar', enable: true }),
     ]).then(([accRes, cats]) => {
@@ -149,7 +154,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
       purchaseDate: '', dueDate: '', payDay: '',
       initialMonthYear: currentYearMonth(),
       fynallyMonthYear: currentYearMonth(),
-      bestPayDay: '', additionalMessage: '', country: 'Brasil', hasPay: false,
+      bestPayDay: '', additionalMessage: '', country: loadDefaultCountryCode(), hasPay: false,
     })
   }
 
@@ -197,7 +202,11 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
           creationDate: now,
           lastChangeDate: null,
         }
-        await billsToPayApi.create(vm as never)
+        if (quickCaptureKey) {
+          await billsToPayApi.createQuickCapture(vm as never, quickCaptureKey)
+        } else {
+          await billsToPayApi.create(vm as never)
+        }
       }
       if (!initial) clearDraft()
       onSuccess()
@@ -377,24 +386,7 @@ export function BillToPayForm({ initial, onSuccess, onCancel, onSwitchQuick, pre
         {/* País */}
         <div>
           <label className="label">País</label>
-          <div className="flex gap-2">
-            {COUNTRIES.map(({ value, label, Flag }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => set('country', value)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-all"
-                style={{
-                  background: form.country === value ? 'var(--green-dim)' : 'var(--bg-3)',
-                  border: `1px solid ${form.country === value ? 'var(--green-border)' : 'var(--border-1)'}`,
-                  color: form.country === value ? 'var(--green-400)' : 'var(--text-2)',
-                }}
-              >
-                <Flag size={16} />
-                {label}
-              </button>
-            ))}
-          </div>
+          <CountryPicker value={form.country} onChange={v => set('country', v)} />
         </div>
 
         {isEdit ? (
