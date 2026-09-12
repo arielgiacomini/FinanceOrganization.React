@@ -260,7 +260,11 @@ export function QuickBillToPayForm({ onSaved, onDone, onSwitchFull, onCancel, in
   // países que o AppLayout faz em toda navegação normal. Sem isso, abrir o
   // atalho num aparelho/navegador que nunca visitou Configurações mostra o
   // país de fábrica (Brasil/Espanha) em vez do que foi realmente configurado.
+  // Pulado no modo de chave de lançamento rápido: /v1/wallet/search exige
+  // sessão logada (não está na allowlist da chave), e sem sessão a chamada
+  // derrubaria a tela inteira pro /login/ antes mesmo do formulário aparecer.
   useEffect(() => {
+    if (quickCaptureKey) return
     syncUserCountriesFromApi().then(changed => {
       if (changed && !initialValues?.country) setCountry(loadDefaultCountryCode())
     })
